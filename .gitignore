@@ -1,0 +1,8 @@
+.godot/
+*.translation
+export.cfg
+.DS_Store
+__pycache__/
+*.pyc
+uploads/
+agent-tools/

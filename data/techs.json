@@ -1,0 +1,823 @@
+{
+  "branches": [
+    {
+      "id": "electric",
+      "name": "电"
+    },
+    {
+      "id": "military",
+      "name": "军"
+    },
+    {
+      "id": "industry",
+      "name": "工"
+    },
+    {
+      "id": "agriculture",
+      "name": "农"
+    },
+    {
+      "id": "commerce",
+      "name": "商"
+    },
+    {
+      "id": "statecraft",
+      "name": "政"
+    },
+    {
+      "id": "final",
+      "name": "终"
+    }
+  ],
+  "eras": [
+    {
+      "id": 1,
+      "name": "开机启程"
+    },
+    {
+      "id": 2,
+      "name": "庆历格物"
+    },
+    {
+      "id": 3,
+      "name": "火器初兴"
+    }
+  ],
+  "techs": [
+    {
+      "id": "E01",
+      "name": "节能调度",
+      "branch": "electric",
+      "era": 1,
+      "prereq": [],
+      "prereq_any": [],
+      "cost": {
+        "power": 15,
+        "craft": 0
+      },
+      "materials": {},
+      "effect": "待机耗电 4→2；解锁“休眠”",
+      "advisor_line": "待机从四降到二。电这东西，省下来才有资格乱花。"
+    },
+    {
+      "id": "E02",
+      "name": "追日支架",
+      "branch": "electric",
+      "era": 1,
+      "prereq": [
+        "E01"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 25,
+        "craft": 15
+      },
+      "materials": {
+        "wood": 5
+      },
+      "effect": "发电 +15%；可修复面板至 80%",
+      "advisor_line": "给板子装个脖子，让它跟着太阳转。别问脖子是谁的。"
+    },
+    {
+      "id": "P01",
+      "name": "户籍算学",
+      "branch": "statecraft",
+      "era": 1,
+      "prereq": [],
+      "prereq_any": [],
+      "cost": {
+        "power": 15,
+        "craft": 5
+      },
+      "materials": {},
+      "effect": "解锁治理分析；全国钱 +5%",
+      "advisor_line": "户口簿加上加减乘除，豪强就比较难装穷。"
+    },
+    {
+      "id": "P02",
+      "name": "敌情推演模型",
+      "branch": "statecraft",
+      "era": 1,
+      "prereq": [],
+      "prereq_any": [],
+      "cost": {
+        "power": 20,
+        "craft": 0
+      },
+      "materials": {},
+      "effect": "战前推演耗电降低；可揭示敌军种类",
+      "advisor_line": "把李元昊的脾气写成公式。他不会高兴，公式不在乎。"
+    },
+    {
+      "id": "C01",
+      "name": "急递铺改制",
+      "branch": "commerce",
+      "era": 1,
+      "prereq": [],
+      "prereq_any": [],
+      "cost": {
+        "power": 15,
+        "craft": 10
+      },
+      "materials": {
+        "money": 50
+      },
+      "effect": "军报实时共享；道路上骑兵移动 +1",
+      "advisor_line": "九天前的军报不叫加急，叫考古。"
+    },
+    {
+      "id": "A01",
+      "name": "占城稻深推广",
+      "branch": "agriculture",
+      "era": 1,
+      "prereq": [],
+      "prereq_any": [],
+      "cost": {
+        "power": 15,
+        "craft": 10
+      },
+      "materials": {},
+      "effect": "稻作平原 +1 粮",
+      "advisor_line": "这稻子耐旱。比朝堂上的意见耐旱。"
+    },
+    {
+      "id": "A03",
+      "name": "农田水利规划",
+      "branch": "agriculture",
+      "era": 1,
+      "prereq": [],
+      "prereq_any": [],
+      "cost": {
+        "power": 20,
+        "craft": 10
+      },
+      "materials": {},
+      "effect": "解锁水利规划与堰渠",
+      "advisor_line": "水往低处流。税往高处走。堰渠只管前者。"
+    },
+    {
+      "id": "M01",
+      "name": "复合弓标准化",
+      "branch": "military",
+      "era": 1,
+      "prereq": [],
+      "prereq_any": [],
+      "cost": {
+        "power": 15,
+        "craft": 15
+      },
+      "materials": {},
+      "effect": "弓手远程 +2，造价 −10%",
+      "advisor_line": "弓这东西，先让每张都一样长，再谈百步穿杨。"
+    },
+    {
+      "id": "M02",
+      "name": "神臂弓",
+      "branch": "military",
+      "era": 1,
+      "prereq": [
+        "M01"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 25,
+        "craft": 25
+      },
+      "materials": {
+        "iron": 10
+      },
+      "effect": "解锁神臂弓手",
+      "advisor_line": "射程三百步，宋朝的狙击枪。就是上弦得用脚蹬，建议士兵练腿。"
+    },
+    {
+      "id": "M03",
+      "name": "堡寨筑城法",
+      "branch": "military",
+      "era": 1,
+      "prereq": [],
+      "prereq_any": [],
+      "cost": {
+        "power": 20,
+        "craft": 20
+      },
+      "materials": {},
+      "effect": "民夫可建堡寨",
+      "advisor_line": "在黄土里垒一圈墙，西夏的马就得换个爱好。"
+    },
+    {
+      "id": "M04",
+      "name": "连弩床弩",
+      "branch": "military",
+      "era": 1,
+      "prereq": [
+        "M02"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 30,
+        "craft": 30
+      },
+      "materials": {
+        "wood": 10,
+        "iron": 10
+      },
+      "effect": "解锁床子弩营；城市获远程反击",
+      "advisor_line": "城头上的床弩，是延州能送给铁鹞子的第一份厚礼。"
+    },
+    {
+      "id": "I01",
+      "name": "灌钢法改良",
+      "branch": "industry",
+      "era": 1,
+      "prereq": [],
+      "prereq_any": [],
+      "cost": {
+        "power": 20,
+        "craft": 20
+      },
+      "materials": {},
+      "effect": "冶铁务铁 +25%",
+      "advisor_line": "灌钢不是魔术，是把好铁和生铁劝到一起。"
+    },
+    {
+      "id": "E03",
+      "name": "铜线拉丝",
+      "branch": "electric",
+      "era": 2,
+      "prereq": [
+        "E02",
+        "I01"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 40,
+        "craft": 40
+      },
+      "materials": {
+        "copper": 20
+      },
+      "effect": "解锁电线改良",
+      "advisor_line": "把电从宫里牵出去。线很细，闲话会比线传得快。"
+    },
+    {
+      "id": "E04",
+      "name": "手摇发电机",
+      "branch": "electric",
+      "era": 2,
+      "prereq": [
+        "E03"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 50,
+        "craft": 50
+      },
+      "materials": {
+        "copper": 10,
+        "iron": 10
+      },
+      "effect": "解锁人力发电坊",
+      "advisor_line": "没太阳就靠人摇。御膳房终于有比试膳更有用的差事。"
+    },
+    {
+      "id": "E05",
+      "name": "锌铜电堆",
+      "branch": "electric",
+      "era": 2,
+      "prereq": [
+        "E03"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 45,
+        "craft": 40
+      },
+      "materials": {
+        "copper": 10
+      },
+      "effect": "电池上限 +60",
+      "advisor_line": "一堆金属泡在酸里，这就叫电池。别让试膳的尝。"
+    },
+    {
+      "id": "A02",
+      "name": "选种育种",
+      "branch": "agriculture",
+      "era": 2,
+      "prereq": [
+        "A01"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 40,
+        "craft": 20
+      },
+      "materials": {},
+      "effect": "农田粮 +10%；旱蝗损失 −25%",
+      "advisor_line": "挑种子比挑状元实在。种子不写策论。"
+    },
+    {
+      "id": "A04",
+      "name": "龙骨水车改良",
+      "branch": "agriculture",
+      "era": 2,
+      "prereq": [
+        "A03",
+        "I01"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 45,
+        "craft": 40
+      },
+      "materials": {
+        "wood": 10,
+        "iron": 5
+      },
+      "effect": "堰渠 +1 粮；解锁圩田",
+      "advisor_line": "水车骨节响的时候，江南的田就在喝水。"
+    },
+    {
+      "id": "A05",
+      "name": "牧监改良",
+      "branch": "agriculture",
+      "era": 2,
+      "prereq": [
+        "P01"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 40,
+        "craft": 20
+      },
+      "materials": {},
+      "effect": "牧监马 +1；骑兵造价 −15%",
+      "advisor_line": "马比状元稀缺。请把牧监当国库看。"
+    },
+    {
+      "id": "I02",
+      "name": "焦炭冶铁",
+      "branch": "industry",
+      "era": 2,
+      "prereq": [
+        "I01"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 55,
+        "craft": 50
+      },
+      "materials": {
+        "coal": 20
+      },
+      "effect": "解锁焦炉，铁产量提高",
+      "advisor_line": "煤比木炭热。山会感谢你们，铁匠的眉毛未必。"
+    },
+    {
+      "id": "I03",
+      "name": "水力鼓风",
+      "branch": "industry",
+      "era": 2,
+      "prereq": [
+        "I01",
+        "A03"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 50,
+        "craft": 45
+      },
+      "materials": {
+        "wood": 15
+      },
+      "effect": "河畔冶铁务铁 +2；作坊匠 +1",
+      "advisor_line": "让河替人拉风箱。黄河旧道脾气大，支流比较好说话。"
+    },
+    {
+      "id": "I04",
+      "name": "军器标准化",
+      "branch": "industry",
+      "era": 2,
+      "prereq": [
+        "I01",
+        "P01"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 45,
+        "craft": 35
+      },
+      "materials": {},
+      "effect": "单位造价匠 −20%",
+      "advisor_line": "同一把枪头，修的时候才不会变成猜谜。"
+    },
+    {
+      "id": "M05",
+      "name": "步人甲",
+      "branch": "military",
+      "era": 2,
+      "prereq": [
+        "I01"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 40,
+        "craft": 40
+      },
+      "materials": {
+        "iron": 20
+      },
+      "effect": "解锁步人甲重步兵",
+      "advisor_line": "穿上之后像一口会走路的锅。锅对骑兵不太友好。"
+    },
+    {
+      "id": "M06",
+      "name": "火药精炼",
+      "branch": "military",
+      "era": 2,
+      "prereq": [
+        "P01"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 50,
+        "craft": 30
+      },
+      "materials": {
+        "saltpeter": 10,
+        "sulfur": 5
+      },
+      "effect": "解锁霹雳炮与硝场",
+      "advisor_line": "硝和硫在一起的时候，请工匠先把眉毛寄存在家里。"
+    },
+    {
+      "id": "M07",
+      "name": "铁壳手雷",
+      "branch": "military",
+      "era": 2,
+      "prereq": [
+        "M06",
+        "I02"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 60,
+        "craft": 50
+      },
+      "materials": {
+        "iron": 15,
+        "saltpeter": 10
+      },
+      "effect": "解锁掷弹手",
+      "advisor_line": "铁壳、火药、一根绳子。投掷之前数清楚自己的手指。"
+    },
+    {
+      "id": "C02",
+      "name": "漕运整治",
+      "branch": "commerce",
+      "era": 2,
+      "prereq": [
+        "C01",
+        "A03"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 50,
+        "craft": 50
+      },
+      "materials": {
+        "money": 150
+      },
+      "effect": "漕运 +30%；解锁运河段",
+      "advisor_line": "汴河是开封的食道。食道堵了，京城就只剩脾气。"
+    },
+    {
+      "id": "C03",
+      "name": "复式簿记",
+      "branch": "commerce",
+      "era": 2,
+      "prereq": [
+        "P01"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 40,
+        "craft": 10
+      },
+      "materials": {},
+      "effect": "商税 +15%",
+      "advisor_line": "账本左右两边同时写。贪污的人会恨这种对称。"
+    },
+    {
+      "id": "C04",
+      "name": "活字与防伪交子",
+      "branch": "commerce",
+      "era": 2,
+      "prereq": [
+        "C03"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 50,
+        "craft": 30
+      },
+      "materials": {
+        "copper": 10
+      },
+      "effect": "钱 +10%；解锁印书局",
+      "advisor_line": "活字可以排诗，也可以排谁在伪钞。毕昇两边都肯干。"
+    },
+    {
+      "id": "P03",
+      "name": "精兵简政",
+      "branch": "statecraft",
+      "era": 2,
+      "prereq": [
+        "P01"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 45,
+        "craft": 0
+      },
+      "materials": {},
+      "effect": "可裁汰冗兵，军饷下降",
+      "advisor_line": "裁军要给去处。不然刀还在，饷没了，数学就不好看。"
+    },
+    {
+      "id": "P04",
+      "name": "皇城司密档",
+      "branch": "statecraft",
+      "era": 2,
+      "prereq": [
+        "P02"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 40,
+        "craft": 10
+      },
+      "materials": {},
+      "effect": "解锁皇城司；机密度每回合上升",
+      "advisor_line": "情报机关最好的掩护，仍然是一只没人怀疑的豆沙包。"
+    },
+    {
+      "id": "E06",
+      "name": "水轮发电机",
+      "branch": "electric",
+      "era": 3,
+      "prereq": [
+        "E04",
+        "I03"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 90,
+        "craft": 80
+      },
+      "materials": {
+        "copper": 30,
+        "iron": 20
+      },
+      "effect": "解锁水轮电站",
+      "advisor_line": "河水推轮子，轮子生电。宋朝的河终于不只会决口。"
+    },
+    {
+      "id": "E07",
+      "name": "铅酸蓄电池",
+      "branch": "electric",
+      "era": 3,
+      "prereq": [
+        "E05",
+        "I02"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 80,
+        "craft": 60
+      },
+      "materials": {
+        "lead": 10,
+        "sulfur": 10
+      },
+      "effect": "电池上限 +150；随驾电源",
+      "advisor_line": "酸液、铅板、一个盖子。随驾可以，随膳不行。"
+    },
+    {
+      "id": "I05",
+      "name": "坩埚炼钢",
+      "branch": "industry",
+      "era": 3,
+      "prereq": [
+        "I02"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 90,
+        "craft": 80
+      },
+      "materials": {
+        "coal": 30,
+        "iron": 30
+      },
+      "effect": "新资源钢；解锁炼钢厂",
+      "advisor_line": "钢不是铁的心情更好，是铁被认真欺负过。"
+    },
+    {
+      "id": "I06",
+      "name": "水力镗床",
+      "branch": "industry",
+      "era": 3,
+      "prereq": [
+        "I05",
+        "I03"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 100,
+        "craft": 90
+      },
+      "materials": {
+        "steel": 10
+      },
+      "effect": "火器战力 +3；炸膛大减",
+      "advisor_line": "炮管要圆。不圆的那种，叫烟花，而且是向后的。"
+    },
+    {
+      "id": "I07",
+      "name": "透明琉璃",
+      "branch": "industry",
+      "era": 3,
+      "prereq": [
+        "I02"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 60,
+        "craft": 40
+      },
+      "materials": {},
+      "effect": "面板防冰雹；视野 +1",
+      "advisor_line": "琉璃罩住太阳能板。冰雹打在罩上，而不是打在我的心情上。"
+    },
+    {
+      "id": "M08",
+      "name": "佛郎机炮",
+      "branch": "military",
+      "era": 3,
+      "prereq": [
+        "M06",
+        "I05"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 110,
+        "craft": 100
+      },
+      "materials": {
+        "steel": 15,
+        "saltpeter": 15
+      },
+      "effect": "解锁佛郎机炮营",
+      "advisor_line": "后装、子铳、一轮下去城垛会重新考虑人生。"
+    },
+    {
+      "id": "M09",
+      "name": "燧发机构",
+      "branch": "military",
+      "era": 3,
+      "prereq": [
+        "M06",
+        "I05"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 110,
+        "craft": 90
+      },
+      "materials": {
+        "steel": 10
+      },
+      "effect": "解锁燧发滑膛枪兵",
+      "advisor_line": "火绳的下一步是一块燧石。眉毛的风险还在，手的风险小一点。"
+    },
+    {
+      "id": "M10",
+      "name": "火器营操典",
+      "branch": "military",
+      "era": 3,
+      "prereq": [],
+      "prereq_any": [
+        "M08",
+        "M09"
+      ],
+      "cost": {
+        "power": 70,
+        "craft": 30
+      },
+      "materials": {},
+      "effect": "火器侧翼加成提高；雨天惩罚减轻",
+      "advisor_line": "排队、齐射、再排队。操典比勇气便宜，也比勇气听话。"
+    },
+    {
+      "id": "C05",
+      "name": "碎石官道",
+      "branch": "commerce",
+      "era": 3,
+      "prereq": [
+        "C02",
+        "I02"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 70,
+        "craft": 70
+      },
+      "materials": {
+        "money": 300
+      },
+      "effect": "官道移动消耗降低；补给更远",
+      "advisor_line": "把路铺硬。泥里走出的援军，通常会迟到九天。"
+    },
+    {
+      "id": "C06",
+      "name": "马拉轨道",
+      "branch": "commerce",
+      "era": 3,
+      "prereq": [
+        "C05",
+        "I05"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 100,
+        "craft": 90
+      },
+      "materials": {
+        "steel": 20,
+        "wood": 20
+      },
+      "effect": "矿区铁煤增产，粮运改善",
+      "advisor_line": "还不是火车。是马在铁上走路。马的表情请自行想象。"
+    },
+    {
+      "id": "A06",
+      "name": "新式犁与条播",
+      "branch": "agriculture",
+      "era": 3,
+      "prereq": [
+        "A04",
+        "I05"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 80,
+        "craft": 60
+      },
+      "materials": {
+        "steel": 5
+      },
+      "effect": "农田 +1 粮；民夫建造更快",
+      "advisor_line": "犁头换成钢，地就比较愿意合作。"
+    },
+    {
+      "id": "P05",
+      "name": "保甲团练",
+      "branch": "statecraft",
+      "era": 3,
+      "prereq": [
+        "P03"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 60,
+        "craft": 20
+      },
+      "materials": {},
+      "effect": "城市可出团练；可收编私兵",
+      "advisor_line": "乡兵不一定能打铁鹞子，但能让夜路没那么黑。"
+    },
+    {
+      "id": "X01",
+      "name": "豆沙包二号计划",
+      "branch": "final",
+      "era": 3,
+      "prereq": [
+        "E06",
+        "I06",
+        "C06"
+      ],
+      "prereq_any": [],
+      "cost": {
+        "power": 150,
+        "craft": 150
+      },
+      "materials": {
+        "steel": 20,
+        "coal": 30,
+        "copper": 20
+      },
+      "effect": "结局评分提升，预告蒸汽机",
+      "advisor_line": "蒸汽机的图纸在我肚子里。先把钢、煤和铜凑齐，再谈烧开水拯救大宋。"
+    }
+  ]
+}

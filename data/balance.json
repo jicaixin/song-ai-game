@@ -1,0 +1,20 @@
+{
+  "power": {
+    "base": 36,
+    "standby": 4,
+    "battery_max": 80,
+    "battery_start": 42,
+    "panel": 1.0
+  },
+  "season": {"spring": 0.9, "summer": 1.0, "autumn": 0.85, "winter": 0.6},
+  "weather": {
+    "clear": {"name": "晴", "factor": 1.0},
+    "cloudy": {"name": "多云", "factor": 0.65},
+    "overcast": {"name": "阴", "factor": 0.35},
+    "rain": {"name": "雨", "factor": 0.2},
+    "snow": {"name": "雪", "factor": 0.15},
+    "dust": {"name": "沙尘", "factor": 0.3}
+  },
+  "combat": {"base": 30, "k": 0.04, "rand_min": 0.8, "rand_max": 1.2},
+  "economy": {"morale_low": 0.75, "morale_high": 1.1}
+}

@@ -1,0 +1,458 @@
+class_name GameUI
+extends Control
+
+const MAT_NAME := {
+	"wood": "木",
+	"iron": "铁",
+	"money": "钱",
+	"copper": "铜",
+	"saltpeter": "硝",
+	"sulfur": "硫",
+	"coal": "煤",
+	"lead": "铅",
+	"steel": "钢",
+	"craft": "匠",
+}
+
+var top_label: Label
+var tile_label: Label
+var unit_label: Label
+var event_label: Label
+var advisor_label: Label
+var portrait: TextureRect
+var minimap: TextureRect
+var end_button: Button
+var save_button: Button
+var load_button: Button
+var tech_button: Button
+var combat_panel: Panel
+var combat_label: Label
+var fight_button: Button
+var cancel_button: Button
+var tech_panel: Panel
+var save_panel: Panel
+var pending_atk := -1
+var pending_def := -1
+var btn_map := {}
+
+func _ready() -> void:
+	add_to_group("game_ui")
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	set_anchors_preset(Control.PRESET_FULL_RECT)
+	_build_top()
+	_build_side()
+	_build_advisor()
+	_build_event()
+	_build_combat()
+	_build_tech()
+	_build_save()
+	EventBus.state_changed.connect(_refresh)
+	EventBus.advisor_changed.connect(_refresh_advisor)
+
+
+func _build_top() -> void:
+	var panel := Panel.new()
+	panel.position = Vector2(0, 0)
+	panel.size = Vector2(640, 24)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(panel)
+	top_label = Label.new()
+	top_label.position = Vector2(8, 4)
+	top_label.size = Vector2(624, 16)
+	top_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(top_label)
+
+
+func _build_side() -> void:
+	var panel := Panel.new()
+	panel.position = Vector2(488, 24)
+	panel.size = Vector2(152, 336)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(panel)
+	tile_label = _wrap_label(panel, Vector2(6, 6), Vector2(140, 78))
+	unit_label = _wrap_label(panel, Vector2(6, 84), Vector2(140, 62))
+	minimap = TextureRect.new()
+	minimap.position = Vector2(28, 148)
+	minimap.size = Vector2(96, 102)
+	minimap.stretch_mode = TextureRect.STRETCH_SCALE
+	minimap.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	minimap.mouse_filter = Control.MOUSE_FILTER_STOP
+	minimap.gui_input.connect(_on_mini)
+	panel.add_child(minimap)
+	end_button = Settings.cinnabar_button("结束回合")
+	end_button.position = Vector2(8, 254)
+	end_button.size = Vector2(136, 28)
+	end_button.pressed.connect(func() -> void: TurnManager.request_end())
+	panel.add_child(end_button)
+	save_button = _small_button(panel, "存档", Vector2(8, 286), Vector2(64, 24))
+	save_button.pressed.connect(func() -> void: _open_save(true))
+	load_button = _small_button(panel, "读档", Vector2(78, 286), Vector2(64, 24))
+	load_button.pressed.connect(func() -> void: _open_save(false))
+	tech_button = _small_button(panel, "科技", Vector2(8, 314), Vector2(136, 18))
+	tech_button.pressed.connect(func() -> void: tech_panel.visible = true)
+	btn_map = {
+		"end_turn": end_button,
+		"save": save_button,
+		"load": load_button,
+		"tech": tech_button,
+	}
+
+
+func _build_advisor() -> void:
+	var panel := Panel.new()
+	panel.position = Vector2(4, 300)
+	panel.size = Vector2(480, 56)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(panel)
+	portrait = TextureRect.new()
+	portrait.position = Vector2(4, 4)
+	portrait.size = Vector2(48, 48)
+	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	portrait.texture = ArtBank.face_tex("serious")
+	panel.add_child(portrait)
+	advisor_label = _wrap_label(panel, Vector2(56, 4), Vector2(418, 48))
+
+
+func _build_event() -> void:
+	event_label = Label.new()
+	event_label.position = Vector2(8, 278)
+	event_label.size = Vector2(470, 18)
+	event_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	event_label.add_theme_color_override("font_color", Color("f4ead2"))
+	event_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	event_label.add_theme_constant_override("outline_size", 2)
+	add_child(event_label)
+
+
+func _build_combat() -> void:
+	combat_panel = Panel.new()
+	combat_panel.position = Vector2(48, 48)
+	combat_panel.size = Vector2(392, 200)
+	combat_panel.visible = false
+	combat_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(combat_panel)
+	combat_label = _wrap_label(combat_panel, Vector2(8, 8), Vector2(376, 148))
+	fight_button = Settings.cinnabar_button("开战")
+	fight_button.position = Vector2(8, 164)
+	fight_button.size = Vector2(120, 28)
+	fight_button.pressed.connect(_confirm_fight)
+	combat_panel.add_child(fight_button)
+	cancel_button = Button.new()
+	cancel_button.text = "罢手"
+	cancel_button.position = Vector2(140, 164)
+	cancel_button.size = Vector2(120, 28)
+	cancel_button.focus_mode = Control.FOCUS_NONE
+	cancel_button.pressed.connect(hide_combat)
+	combat_panel.add_child(cancel_button)
+	btn_map["fight"] = fight_button
+	btn_map["cancel"] = cancel_button
+
+
+func _build_tech() -> void:
+	tech_panel = Panel.new()
+	tech_panel.position = Vector2(16, 28)
+	tech_panel.size = Vector2(460, 300)
+	tech_panel.visible = false
+	tech_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(tech_panel)
+	var title := Label.new()
+	title.text = "科技树 · 下回可研究"
+	title.position = Vector2(8, 6)
+	title.size = Vector2(360, 16)
+	tech_panel.add_child(title)
+	var close := Button.new()
+	close.text = "关闭"
+	close.position = Vector2(376, 4)
+	close.size = Vector2(72, 22)
+	close.focus_mode = Control.FOCUS_NONE
+	close.pressed.connect(func() -> void: tech_panel.visible = false)
+	tech_panel.add_child(close)
+	btn_map["tech_close"] = close
+	var scroll := ScrollContainer.new()
+	scroll.position = Vector2(8, 30)
+	scroll.size = Vector2(444, 262)
+	tech_panel.add_child(scroll)
+	var box := VBoxContainer.new()
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.custom_minimum_size = Vector2(420, 0)
+	scroll.add_child(box)
+	var era_names := {}
+	for era_v in DataDB.eras:
+		era_names[int(era_v.get("id", 0))] = str(era_v.get("name", ""))
+	var branch_names := {}
+	for b_v in DataDB.branches:
+		branch_names[str(b_v.get("id", ""))] = str(b_v.get("name", ""))
+	for tech_v in DataDB.techs:
+		var tech: Dictionary = tech_v
+		var line := Label.new()
+		line.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
+		line.custom_minimum_size = Vector2(420, 0)
+		line.text = _tech_line(tech, era_names, branch_names)
+		box.add_child(line)
+
+
+func _tech_line(tech: Dictionary, era_names: Dictionary, branch_names: Dictionary) -> String:
+	var pre: Array = tech.get("prereq", [])
+	var any: Array = tech.get("prereq_any", [])
+	var pre_s := "无"
+	if not pre.is_empty():
+		pre_s = "、".join(pre)
+	if not any.is_empty():
+		pre_s = "或 ".join(any) if pre.is_empty() else pre_s + "，另需 " + "或".join(any)
+	var cost: Dictionary = tech.get("cost", {})
+	var mats := ""
+	var mat_dict: Dictionary = tech.get("materials", {})
+	if not mat_dict.is_empty():
+		var bits: PackedStringArray = []
+		for k in mat_dict.keys():
+			bits.append("%s%d" % [MAT_NAME.get(str(k), str(k)), int(mat_dict[k])])
+		mats = " 材料" + "、".join(bits)
+	return "[%s·%s] %s %s 前置%s 电%d 匠%d%s。%s %s" % [
+		str(era_names.get(int(tech.get("era", 0)), "")),
+		str(branch_names.get(str(tech.get("branch", "")), "")),
+		str(tech.get("id", "")),
+		str(tech.get("name", "")),
+		pre_s,
+		int(cost.get("power", 0)),
+		int(cost.get("craft", 0)),
+		mats,
+		str(tech.get("effect", "")),
+		str(tech.get("advisor_line", "")),
+	]
+
+
+func _build_save() -> void:
+	save_panel = Panel.new()
+	save_panel.position = Vector2(120, 70)
+	save_panel.size = Vector2(250, 210)
+	save_panel.visible = false
+	save_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(save_panel)
+	var title := Label.new()
+	title.name = "SaveTitle"
+	title.position = Vector2(8, 6)
+	title.size = Vector2(160, 16)
+	title.text = "存档"
+	save_panel.add_child(title)
+	var close := Button.new()
+	close.text = "关闭"
+	close.position = Vector2(168, 4)
+	close.size = Vector2(72, 22)
+	close.focus_mode = Control.FOCUS_NONE
+	close.pressed.connect(func() -> void: save_panel.visible = false)
+	save_panel.add_child(close)
+	btn_map["save_close"] = close
+
+
+func _open_save(writing: bool) -> void:
+	for c in save_panel.get_children():
+		if str(c.name).begins_with("Slot"):
+			c.queue_free()
+	var title := save_panel.get_node("SaveTitle") as Label
+	title.text = "存档" if writing else "读档"
+	var labels := ["自动", "槽一", "槽二", "槽三"]
+	for i in 4:
+		var b := Button.new()
+		b.name = "Slot%d" % i
+		var has := SaveManager.has_slot(i)
+		if writing and i == 0:
+			b.text = "自动（回合结束写入）"
+			b.disabled = true
+		elif writing:
+			b.text = "写入%s" % labels[i]
+		else:
+			b.text = "读取%s%s" % [labels[i], "" if has else "（空）"]
+			b.disabled = not has
+		b.position = Vector2(12, 36 + i * 36)
+		b.size = Vector2(226, 28)
+		b.focus_mode = Control.FOCUS_NONE
+		var slot := i
+		if writing:
+			b.pressed.connect(func() -> void:
+				SaveManager.save_slot(slot)
+				save_panel.visible = false
+			)
+		else:
+			b.pressed.connect(func() -> void:
+				if SaveManager.load_slot(slot):
+					save_panel.visible = false
+					var map := get_tree().get_first_node_in_group("world_map")
+					if map:
+						map.call("focus_after_load")
+			)
+		save_panel.add_child(b)
+	save_panel.visible = true
+
+
+func _small_button(parent: Node, text: String, pos: Vector2, sz: Vector2) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.position = pos
+	b.size = sz
+	b.focus_mode = Control.FOCUS_NONE
+	parent.add_child(b)
+	return b
+
+
+func _wrap_label(parent: Node, pos: Vector2, sz: Vector2) -> Label:
+	var label := Label.new()
+	label.position = pos
+	label.size = sz
+	label.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_constant_override("line_spacing", 0)
+	parent.add_child(label)
+	return label
+
+
+func _process(_delta: float) -> void:
+	if not visible:
+		return
+	_refresh()
+
+
+func _refresh() -> void:
+	var weather_name := str(DataDB.balance.get("weather", {}).get(GameState.weather_id, {}).get("name", ""))
+	var cap := int(DataDB.balance.get("power", {}).get("battery_max", 80))
+	top_label.text = "%s  粮%d 钱%d 匠%d  %s 电%d/%d  第%d回合" % [
+		Calendar.format_date(GameState.year, GameState.month),
+		int(GameState.resources.get("food", 0)),
+		int(GameState.resources.get("money", 0)),
+		int(GameState.resources.get("craft", 0)),
+		weather_name,
+		GameState.battery,
+		cap,
+		GameState.turn,
+	]
+	tile_label.text = _tile_text()
+	unit_label.text = _unit_text()
+	event_label.text = GameState.last_event
+	_refresh_advisor()
+	end_button.disabled = GameState.input_locked or combat_panel.visible or not GameState.playing
+	end_button.text = "西夏行动中" if GameState.input_locked else "结束回合"
+	if minimap.texture == null or Engine.get_process_frames() % 20 == 0:
+		var map := get_tree().get_first_node_in_group("world_map") as WorldMap
+		if map:
+			minimap.texture = ImageTexture.create_from_image(map.minimap_image())
+
+
+func _refresh_advisor() -> void:
+	advisor_label.text = GameState.advisor_text
+	portrait.texture = ArtBank.face_tex(GameState.advisor_mood)
+
+
+func _tile_text() -> String:
+	var map := get_tree().get_first_node_in_group("world_map") as WorldMap
+	if map == null or not map.hover_ok:
+		return "把指针移到格子上。\n左键选人，右键移动或攻击。"
+	var h := map.hover
+	var tid := DataDB.terrain_id(h.x, h.y)
+	var terr := DataDB.terrain(tid)
+	var owner := DataDB.owner_id(h.x, h.y)
+	var owner_name := "无主"
+	if owner != "":
+		owner_name = str(DataDB.faction(owner).get("name", owner))
+	var ll := Geo.lonlat(h.x, h.y)
+	var lines := "%s · %s\n东经 %.1f 北纬 %.1f" % [str(terr.get("name", tid)), owner_name, ll.x, ll.y]
+	var city := DataDB.city_at_hex(h.x, h.y)
+	if not city.is_empty():
+		lines += "\n%s 城墙%d" % [str(city.get("name", "")), int(city.get("walls", 0))]
+	var feat := DataDB.feature_at(h.x, h.y)
+	if not feat.is_empty():
+		lines += "\n%s" % str(feat.get("name", ""))
+	var masks: Array = DataDB.river_masks.get(h, [0, 0])
+	if int(masks[1]) != 0:
+		lines += "\n大河"
+	elif int(masks[0]) != 0:
+		lines += "\n河流"
+	return lines
+
+
+func _unit_text() -> String:
+	var uid := GameState.inspected_uid if GameState.inspected_uid != -1 else GameState.selected_uid
+	var u := GameState.unit_by_id(uid)
+	if u.is_empty():
+		return "未选择单位"
+	var spec := DataDB.unit_type(str(u.def_id))
+	var faction := str(DataDB.faction(str(u.faction)).get("name", ""))
+	var text := "%s\n%s · %s\n生命 %d  移动 %d/%d" % [
+		str(u.name), str(spec.get("name", "")), faction, int(u.hp), int(u.mp), int(u.max_mp),
+	]
+	if str(u.general) != "":
+		text += "\n将领 %s" % str(u.general)
+	return text
+
+
+func show_combat(preview: Dictionary, atk_uid: int, def_uid: int) -> void:
+	pending_atk = atk_uid
+	pending_def = def_uid
+	var atk := GameState.unit_by_id(atk_uid)
+	var dfd := GameState.unit_by_id(def_uid)
+	var counter := "攻方不受反击" if bool(preview.ranged) else "攻方受伤 %d–%d" % [int(preview.atk_min), int(preview.atk_max)]
+	combat_label.text = "攻 %s 战力 %d\n%s\n守 %s 战力 %d\n%s\n守方受伤 %d–%d\n%s" % [
+		str(atk.get("name", "")),
+		int(preview.atk_power),
+		CombatResolver.format_parts(preview.atk_parts),
+		str(dfd.get("name", "")),
+		int(preview.def_power),
+		CombatResolver.format_parts(preview.def_parts),
+		int(preview.def_min),
+		int(preview.def_max),
+		counter,
+	]
+	combat_panel.visible = true
+
+
+func _confirm_fight() -> void:
+	var a := pending_atk
+	var d := pending_def
+	hide_combat()
+	GameState.resolve_attack(a, d)
+
+
+func hide_combat() -> void:
+	combat_panel.visible = false
+	pending_atk = -1
+	pending_def = -1
+
+
+func hide_modals() -> void:
+	hide_combat()
+	tech_panel.visible = false
+	save_panel.visible = false
+
+
+func modal_open() -> bool:
+	return combat_panel.visible or tech_panel.visible or save_panel.visible
+
+
+func _on_mini(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed:
+		var mb := event as InputEventMouseButton
+		if mb.button_index != MOUSE_BUTTON_LEFT:
+			return
+		var col := clampi(int(mb.position.x / minimap.size.x * float(DataDB.width)), 0, DataDB.width - 1)
+		var row := clampi(int(mb.position.y / minimap.size.y * float(DataDB.height)), 0, DataDB.height - 1)
+		var ax := HexGrid.axial_from_offset(col, row)
+		var map := get_tree().get_first_node_in_group("world_map") as WorldMap
+		if map:
+			map.focus_world(HexGrid.axial_to_pixel(ax.x, ax.y))
+
+
+func debug_buttons() -> Dictionary:
+	var out := {}
+	for k in btn_map.keys():
+		var b: Button = btn_map[k]
+		if not is_instance_valid(b):
+			continue
+		var r := b.get_global_rect()
+		out[str(k)] = {
+			"x": r.position.x,
+			"y": r.position.y,
+			"w": r.size.x,
+			"h": r.size.y,
+			"visible": b.visible and b.get_parent().visible,
+		}
+	return out
