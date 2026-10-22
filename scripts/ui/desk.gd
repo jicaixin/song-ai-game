@@ -201,7 +201,7 @@ func _build_tree(tree: VBoxContainer) -> void:
 			if int(st.get("col_from", 0)) == col:
 				cap = "%s %s" % [str(st.get("name", "")), str(st.get("subtitle", ""))]
 		var lab := Kit.label(cap, "SmallLabel")
-		lab.custom_minimum_size = Vector2(156, 18)
+		lab.custom_minimum_size = Vector2(220, 18)
 		lab.clip_text = true
 		head.add_child(lab)
 	for b_v in DataDB.branches:
@@ -217,7 +217,7 @@ func _build_tree(tree: VBoxContainer) -> void:
 		mark.add_child(Kit.label(str(branch.get("name", "")), "SmallLabel"))
 		for col in range(1, 14):
 			var cell := VBoxContainer.new()
-			cell.custom_minimum_size = Vector2(156, 4)
+			cell.custom_minimum_size = Vector2(220, 4)
 			cell.add_theme_constant_override("separation", 4)
 			row.add_child(cell)
 			var found: Array = []
@@ -251,8 +251,10 @@ func _node_button(tech: Dictionary) -> Control:
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.icon = Kit.icon("tech_%s" % id)
 	b.expand_icon = true
-	b.clip_text = true
-	b.custom_minimum_size = Vector2(150, 36)
+	b.clip_text = false
+	b.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+	b.add_theme_font_size_override("font_size", 13)
+	b.custom_minimum_size = Vector2(212, 40)
 	b.pressed.connect(_pick_tech.bind(id))
 	wrap.add_child(b)
 	if state == "designing" or state == "nopower":
@@ -371,6 +373,8 @@ func _page_console(box: VBoxContainer) -> void:
 	lead_text.add_child(bar)
 	lead_text.add_child(Kit.label(_power_line(), "BodyLabel"))
 	lead_text.add_child(Kit.label("设计每回合最多抽 10 电。固件写入立刻耗电。", "CaptionLabel"))
+	box.add_child(_facility_row())
+	box.add_child(Kit.label("固件", "H3Label"))
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.custom_minimum_size = Vector2(0, 360)
@@ -432,7 +436,19 @@ func _firmware_card(fw: Dictionary) -> PanelContainer:
 
 func _page_workshop(box: VBoxContainer) -> void:
 	_header(box, "匠作院", "")
-	box.add_child(Kit.label("试制槽 %d / %d。图纸从格物图来，材料在开槽时一次扣掉。" % [GameState.tech_trials.size(), GameState.trial_slots()], "BodyLabel"))
+	var open_slots := GameState.trial_slots()
+	box.add_child(Kit.label("试制槽 %d / %d。开槽时一次扣掉材料和匠。第二槽要在朝堂颁布格物院。" % [GameState.tech_trials.size(), open_slots], "BodyLabel"))
+	var slots := HBoxContainer.new()
+	slots.add_theme_constant_override("separation", 8)
+	box.add_child(slots)
+	for i in 2:
+		if i < GameState.tech_trials.size():
+			slots.add_child(_trial_slot(GameState.tech_trials[i]))
+		elif i < open_slots:
+			slots.add_child(_empty_slot("空槽", "设计完成的图纸从下面开进来。"))
+		else:
+			slots.add_child(_empty_slot("未开", "格物院还没颁布，这一槽锁着。"))
+	box.add_child(Kit.label("图纸", "H3Label"))
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(scroll)
@@ -440,38 +456,24 @@ func _page_workshop(box: VBoxContainer) -> void:
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	list.add_theme_constant_override("separation", 8)
 	scroll.add_child(list)
-	if GameState.tech_trials.is_empty() and GameState.tech_blueprints.is_empty():
-		list.add_child(Kit.label("槽是空的。先在格物图里把设计做完。", "BodyLabel"))
-	for trial_v in GameState.tech_trials:
-		var trial: Dictionary = trial_v
-		var id := str(trial.get("id", ""))
-		var tech: Dictionary = DataDB.tech_by_id.get(id, {})
-		var card := Kit.panel("SlotActive")
-		var inner := VBoxContainer.new()
-		card.add_child(inner)
-		inner.add_child(Kit.label("试制中 · %s" % str(tech.get("name", id)), "H3Label"))
-		inner.add_child(Kit.label("%d / %d 回合" % [int(trial.get("prog", 0)), int(trial.get("need", 1))], "CaptionLabel"))
-		var bar := ProgressBar.new()
-		bar.theme_type_variation = "NodeBarTrial"
-		bar.max_value = float(maxi(1, int(trial.get("need", 1))))
-		bar.value = float(int(trial.get("prog", 0)))
-		bar.show_percentage = false
-		bar.custom_minimum_size = Vector2(0, 8)
-		inner.add_child(bar)
-		list.add_child(card)
+	if GameState.tech_blueprints.is_empty():
+		list.add_child(Kit.label("还没有图纸。格物图里设计做完，题目会堆在这里。", "BodyLabel"))
 	for id_v in GameState.tech_blueprints:
 		var id := str(id_v)
 		var tech: Dictionary = DataDB.tech_by_id.get(id, {})
 		var card := Kit.panel("BlueprintCard")
 		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
 		card.add_child(row)
+		row.add_child(Kit.icon_rect("tech_%s" % id, 32))
 		var text := VBoxContainer.new()
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(text)
-		text.add_child(Kit.label("图纸 · %s" % str(tech.get("name", id)), "H3Label"))
+		text.add_child(Kit.label(str(tech.get("name", id)), "H3Label"))
 		text.add_child(Kit.label(_trial_cost(tech), "CaptionLabel"))
 		var act := Kit.button("开槽", "PrimaryButton")
 		act.custom_minimum_size = Vector2(88, 36)
+		act.disabled = GameState.tech_trials.size() >= open_slots
 		act.pressed.connect(GameState.start_trial.bind(id))
 		row.add_child(act)
 		list.add_child(card)
@@ -479,40 +481,138 @@ func _page_workshop(box: VBoxContainer) -> void:
 
 func _page_industry(box: VBoxContainer) -> void:
 	_header(box, "百工图", "")
-	box.add_child(Kit.label("链是死的：只告诉你哪一项已经推广。产量还没接上城池。", "CaptionLabel"))
+	box.add_child(Kit.label("原料到成品的路径是真的。产量还没接上城池，推广了也只是把这一格点亮。", "CaptionLabel"))
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(scroll)
 	var list := VBoxContainer.new()
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	list.add_theme_constant_override("separation", 10)
+	list.add_theme_constant_override("separation", 12)
 	scroll.add_child(list)
-	_chain(list, "铁到钢", [["铁矿", ""], ["灌钢", "I01"], ["焦炭", "I04"], ["坩埚钢", "I07"]])
-	_chain(list, "煤与矿", [["煤", ""], ["通风排水", "I02"], ["蒸汽抽水", "K07"]])
-	_chain(list, "粮到电", [["粮", ""], ["手摇发电", "E03"], ["牛转", "K05"], ["水轮", "E05"]])
-	_chain(list, "铜", [["铜矿", ""], ["胆铜", "I03"], ["铜线", "E02"], ["电堆", "E04"]])
+	_chain(list, "铁到钢", [["铁矿", "", "raw"], ["灌钢", "I01", "proc"], ["焦炭", "I04", "proc"], ["坩埚钢", "I07", "dest"]])
+	_chain(list, "煤与矿", [["煤", "", "raw"], ["通风排水", "I02", "proc"], ["蒸汽抽水", "K07", "dest"]])
+	_chain(list, "粮到电", [["粮", "", "raw"], ["手摇发电", "E03", "power"], ["牛转", "K05", "proc"], ["水轮", "E05", "power"]])
+	_chain(list, "铜", [["铜矿", "", "raw"], ["胆铜", "I03", "proc"], ["铜线", "E02", "proc"], ["电堆", "E04", "power"]])
 
 
 func _chain(parent: VBoxContainer, title: String, steps: Array) -> void:
 	parent.add_child(Kit.label(title, "H3Label"))
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
+	row.add_theme_constant_override("separation", 8)
 	parent.add_child(row)
 	var first := true
 	for step_v in steps:
 		var step: Array = step_v
 		if not first:
-			row.add_child(Kit.label("▶", "H3Label"))
+			row.add_child(Kit.label("→", "H2Label"))
 		first = false
-		var id := str(step[1])
-		var kind := "ChainRaw"
-		if id != "":
-			kind = "ChainProd" if GameState.tech_done.has(id) else "ChainLocked"
-		var card := Kit.panel(kind)
-		card.custom_minimum_size = Vector2(140, 64)
-		var lab := Kit.label(str(step[0]), "H3Label")
-		card.add_child(lab)
-		row.add_child(card)
+		row.add_child(_chain_card(str(step[0]), str(step[1]), str(step[2])))
+
+
+func _chain_card(title: String, tech_id: String, role: String) -> PanelContainer:
+	var done := tech_id == "" or GameState.tech_done.has(tech_id)
+	var kind := "ChainRaw"
+	var state := "原料"
+	if role == "power":
+		kind = "ChainPower" if done else "ChainLocked"
+		state = "已接电" if done else "还没推广"
+	elif role == "dest":
+		kind = "ChainDest" if done else "ChainLocked"
+		state = "已推广" if done else "还没推广"
+	elif role == "proc":
+		kind = "ChainProd" if done else "ChainLocked"
+		state = "已推广" if done else "还没推广"
+	var card := Kit.panel(kind)
+	card.custom_minimum_size = Vector2(148, 78)
+	var inner := VBoxContainer.new()
+	inner.add_theme_constant_override("separation", 2)
+	card.add_child(inner)
+	if tech_id != "":
+		inner.add_child(Kit.icon_rect("tech_%s" % tech_id, 22))
+	var name := Kit.label(title, "H3Label")
+	name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inner.add_child(name)
+	inner.add_child(Kit.label(state, "SmallLabel"))
+	return card
+
+
+func _facility_row() -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var solar_kind := "FacilityCardAlert" if GameState.battery <= GameState.standby_cost() else "FacilityCard"
+	row.add_child(_facility_card(solar_kind, "太阳能板", "本月 +%d" % GameState.last_gen, "在线"))
+	var hand_on := GameState.tech_done.has("E03")
+	row.add_child(_facility_card(
+		"FacilityCard" if hand_on else "FacilityCardOff",
+		"人力发电坊",
+		"匠可以转成电" if hand_on else "先推广磁钢手摇",
+		"还没接入结算" if hand_on else "未建"
+	))
+	var hydro_on := GameState.tech_done.has("E05")
+	row.add_child(_facility_card(
+		"FacilityCard" if hydro_on else "FacilityCardOff",
+		"水轮电站",
+		"设计是 +12 电" if hydro_on else "先推广水轮发电",
+		"还没接入结算" if hydro_on else "未建"
+	))
+	row.add_child(_facility_card("FacilityCard", "蓄电池", "容量 %d" % GameState.battery_cap(), "%d / %d" % [GameState.battery, GameState.battery_cap()]))
+	return row
+
+
+func _facility_card(kind: String, title: String, body: String, state: String) -> PanelContainer:
+	var card := Kit.panel(kind)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.custom_minimum_size = Vector2(160, 88)
+	var inner := VBoxContainer.new()
+	inner.add_theme_constant_override("separation", 2)
+	card.add_child(inner)
+	inner.add_child(Kit.label(title, "H3Label"))
+	inner.add_child(Kit.label(body, "CaptionLabel"))
+	inner.add_child(Kit.label(state, "SmallLabel"))
+	return card
+
+
+func _trial_slot(trial: Dictionary) -> PanelContainer:
+	var id := str(trial.get("id", ""))
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	var card := Kit.panel("SlotActive")
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.custom_minimum_size = Vector2(280, 96)
+	var inner := VBoxContainer.new()
+	inner.add_theme_constant_override("separation", 4)
+	card.add_child(inner)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	inner.add_child(head)
+	head.add_child(Kit.icon_rect("tech_%s" % id, 28))
+	var text := VBoxContainer.new()
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(text)
+	text.add_child(Kit.label(str(tech.get("name", id)), "H3Label"))
+	text.add_child(Kit.label("试制 %d / %d 回合" % [int(trial.get("prog", 0)), int(trial.get("need", 1))], "CaptionLabel"))
+	var bar := ProgressBar.new()
+	bar.theme_type_variation = "NodeBarTrial"
+	bar.max_value = float(maxi(1, int(trial.get("need", 1))))
+	bar.value = float(int(trial.get("prog", 0)))
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 8)
+	inner.add_child(bar)
+	return card
+
+
+func _empty_slot(title: String, body: String) -> PanelContainer:
+	var locked := title == "未开"
+	var card := Kit.panel("SlotLocked" if locked else "SlotEmpty")
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.custom_minimum_size = Vector2(280, 96)
+	var inner := VBoxContainer.new()
+	inner.add_theme_constant_override("separation", 4)
+	card.add_child(inner)
+	inner.add_child(Kit.label(title, "H3Label"))
+	var note := Kit.label(body, "CaptionLabel")
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inner.add_child(note)
+	return card
 
 
 func _page_talent(box: VBoxContainer) -> void:
