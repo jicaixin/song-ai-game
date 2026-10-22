@@ -30,6 +30,9 @@ var _perf_frames := 0
 var _tris := 0
 var _cluster_mesh := {}
 var _city_material: StandardMaterial3D
+var _env: Environment
+var _land_shader: ShaderMaterial
+var feature_points: Array = []
 
 const CITY_SCALE := 1.8
 
@@ -40,6 +43,7 @@ func _ready() -> void:
 	_add_mesh("Water", built.water, _water_mat(), false)
 	_add_mesh("Rivers", built.rivers, _river_mat(), false)
 	_add_mesh("Borders", built.borders, _glow_mat(), false)
+	feature_points = built.features
 	_add_trees(built)
 	_tris = _count_tris(built.land) + _count_tris(built.water) + _count_tris(built.rivers)
 	print("TRIS land %d water %d rivers %d" % [_count_tris(built.land), _count_tris(built.water), _count_tris(built.rivers)])
@@ -62,6 +66,7 @@ func _ready() -> void:
 	add_child(camera)
 	camera.current = true
 	_lighting()
+	_sync_grade()
 	_measure()
 	EventBus.state_changed.connect(_on_state)
 	focus_city(str(DataDB.scenario.get("focus_city", "yanzhou")))
@@ -85,7 +90,8 @@ func _add_mesh(node_name: String, mesh: ArrayMesh, mat: Material, shadows: bool)
 func _land_mat() -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/land.gdshader")
-	mat.set_shader_parameter("atlas", load("res://art/terrain/atlas.png"))
+	mat.set_shader_parameter("grid_fade", 0.28)
+	_land_shader = mat
 	return mat
 
 
@@ -216,8 +222,8 @@ func _lighting() -> void:
 	var sun := DirectionalLight3D.new()
 	sun.name = "Sun"
 	sun.rotation_degrees = Vector3(-50, -32, 0)
-	sun.light_color = Color("ffe6c2")
-	sun.light_energy = 1.02
+	sun.light_color = Color("ffd2a0")
+	sun.light_energy = 0.95
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	sun.directional_shadow_max_distance = 1400.0
@@ -226,19 +232,24 @@ func _lighting() -> void:
 	add_child(sun)
 	var fill := DirectionalLight3D.new()
 	fill.rotation_degrees = Vector3(-24, 148, 0)
-	fill.light_color = Color("b9cfe6")
-	fill.light_energy = 0.16
+	fill.light_color = Color("d5cbb8")
+	fill.light_energy = 0.22
 	fill.shadow_enabled = false
 	add_child(fill)
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("8eb8d6")
+	env.background_color = Color("a8b4bc")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("d7e4f0")
-	env.ambient_light_energy = 0.28
+	env.ambient_light_color = Color("c5c2b6")
+	env.ambient_light_energy = 0.4
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 1.0
-	env.fog_enabled = false
+	env.tonemap_exposure = 0.96
+	env.fog_enabled = true
+	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
+	env.fog_density = 0.00005
+	env.fog_light_color = Color("b7c0c4")
+	env.fog_aerial_perspective = 0.08
+	_env = env
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -254,6 +265,55 @@ func _measure() -> void:
 			min_p = min_p.min(p)
 			max_p = max_p.max(p)
 	map_rect = Rect2(min_p - Vector2(40, 40), (max_p - min_p) + Vector2(80, 80))
+
+
+func _sync_grade() -> void:
+	var fade := 0.28
+	var density := 0.00005
+	if zoom_index == 0:
+		fade = 0.06
+		density = 0.00012
+	elif zoom_index >= 2:
+		fade = 0.45
+		density = 0.00002
+	if _land_shader:
+		_land_shader.set_shader_parameter("grid_fade", fade)
+	if _env:
+		_env.fog_density = density
+
+
+func spawn_hex_features(terrain_id: String, mesh: Mesh, lift: float = 0.0) -> MultiMeshInstance3D:
+	# Places one mesh on every stored hex of that terrain. Mountain, hill,
+	# and forest kits call this when they arrive; it is unused until then.
+	if mesh == null:
+		return null
+	var xforms: Array[Transform3D] = []
+	for item_v in feature_points:
+		var item: Dictionary = item_v
+		if str(item.get("id", "")) != terrain_id:
+			continue
+		var yaw := float(item.get("yaw", 0.0))
+		var pos := Vector3(float(item.x), float(item.y) + lift, float(item.z))
+		xforms.append(Transform3D(Basis(Vector3.UP, yaw), pos))
+	if xforms.is_empty():
+		return null
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = xforms.size()
+	for i in xforms.size():
+		mm.set_instance_transform(i, xforms[i])
+	var inst := MultiMeshInstance3D.new()
+	inst.name = "Feature_" + terrain_id
+	inst.multimesh = mm
+	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var holder := get_node_or_null("Features") as Node3D
+	if holder == null:
+		holder = Node3D.new()
+		holder.name = "Features"
+		add_child(holder)
+	holder.add_child(inst)
+	return inst
 
 
 func _city_mat() -> StandardMaterial3D:
@@ -695,15 +755,17 @@ func _modal() -> bool:
 
 
 func _process(delta: float) -> void:
-	if _playing() and not has_meta("perf_ready"):
+	if _playing():
 		_perf_frames += 1
-		if _perf_frames >= 6:
+		if _perf_frames >= 4:
+			_perf_frames = 0
 			var draws := Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
 			var prims := Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
+			if not has_meta("perf_ready"):
+				set_meta("perf_ready", true)
+				print("PERF draws %.0f prims %.0f tris %d span %.1f" % [draws, prims, _tris, visible_hex_span()])
 			set_meta("draw_calls", draws)
 			set_meta("prims", prims)
-			set_meta("perf_ready", true)
-			print("PERF draws %.0f prims %.0f tris %d span %.1f" % [draws, prims, _tris, visible_hex_span()])
 	_poll_focus()
 	if Engine.get_process_frames() % 12 == 0:
 		_cull_banners()
@@ -742,6 +804,7 @@ func _poll_focus() -> void:
 	var bits := text.split(",")
 	if bits.size() > 1:
 		zoom_index = clampi(int(bits[1]), 0, DIST.size() - 1)
+		_sync_grade()
 	if bits[0].contains(":"):
 		var qr := bits[0].split(":")
 		focus_world(HexGrid.axial_to_pixel(int(qr[0]), int(qr[1])))
@@ -880,6 +943,7 @@ func _cycle_unit() -> void:
 func _zoom_at(screen: Vector2, step: int) -> void:
 	var before := screen_to_world(screen)
 	zoom_index = clampi(zoom_index + step, 0, DIST.size() - 1)
+	_sync_grade()
 	_place_camera()
 	var after := screen_to_world(screen)
 	look_xz += before - after
