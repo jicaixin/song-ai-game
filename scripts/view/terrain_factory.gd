@@ -10,7 +10,7 @@ const PALETTE := {
 	"hill": "7a6248",
 	"mountain": "5c574f",
 	"alpine": "6c766c",
-	"loess": "b08a62",
+	"loess": "a48462",
 	"forest": "3d6844",
 	"marsh": "4e6e5a",
 	"desert": "c6b79a",
@@ -436,9 +436,9 @@ static func _river_sink(p: Vector2) -> float:
 			along = clampf((p - a).dot(ab) / len2, 0.0, 1.0)
 		var dist := p.distance_to(a + ab * along)
 		var half := lerpf(float(seg.wa), float(seg.wb), along)
-		var radius := half + 5.6
-		var depth := 0.17 + 0.16 * clampf(half / 7.2, 0.0, 1.0)
-		var bed := 1.0 - smoothstep(radius * 0.56, radius, dist)
+		var radius := half * 1.05 + 0.8
+		var depth := 0.025 + 0.04 * clampf(half / 6.5, 0.0, 1.0)
+		var bed := 1.0 - smoothstep(radius * 0.45, radius, dist)
 		best = maxf(best, depth * bed)
 	return best
 
@@ -1014,7 +1014,9 @@ static func _nearest_water(p: Vector2, rad: int) -> Dictionary:
 
 static func _half_width(upstream: float) -> float:
 	var t := sqrt(clampf(upstream / 78.0, 0.0, 1.0))
-	return 2.25 + 5.35 * t
+	# Square the taper so minor tributaries stay a thin thread and only the
+	# great mouths open up enough to read at strategic zoom.
+	return 0.62 + 6.9 * t * t
 
 
 static func _prepare_rivers() -> void:
@@ -1259,12 +1261,13 @@ static func _build_rivers(st: SurfaceTool) -> void:
 		_course_ribbon(st, course_v, col)
 
 
-static func _course_ribbon(st: SurfaceTool, course: Array, col: Color) -> void:
+static func _course_ribbon(st: SurfaceTool, course: Array, _col: Color) -> void:
 	var n := course.size()
 	if n < 2:
 		return
 	var left: Array = []
 	var right: Array = []
+	var ratios: Array = []
 	var along: Array = []
 	var acc := 0.0
 	for i in n:
@@ -1280,19 +1283,25 @@ static func _course_ribbon(st: SurfaceTool, course: Array, col: Color) -> void:
 		if tangent.length() < 0.001:
 			tangent = Vector2.RIGHT
 		tangent = tangent.normalized()
-		var side := Vector2(-tangent.y, tangent.x) * float(here.w)
-		var h := _surface_height(p) + 0.035
-		h = lerpf(h, -0.06, float(here.mouth))
-		left.append(Vector3(p.x + side.x, h, p.y + side.y))
-		right.append(Vector3(p.x - side.x, h, p.y - side.y))
+		var water_w := float(here.w)
+		var bank := clampf(water_w * 0.2, 0.26, 1.05)
+		var total := water_w + bank
+		var side := Vector2(-tangent.y, tangent.x) * total
+		var h := _surface_height(p) + 0.016
+		h = lerpf(h, -0.05, float(here.mouth))
+		var edge_h := h - 0.03
+		left.append(Vector3(p.x + side.x, edge_h, p.y + side.y))
+		right.append(Vector3(p.x - side.x, edge_h, p.y - side.y))
+		ratios.append(water_w / total)
 		along.append(acc)
 		if i + 1 < n:
 			acc += p.distance_to((course[i + 1] as Dictionary).p) / 16.0
 	for j in n - 1:
 		var u0 := float(along[j])
 		var u1 := float(along[j + 1])
-		_tri_uv(st, left[j], left[j + 1], right[j + 1], col, Vector2(u0, 0.0), Vector2(u1, 0.0), Vector2(u1, 1.0))
-		_tri_uv(st, left[j], right[j + 1], right[j], col, Vector2(u0, 0.0), Vector2(u1, 1.0), Vector2(u0, 1.0))
+		var rc := Color(float(ratios[j]), 0.5, 0.5, 1.0)
+		_tri_uv(st, left[j], left[j + 1], right[j + 1], rc, Vector2(u0, 0.0), Vector2(u1, 0.0), Vector2(u1, 1.0))
+		_tri_uv(st, left[j], right[j + 1], right[j], rc, Vector2(u0, 0.0), Vector2(u1, 1.0), Vector2(u0, 1.0))
 
 
 static func _edge_key(a: Vector2i, b: Vector2i) -> String:

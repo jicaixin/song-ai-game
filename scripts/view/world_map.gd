@@ -361,6 +361,10 @@ func _spawn_terrain_kit() -> void:
 		var detail := DETAIL_RANGE
 		if key.begins_with("mountain"):
 			detail = 0.0
+		elif key == "farm_fields":
+			# Default zoom sits ~280 m from the focus, so 210 m hides the
+			# wheat sticks there and at strategic zoom. A close view is inside it.
+			detail = 210.0
 		spawn_hex_features(key, _terrain_mesh(key), 0.0, detail)
 
 
@@ -1319,14 +1323,35 @@ func _tint_baked(col: Color, albedo: Color, v: Vector3, mname: String) -> Dictio
 		if oy < 1.8:
 			var t := 1.0 - smoothstep(0.3, 1.7, maxf(oy, 0.0))
 			col = col.lerp(Color(0.42, 0.36, 0.30), clampf(0.78 + t * 0.2, 0.0, 0.98))
-	elif _bake_mode == "loess":
-		if mname == "M_meadow" or mname == "M_loess_crop":
-			col = _retint(col, albedo, Color("b08a62"))
-		elif mname == "M_loess_wall":
-			col = col.lerp(_retint(col, albedo, Color(0.78, 0.67, 0.50)), 0.74)
-	elif _bake_mode == "loess_hill":
-		if mname.begins_with("M_t_grass") or mname == "M_bush_g":
-			col = col.lerp(_retint(col, albedo, Color(0.72, 0.56, 0.34)), 0.88)
+	elif _bake_mode == "loess" or _bake_mode == "loess_hill":
+		var ochre := Color("a48462")
+		var px := absf(v.x)
+		var pz := absf(v.z)
+		# Pointy hex in the kit, apothem about 8.66. The orange plate is the
+		# outer terrace, so the rim has to sink or the hex step stays visible.
+		var metric := maxf(px, px * 0.5 + pz * 0.8660254)
+		var rim := smoothstep(4.8, 8.15, metric)
+		var oy := v.y
+		var shelf := 1.0 - smoothstep(0.5, 1.35, oy)
+		var sink_t := rim * 0.72 + shelf * rim * 0.55
+		var pad := mname == "M_skirt" or mname == "M_meadow" or (mname == "M_loess_gully" and oy < 0.35)
+		if pad:
+			sink_t = 1.0
+		elif _bake_mode == "loess_hill":
+			var grass := mname.begins_with("M_t_grass") or mname == "M_skirt"
+			if not grass:
+				sink_t = 0.0
+			elif oy > 0.55 and rim < 0.45:
+				sink_t *= 0.25
+		if sink_t > 0.02:
+			v.y = lerpf(oy, -0.7, clampf(sink_t, 0.0, 1.0))
+		var tint_t := 0.88
+		if rim > 0.35:
+			tint_t = 1.0
+		if _bake_mode == "loess" and (mname.begins_with("M_loess") or mname == "M_skirt" or mname == "M_meadow" or mname == "M_scrub"):
+			col = col.lerp(_retint(col, albedo, ochre), tint_t)
+		elif mname.begins_with("M_t_grass") or mname == "M_bush_g" or mname == "M_skirt" or mname == "M_t_earth":
+			col = col.lerp(_retint(col, albedo, ochre), 0.92)
 	elif _bake_mode == "farm":
 		if mname == "M_canal":
 			col = _retint(col, albedo, Color(0.10, 0.15, 0.17))
