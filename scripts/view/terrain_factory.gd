@@ -260,18 +260,10 @@ static func _relief(id: String, p: Vector2) -> float:
 	var x := p.x
 	var z := p.y
 	var n := _fbm(x * 0.045, z * 0.045)
-	if id == "alpine" or id == "mountain":
-		# North-south ridges so a chain of mountain hexes reads as one range.
-		var ridge := pow(_ridged(x * 0.11, z * 0.028), 1.35)
-		var amp := 15.5 if id == "alpine" else 11.0
-		return 1.6 + ridge * amp + _fbm(x * 0.18, z * 0.18) * 1.2
-	if id == "hill":
-		return 1.1 + _fbm(x * 0.09, z * 0.09) * 2.6
-	if id == "loess":
-		var field := _fbm(x * 0.05, z * 0.035)
-		var terraced: float = floor(field * 5.0) / 5.0
-		var gully := pow(1.0 - _ridged(x * 0.14, z * 0.04), 2.4)
-		return 0.7 + terraced * 3.2 - gully * 1.15
+	# Mountain, hill, and loess meshes carry the relief. The ground under them
+	# stays a low pad so the skirt meets the terrain instead of a knife ridge.
+	if id == "alpine" or id == "mountain" or id == "hill" or id == "loess":
+		return 0.46 + n * 0.28
 	if id == "erg":
 		var dune := sin(x * 0.28 + z * 0.04) * cos(z * 0.16)
 		return 0.55 + dune * 0.9 + n * 0.15
@@ -458,27 +450,230 @@ static func _surface_height(p: Vector2) -> float:
 	return _shaped_height(p, _coast_field(p))
 
 
+static func _hn(q: int, r: int, m: int) -> int:
+	return posmod(q * 17 + r * 31 + q * r * 3, m)
+
+
+static func _is_peak(id: String) -> bool:
+	return id == "mountain" or id == "alpine"
+
+
+static func _city_here(ax: Vector2i) -> bool:
+	return not DataDB.city_at_hex(ax.x, ax.y).is_empty()
+
+
+static func _peak_dirs(ax: Vector2i) -> Array:
+	var dirs: Array = []
+	for i in 6:
+		var n: Vector2i = ax + HexGrid.DIRS[i]
+		if DataDB.in_bounds(n.x, n.y) and _is_peak(DataDB.terrain_id(n.x, n.y)):
+			dirs.append(i)
+	return dirs
+
+
+static func _best_pair(dirs: Array) -> Vector2i:
+	# Prefer a straight spine (opposite edges), then a 120° bend. A 60° pair
+	# has no matching piece.
+	var best_score := 0
+	var best := Vector2i(-1, -1)
+	for i in dirs.size():
+		for j in range(i + 1, dirs.size()):
+			var a := int(dirs[i])
+			var b := int(dirs[j])
+			var diff := (b - a) % 6
+			var score := 0
+			if diff == 3:
+				score = 3
+			elif diff == 2 or diff == 4:
+				score = 2
+			if score > best_score:
+				best_score = score
+				best = Vector2i(a, b)
+	return best
+
+
+static func _piece_for_pair(a: int, b: int) -> Dictionary:
+	# Kit edge j matches DIRS[j]. Godot yaw of j*60° swings edge 0 onto DIRS[j].
+	# The bend's edges are 0 and 2, so yaw follows whichever end lands on edge 0.
+	var lo := a
+	var hi := b
+	if hi < lo:
+		lo = b
+		hi = a
+	var diff := (hi - lo) % 6
+	if diff == 3:
+		return {"mesh": "mountain_ridge", "yaw": lo * 60}
+	if diff == 2:
+		return {"mesh": "mountain_ridge_bend", "yaw": lo * 60}
+	if diff == 4:
+		return {"mesh": "mountain_ridge_bend", "yaw": hi * 60}
+	return {"mesh": "", "yaw": 0}
+
+
+static func _massif_name(ax: Vector2i, id: String) -> String:
+	if id == "alpine" or ax.y <= 20 or ax.y >= 31:
+		return "mountain_a"
+	for d in HexGrid.DIRS:
+		var n: Vector2i = ax + d
+		if DataDB.in_bounds(n.x, n.y) and DataDB.terrain_id(n.x, n.y) == "alpine":
+			return "mountain_a"
+	if _hn(ax.x, ax.y, 2) == 0:
+		return "mountain_b"
+	return "mountain_c"
+
+
+static func _loess_belt(ax: Vector2i) -> bool:
+	if ax.x >= 8 and ax.x <= 24 and ax.y >= 18 and ax.y <= 34:
+		return true
+	for d in HexGrid.DIRS:
+		var n: Vector2i = ax + d
+		if DataDB.in_bounds(n.x, n.y) and DataDB.terrain_id(n.x, n.y) == "loess":
+			return true
+	return false
+
+
+static func _beside_peak(ax: Vector2i) -> bool:
+	for d in HexGrid.DIRS:
+		var n: Vector2i = ax + d
+		if DataDB.in_bounds(n.x, n.y) and _is_peak(DataDB.terrain_id(n.x, n.y)):
+			return true
+	return false
+
+
+static func _forest_neighbors(ax: Vector2i) -> int:
+	var n := 0
+	for d in HexGrid.DIRS:
+		var nb: Vector2i = ax + d
+		if DataDB.in_bounds(nb.x, nb.y) and DataDB.terrain_id(nb.x, nb.y) == "forest":
+			n += 1
+	return n
+
+
+static func _near_north_city(ax: Vector2i) -> bool:
+	for c_v in DataDB.cities:
+		var city: Dictionary = c_v
+		var cr := int(city.r)
+		if cr > 34:
+			continue
+		var there := Vector2i(int(city.q), cr)
+		var dist := HexGrid.distance(ax, there)
+		if dist == 1:
+			return true
+	return false
+
+
+static func _push_feature(out: Array, ax: Vector2i, id: String, mesh: String, yaw_deg: int, heights: Dictionary, nudge: Vector2) -> void:
+	var p := HexGrid.axial_to_pixel(ax.x, ax.y) + nudge
+	var y := float(heights.get(ax, 0.4))
+	if nudge != Vector2.ZERO:
+		y = _surface_height(p)
+	out.append({
+		"q": ax.x,
+		"r": ax.y,
+		"id": id,
+		"mesh": mesh,
+		"x": p.x,
+		"y": y,
+		"z": p.y,
+		"yaw": deg_to_rad(float(yaw_deg)),
+	})
+
+
 static func _feature_list(heights: Dictionary) -> Array:
-	# Spawn points for later mountain, hill, and forest meshes. Nothing is
-	# drawn from this list until spawn_hex_features() is given a mesh.
+	# One entry per kit piece. spawn_hex_features() groups them by mesh name.
+	# Ridge pieces only keep a connector when the neighbour piece connects back,
+	# so an open V profile never faces a slope.
 	var out: Array = []
+	var peaks: Array[Vector2i] = []
+	var covered := {}
 	for row in DataDB.height:
 		for col in DataDB.width:
 			var ax := HexGrid.axial_from_offset(col, row)
-			var id := DataDB.terrain_id(ax.x, ax.y)
-			if id != "mountain" and id != "alpine" and id != "hill" and id != "forest":
+			if not _is_peak(DataDB.terrain_id(ax.x, ax.y)):
 				continue
-			var p := HexGrid.axial_to_pixel(ax.x, ax.y)
-			var yaw := deg_to_rad(float(posmod(ax.x * 17 + ax.y * 31, 360)))
-			out.append({
-				"q": ax.x,
-				"r": ax.y,
-				"id": id,
-				"x": p.x,
-				"y": float(heights.get(ax, 0.4)),
-				"z": p.y,
-				"yaw": yaw,
-			})
+			peaks.append(ax)
+			var dirs := _peak_dirs(ax)
+			if _city_here(ax) or dirs.size() >= 6 or dirs.size() == 0:
+				covered[ax] = []
+			elif dirs.size() == 1:
+				covered[ax] = [int(dirs[0])]
+			else:
+				var pair := _best_pair(dirs)
+				if pair.x < 0:
+					covered[ax] = []
+				else:
+					covered[ax] = [pair.x, pair.y]
+	var mutual := {}
+	for ax in peaks:
+		var keep: Array = []
+		var dirs_now: Array = covered[ax]
+		for d_v in dirs_now:
+			var d := int(d_v)
+			var nb: Vector2i = ax + HexGrid.DIRS[d]
+			var back := (d + 3) % 6
+			var nb_dirs: Array = covered.get(nb, [])
+			if nb_dirs.has(back):
+				keep.append(d)
+		mutual[ax] = keep
+	for peak in peaks:
+		if _city_here(peak):
+			continue
+		var id := DataDB.terrain_id(peak.x, peak.y)
+		var keep2: Array = mutual[peak]
+		var mesh := ""
+		var yaw := 0
+		if keep2.size() == 2:
+			var spec: Dictionary = _piece_for_pair(int(keep2[0]), int(keep2[1]))
+			mesh = str(spec.mesh)
+			yaw = int(spec.yaw)
+		elif keep2.size() == 1:
+			mesh = "mountain_ridge_end"
+			yaw = int(keep2[0]) * 60
+		else:
+			# Plateau interior is a solid mass. A mesh on every hex would bury the frame.
+			if _peak_dirs(peak).size() >= 6 and _hn(peak.x, peak.y, 9) != 0:
+				continue
+			mesh = _massif_name(peak, id)
+			yaw = _hn(peak.x, peak.y, 6) * 60
+		if mesh == "":
+			continue
+		_push_feature(out, peak, id, mesh, yaw, heights, Vector2.ZERO)
+	for row2 in DataDB.height:
+		for col2 in DataDB.width:
+			var ax2 := HexGrid.axial_from_offset(col2, row2)
+			if _city_here(ax2):
+				continue
+			var id2 := DataDB.terrain_id(ax2.x, ax2.y)
+			var spin := _hn(ax2.x, ax2.y, 6) * 60
+			if id2 == "hill" or id2 == "loess":
+				var hill := "hills_loess"
+				if id2 == "hill" and not _loess_belt(ax2):
+					var hills := ["hills_a", "hills_b", "hills_c"]
+					hill = str(hills[_hn(ax2.x, ax2.y, 3)])
+				_push_feature(out, ax2, id2, hill, spin, heights, Vector2.ZERO)
+			elif id2 == "forest":
+				var woods := "forest_sparse"
+				if _forest_neighbors(ax2) >= 2:
+					if ax2.y < 30 or _beside_peak(ax2):
+						woods = "forest_conifer_a" if _hn(ax2.x, ax2.y, 2) == 0 else "forest_conifer_b"
+					else:
+						woods = "forest_mixed_a" if _hn(ax2.x, ax2.y, 2) == 0 else "forest_mixed_b"
+				_push_feature(out, ax2, id2, woods, spin, heights, Vector2.ZERO)
+			elif (id2 == "plain" or id2 == "grass") and _near_north_city(ax2):
+				_push_feature(out, ax2, id2, "farm_fields", spin, heights, Vector2.ZERO)
+			elif id2 == "rice":
+				_push_feature(out, ax2, id2, "rice_paddies", spin, heights, Vector2.ZERO)
+			if id2 == "marsh" or (_hex_has_river(ax2) and (id2 == "plain" or id2 == "grass") and not _near_north_city(ax2) and _hn(ax2.x, ax2.y, 2) == 0):
+				_push_feature(out, ax2, id2, "reeds", spin, heights, Vector2(4.2, -2.4))
+			if id2 == "desert" or id2 == "erg":
+				_push_feature(out, ax2, id2, "desert_scrub", spin, heights, Vector2.ZERO)
+				_push_feature(out, ax2, id2, "desert_scrub", spin + 60, heights, Vector2(6.2, 3.4))
+			elif id2 == "grass" and not _near_north_city(ax2):
+				if _hn(ax2.x, ax2.y, 4) == 0:
+					_push_feature(out, ax2, id2, "desert_scrub", spin, heights, Vector2(3.5, -2.0))
+				elif _hn(ax2.x, ax2.y, 5) == 2:
+					var rock := "rocks_a" if _hn(ax2.x, ax2.y, 2) == 0 else "rocks_b"
+					_push_feature(out, ax2, id2, rock, spin, heights, Vector2(-3.0, 2.6))
 	return out
 
 
@@ -826,85 +1021,33 @@ static func _tri_uv(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, color: 
 	st.add_vertex(c)
 
 
-static func _near_peak(ax: Vector2i) -> bool:
-	for d in HexGrid.DIRS:
-		var n: Vector2i = ax + d
-		if not DataDB.in_bounds(n.x, n.y):
-			continue
-		var id := DataDB.terrain_id(n.x, n.y)
-		if id == "mountain" or id == "alpine" or id == "hill":
-			return true
-	return false
-
-
 static func _tree_lists(heights: Dictionary) -> Dictionary:
-	var pines: Array = []
-	var broads: Array = []
+	# Forests, rocks, and crops come from the terrain kit. A few tufts remain
+	# on open ground the kit does not cover.
 	var tufts: Array = []
-	var rocks: Array = []
 	for row in DataDB.height:
 		for col in DataDB.width:
 			var ax := HexGrid.axial_from_offset(col, row)
 			var id := DataDB.terrain_id(ax.x, ax.y)
+			if id != "plain" and id != "grass" and id != "desert" and id != "erg":
+				continue
+			if _city_here(ax) or _near_north_city(ax):
+				continue
 			var center := HexGrid.axial_to_pixel(ax.x, ax.y)
 			var y := float(heights.get(ax, 0.4))
-			if id == "forest" or id == "marsh":
-				var count: int = 8 if id == "forest" else 4
-				var pine := ax.y < 30 or _near_peak(ax)
-				for k in count:
-					var ang := float(k) * 2.17 + float(ax.x) * 0.71 + float(ax.y) * 0.19
-					var rad := 3.1 + float(k) * 1.35
-					var p := Vector3(center.x + cos(ang) * rad, y, center.y + sin(ang) * rad)
-					var s := (0.95 + 0.4 * absf(sin(float(ax.x * 3 + k) * 1.3))) * 2.5
-					var tall: float = 1.2 if pine else 0.95
-					var basis := Basis(Vector3.UP, ang).scaled(Vector3(s, s * tall, s))
-					var leaf := Color("2a6a40")
-					if pine:
-						leaf = Color("163e28").lerp(Color("2a6a40"), 0.5 + 0.5 * sin(ang))
-					else:
-						leaf = Color("2f7a32").lerp(Color("6a9a38"), 0.5 + 0.5 * sin(ang * 1.4))
-					var item := {"t": Transform3D(basis, p), "trunk": Color("6a4630").lerp(Color("4a3020"), 0.5 + 0.5 * sin(ang)), "leaf": leaf}
-					if pine:
-						pines.append(item)
-					else:
-						broads.append(item)
-			var tuft_n := 0
-			if id == "grass" or id == "plain" or id == "forest":
-				tuft_n = 3
-			elif id == "loess" or id == "rice" or id == "hill" or id == "desert":
-				tuft_n = 2
+			var tuft_n := 2
 			for k2 in tuft_n:
 				var ang2 := float(k2) * 2.4 + float(ax.x) * 0.37
-				var rad2 := 4.0 + float(k2) * 3.2
+				var rad2 := 5.5 + float(k2) * 4.0
 				var p2 := Vector3(center.x + cos(ang2) * rad2, y, center.y + sin(ang2) * rad2)
-				var s2 := 1.8 + absf(sin(ang2)) * 1.1
+				var s2 := 1.6 + absf(sin(ang2)) * 0.9
 				var tint := Color("6d7a48")
-				if id == "loess":
-					tint = Color("b49668")
-				elif id == "desert":
+				if id == "desert" or id == "erg":
 					tint = Color("c4b48c")
-				elif id == "rice":
-					tint = Color("3f7a44")
 				elif id == "plain" and _hex_has_river(ax):
 					tint = Color("4a7344")
 				tufts.append({"t": Transform3D(Basis(Vector3.UP, ang2).scaled(Vector3(s2, s2, s2)), p2), "color": tint})
-			var rock_n := 0
-			if id == "mountain" or id == "alpine":
-				rock_n = 3
-			elif id == "hill" or id == "erg":
-				rock_n = 2
-			for k3 in rock_n:
-				var ang3 := float(k3) * 1.9 + float(ax.y) * 0.41
-				var rad3 := 5.0 + float(k3) * 2.8
-				var p3 := Vector3(center.x + cos(ang3) * rad3, y, center.y + sin(ang3) * rad3)
-				var s3 := 1.6 + absf(sin(ang3 * 1.3)) * 1.4
-				if id == "alpine" or id == "mountain":
-					s3 *= 1.45
-				var rock_col := Color("6e675e")
-				if id == "erg":
-					rock_col = Color("c4a06a")
-				rocks.append({"t": Transform3D(Basis(Vector3.UP, ang3).scaled(Vector3(s3, s3 * 0.8, s3)), p3), "color": rock_col})
-	return {"pines": pines, "broads": broads, "tufts": tufts, "rocks": rocks}
+	return {"pines": [], "broads": [], "tufts": tufts, "rocks": []}
 
 
 static func _tuft_mesh() -> ArrayMesh:

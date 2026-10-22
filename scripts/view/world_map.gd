@@ -29,12 +29,16 @@ var _unit_kinds := {}
 var _perf_frames := 0
 var _tris := 0
 var _cluster_mesh := {}
+var _kit_mesh := {}
 var _city_material: StandardMaterial3D
 var _env: Environment
 var _land_shader: ShaderMaterial
 var feature_points: Array = []
 
 const CITY_SCALE := 1.8
+# Camera distance is 280 at the default zoom and 780 at strategic. Detail
+# beyond this range drops out, which hides forests and fields when pulled back.
+const DETAIL_RANGE := 560.0
 
 func _ready() -> void:
 	var built: Dictionary = TerrainFactory.build()
@@ -45,6 +49,7 @@ func _ready() -> void:
 	_add_mesh("Borders", built.borders, _glow_mat(), false)
 	feature_points = built.features
 	_add_trees(built)
+	_spawn_terrain_kit()
 	_tris = _count_tris(built.land) + _count_tris(built.water) + _count_tris(built.rivers)
 	print("TRIS land %d water %d rivers %d" % [_count_tris(built.land), _count_tris(built.water), _count_tris(built.rivers)])
 	_build_cities()
@@ -282,38 +287,99 @@ func _sync_grade() -> void:
 		_env.fog_density = density
 
 
-func spawn_hex_features(terrain_id: String, mesh: Mesh, lift: float = 0.0) -> MultiMeshInstance3D:
-	# Places one mesh on every stored hex of that terrain. Mountain, hill,
-	# and forest kits call this when they arrive; it is unused until then.
+func spawn_hex_features(mesh_key: String, mesh: Mesh, lift: float = 0.0, detail_range: float = 0.0) -> MultiMeshInstance3D:
+	# One MultiMesh per chunk of this piece, scaled from the kit's 10 m hex
+	# to the 18 m map hex. Chunks frustum-cull; a single map-sized mesh would not.
 	if mesh == null:
 		return null
-	var xforms: Array[Transform3D] = []
+	var groups := {}
+	var total := 0
 	for item_v in feature_points:
 		var item: Dictionary = item_v
-		if str(item.get("id", "")) != terrain_id:
+		var key := str(item.get("mesh", ""))
+		if key == "":
+			key = str(item.get("id", ""))
+		if key != mesh_key:
 			continue
 		var yaw := float(item.get("yaw", 0.0))
 		var pos := Vector3(float(item.x), float(item.y) + lift, float(item.z))
-		xforms.append(Transform3D(Basis(Vector3.UP, yaw), pos))
-	if xforms.is_empty():
+		var basis := Basis(Vector3.UP, yaw).scaled(Vector3(CITY_SCALE, CITY_SCALE, CITY_SCALE))
+		var cq := int(floor(float(item.q) / 6.0))
+		var cr := int(floor(float(item.r) / 6.0))
+		var ck := Vector2i(cq, cr)
+		if not groups.has(ck):
+			groups[ck] = []
+		var bucket: Array = groups[ck]
+		bucket.append(Transform3D(basis, pos))
+		groups[ck] = bucket
+		total += 1
+	if total == 0:
 		return null
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = mesh
-	mm.instance_count = xforms.size()
-	for i in xforms.size():
-		mm.set_instance_transform(i, xforms[i])
-	var inst := MultiMeshInstance3D.new()
-	inst.name = "Feature_" + terrain_id
-	inst.multimesh = mm
-	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var holder := get_node_or_null("Features") as Node3D
 	if holder == null:
 		holder = Node3D.new()
 		holder.name = "Features"
 		add_child(holder)
-	holder.add_child(inst)
-	return inst
+	var first: MultiMeshInstance3D = null
+	for ck_v in groups.keys():
+		var ck: Vector2i = ck_v
+		var bucket2: Array = groups[ck]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = mesh
+		mm.instance_count = bucket2.size()
+		for i in bucket2.size():
+			mm.set_instance_transform(i, bucket2[i])
+		var inst := MultiMeshInstance3D.new()
+		inst.name = "Feature_%s_%d_%d" % [mesh_key, ck.x, ck.y]
+		inst.multimesh = mm
+		inst.material_override = _city_mat()
+		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		inst.extra_cull_margin = 48.0
+		if detail_range > 0.0:
+			inst.visibility_range_end = detail_range
+		holder.add_child(inst)
+		if first == null:
+			first = inst
+	print("FEATURE %s chunks %d inst %d tris %d" % [mesh_key, groups.size(), total, _count_tris(mesh) * total])
+	return first
+
+
+func _spawn_terrain_kit() -> void:
+	var keys: Array[String] = [
+		"mountain_a", "mountain_b", "mountain_c",
+		"mountain_ridge", "mountain_ridge_bend", "mountain_ridge_end",
+		"hills_a", "hills_b", "hills_c", "hills_loess",
+		"forest_conifer_a", "forest_conifer_b",
+		"forest_mixed_a", "forest_mixed_b", "forest_sparse",
+		"farm_fields", "rice_paddies",
+		"reeds", "desert_scrub", "rocks_a", "rocks_b",
+	]
+	for key in keys:
+		var detail := DETAIL_RANGE
+		if key.begins_with("mountain"):
+			detail = 0.0
+		spawn_hex_features(key, _terrain_mesh(key), 0.0, detail)
+
+
+func _terrain_mesh(key: String) -> ArrayMesh:
+	if _kit_mesh.has(key):
+		return _kit_mesh[key]
+	var path := "res://art/models/song_terrain/%s.glb" % key
+	var packed: PackedScene = load(path)
+	if packed == null:
+		push_error("missing terrain mesh " + path)
+		return null
+	var scene := packed.instantiate()
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_material(_city_mat())
+	var stats := _bake_cluster(scene, Transform3D.IDENTITY, st)
+	scene.free()
+	var mesh := st.commit()
+	_kit_mesh[key] = mesh
+	print("TERRAIN %s tris %d verts %d color %.2f..%.2f" % [key, _count_tris(mesh), stats.x, stats.y, stats.z])
+	return mesh
 
 
 func _city_mat() -> StandardMaterial3D:
