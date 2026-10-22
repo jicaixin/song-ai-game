@@ -57,6 +57,10 @@ void fragment() {
 	vec3 water_col = col;
 	if (river_uv.x > 0.0 && river_uv.y > 0.0 && river_uv.x < 1.0 && river_uv.y < 1.0) {
 		vec4 riv = texture(river_map, river_uv);
+		// Compatibility samples this data texture through an sRGB curve. Mid greys
+		// get lifted, so the water edge (about 0.4) reads as ~0.7 and the channel
+		// collapses to a thread. Put the texel back in linear before use.
+		riv.rgb = mix(riv.rgb / 12.92, pow((riv.rgb + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), riv.rgb));
 		float nd = riv.r * 2.4;
 		float fw = max(fwidth(nd), 0.02);
 		water = 1.0 - smoothstep(1.0 - fw, 1.0 + fw, nd);
