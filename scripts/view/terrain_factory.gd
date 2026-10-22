@@ -436,8 +436,8 @@ static func _river_sink(p: Vector2) -> float:
 			along = clampf((p - a).dot(ab) / len2, 0.0, 1.0)
 		var dist := p.distance_to(a + ab * along)
 		var half := lerpf(float(seg.wa), float(seg.wb), along)
-		var radius := half * 1.05 + 0.8
-		var depth := 0.025 + 0.04 * clampf(half / 6.5, 0.0, 1.0)
+		var radius := half * 0.9 + 0.6
+		var depth := 0.015 + 0.02 * clampf(half / 8.0, 0.0, 1.0)
 		var bed := 1.0 - smoothstep(radius * 0.45, radius, dist)
 		best = maxf(best, depth * bed)
 	return best
@@ -1016,7 +1016,7 @@ static func _half_width(upstream: float) -> float:
 	var t := sqrt(clampf(upstream / 78.0, 0.0, 1.0))
 	# Square the taper so minor tributaries stay a thin thread and only the
 	# great mouths open up enough to read at strategic zoom.
-	return 0.62 + 6.9 * t * t
+	return 0.55 + 11.0 * t * t
 
 
 static func _prepare_rivers() -> void:
@@ -1270,6 +1270,7 @@ static func _course_ribbon(st: SurfaceTool, course: Array, _col: Color) -> void:
 	var ratios: Array = []
 	var along: Array = []
 	var acc := 0.0
+	var prev_tangent := Vector2.ZERO
 	for i in n:
 		var here: Dictionary = course[i]
 		var p: Vector2 = here.p
@@ -1283,13 +1284,18 @@ static func _course_ribbon(st: SurfaceTool, course: Array, _col: Color) -> void:
 		if tangent.length() < 0.001:
 			tangent = Vector2.RIGHT
 		tangent = tangent.normalized()
+		# A reversed sample twists the ribbon into a bowtie, which reads as a stitch.
+		if prev_tangent.length_squared() > 0.0 and tangent.dot(prev_tangent) < 0.0:
+			tangent = -tangent
+		prev_tangent = tangent
 		var water_w := float(here.w)
-		var bank := clampf(water_w * 0.2, 0.26, 1.05)
+		var bank := clampf(water_w * 0.16, 0.22, 1.2)
 		var total := water_w + bank
 		var side := Vector2(-tangent.y, tangent.x) * total
-		var h := _surface_height(p) + 0.016
-		h = lerpf(h, -0.05, float(here.mouth))
-		var edge_h := h - 0.03
+		# Clear of the terrain so the line does not z-fight into dashes at distance.
+		var h := _surface_height(p) + 0.16
+		h = lerpf(h, 0.02, float(here.mouth))
+		var edge_h := h - 0.02
 		left.append(Vector3(p.x + side.x, edge_h, p.y + side.y))
 		right.append(Vector3(p.x - side.x, edge_h, p.y - side.y))
 		ratios.append(water_w / total)

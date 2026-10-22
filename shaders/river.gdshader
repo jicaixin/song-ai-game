@@ -19,9 +19,10 @@ void fragment() {
 	// Most of the width stays in the light shallows. The deeper thread is narrow
 	// so a strategic view reads as one light line, not a navy stripe.
 	float depth = 1.0 - smoothstep(0.0, edge * 0.55, across);
-	vec3 centre = vec3(0.22, 0.40, 0.42);
-	vec3 shallows = vec3(0.38, 0.56, 0.50);
-	vec3 wet = vec3(0.56, 0.49, 0.36);
+	// Pushed blue so the warm sun still leaves a light cyan line.
+	vec3 centre = vec3(0.18, 0.46, 0.55);
+	vec3 shallows = vec3(0.34, 0.64, 0.68);
+	vec3 wet = vec3(0.55, 0.48, 0.36);
 	vec3 col = mix(shallows, centre, depth);
 	col = mix(col, wet, bank);
 	ALBEDO = col;

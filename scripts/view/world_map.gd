@@ -1330,10 +1330,10 @@ func _tint_baked(col: Color, albedo: Color, v: Vector3, mname: String) -> Dictio
 		# Pointy hex in the kit, apothem about 8.66. The orange plate is the
 		# outer terrace, so the rim has to sink or the hex step stays visible.
 		var metric := maxf(px, px * 0.5 + pz * 0.8660254)
-		var rim := smoothstep(4.8, 8.15, metric)
+		var rim := smoothstep(3.4, 7.4, metric)
 		var oy := v.y
-		var shelf := 1.0 - smoothstep(0.5, 1.35, oy)
-		var sink_t := rim * 0.72 + shelf * rim * 0.55
+		var shelf := 1.0 - smoothstep(0.35, 1.15, oy)
+		var sink_t := rim * 0.85 + shelf * maxf(rim, 0.35) * 0.7
 		var pad := mname == "M_skirt" or mname == "M_meadow" or (mname == "M_loess_gully" and oy < 0.35)
 		if pad:
 			sink_t = 1.0
@@ -1350,8 +1350,11 @@ func _tint_baked(col: Color, albedo: Color, v: Vector3, mname: String) -> Dictio
 			tint_t = 1.0
 		if _bake_mode == "loess" and (mname.begins_with("M_loess") or mname == "M_skirt" or mname == "M_meadow" or mname == "M_scrub"):
 			col = col.lerp(_retint(col, albedo, ochre), tint_t)
+			# Keep the sun from blowing the terrace back up to a white-orange plate.
+			col = Color(col.r * 0.84, col.g * 0.86, col.b * 0.9, 1.0)
 		elif mname.begins_with("M_t_grass") or mname == "M_bush_g" or mname == "M_skirt" or mname == "M_t_earth":
 			col = col.lerp(_retint(col, albedo, ochre), 0.92)
+			col = Color(col.r * 0.88, col.g * 0.88, col.b * 0.9, 1.0)
 	elif _bake_mode == "farm":
 		if mname == "M_canal":
 			col = _retint(col, albedo, Color(0.10, 0.15, 0.17))
