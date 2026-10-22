@@ -59,6 +59,7 @@ var _notice_seen := ""
 
 func _ready() -> void:
 	add_to_group("game_ui")
+	theme = Settings.theme
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	_build_top()

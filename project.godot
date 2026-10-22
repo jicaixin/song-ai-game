@@ -33,6 +33,11 @@ window/stretch/scale_mode="fractional"
 window/dpi/allow_hidpi=true
 window/handheld/orientation=0
 
+[gui]
+
+theme/custom="res://ui/theme.tres"
+theme/custom_font="res://ui/fonts/NotoSerifSC-Regular.subset.ttf"
+
 [debug]
 
 gdscript/warnings/inference_on_variant=0

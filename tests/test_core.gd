@@ -48,6 +48,28 @@ func check_font() -> void:
 		check("font_aa", (face as FontFile).antialiasing == TextServer.FONT_ANTIALIASING_GRAY)
 	var banner := Settings.banner_font
 	check("banner_font", banner != null and banner.has_char("延".unicode_at(0)))
+	var layer := CanvasLayer.new()
+	Engine.get_main_loop().root.add_child(layer)
+	var themed := Label.new()
+	themed.theme_type_variation = "H2Label"
+	themed.text = "朝堂"
+	layer.add_child(themed)
+	var resolved := themed.get_theme_font("font")
+	var face_name := ""
+	if resolved is FontFile:
+		face_name = (resolved as FontFile).font_name
+	check("ui_font_h2", resolved != null and resolved.has_char("朝".unicode_at(0)) and face_name != "Open Sans SemiBold", face_name)
+	var body := Label.new()
+	body.theme_type_variation = "BodyLabel"
+	layer.add_child(body)
+	var body_font := body.get_theme_font("font")
+	check("ui_font_body", body_font != null and body_font.has_char("遣".unicode_at(0)) and body_font.has_char("〇".unicode_at(0)))
+	var brush := Label.new()
+	brush.theme_type_variation = "BrushLabel"
+	layer.add_child(brush)
+	var brush_font := brush.get_theme_font("font")
+	check("ui_font_brush", brush_font != null and brush_font.has_char("宝".unicode_at(0)) and brush_font.has_char("祐".unicode_at(0)))
+	layer.queue_free()
 	if banner is FontFile:
 		check("banner_msdf", (banner as FontFile).multichannel_signed_distance_field)
 	else:

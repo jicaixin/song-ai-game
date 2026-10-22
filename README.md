@@ -8,7 +8,7 @@
 
 - Godot **4.3 或更新**（本仓库用 4.7.2 导出）。渲染器为 GL Compatibility。
 - 网页导出模板用 **Web（无线程）**：`web_nothreads_release`。
-- 界面中文关掉系统字体回退。主题用思源宋体（标题）、霞鹜文楷（正文）、马善政（年号与标题屏）。马善政没有「祐」，皇祐年号改用思源宋体。地图上的城名、势力名仍用思源宋体子集（`art/fonts/ui_zh.ttf`，由 `tools/build_ui_font.py` 从 Noto Serif SC 裁出）。仓库里仍留着 Fusion Pixel 的 OFL 字体文件，导出时排除。
+- 界面中文关掉系统字体回退。项目主题是 `ui/theme.tres`：标题用思源宋体粗体，正文用霞鹜文楷，年号和标题屏用马善政。马善政没有的字（包括「祐」）回落到思源宋体。地图上的城名、势力名仍用思源宋体子集（`art/fonts/ui_zh.ttf`）。仓库里仍留着 Fusion Pixel 的 OFL 字体文件，导出时排除。
 
 ## 直接玩网页版
 

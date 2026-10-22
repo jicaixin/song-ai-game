@@ -17,12 +17,35 @@ func _ready() -> void:
 	font = _load_font(false)
 	banner_font = _load_font(true)
 	theme = load("res://ui/theme.tres")
+	_chain_fallbacks()
+	# Window.theme does not cross a CanvasLayer. gui/theme/custom does.
 	get_tree().root.theme = theme
 	# Web builds cannot see OS fonts. The engine default only covers Latin,
 	# so any control that misses the theme still needs this face.
 	ThemeDB.fallback_font = font
 	ThemeDB.fallback_font_size = 15
 	DisplayServer.window_set_title("我带着AI穿越大宋")
+
+
+func _chain_fallbacks() -> void:
+	var noto := load("res://ui/fonts/NotoSerifSC-Regular.subset.ttf") as FontFile
+	var bold := load("res://ui/fonts/NotoSerifSC-Bold.subset.ttf") as FontFile
+	var lxgw := load("res://ui/fonts/LXGWWenKai-Medium.subset.ttf") as FontFile
+	var ma := load("res://ui/fonts/MaShanZheng-Regular.subset.ttf") as FontFile
+	var zero := load("res://ui/fonts/ideo-zero.ttf") as FontFile
+	for face in [noto, bold, lxgw, ma, zero]:
+		if face != null:
+			face.allow_system_fallback = false
+	if zero != null:
+		if noto != null:
+			noto.fallbacks = [zero]
+		if bold != null:
+			bold.fallbacks = [zero]
+		if lxgw != null:
+			lxgw.fallbacks = [zero]
+	# 马善政只有标题和年号。缺的字（包括「祐」）改用思源宋体，不再画成方框。
+	if ma != null and noto != null:
+		ma.fallbacks = [noto]
 
 
 func _load_font(msdf: bool) -> Font:

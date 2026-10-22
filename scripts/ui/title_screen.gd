@@ -9,6 +9,7 @@ var continue_button: Button
 
 func _ready() -> void:
 	add_to_group("title_screen")
+	theme = Settings.theme
 	set_anchors_preset(Control.PRESET_TOP_LEFT)
 	position = Vector2.ZERO
 	size = Vector2(1280, 720)
