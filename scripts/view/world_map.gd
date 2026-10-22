@@ -44,15 +44,14 @@ const DETAIL_RANGE := 560.0
 func _ready() -> void:
 	var built: Dictionary = TerrainFactory.build()
 	heights = built.heights
-	_add_mesh("Land", built.land, _land_mat(), true)
+	_add_mesh("Land", built.land, _land_mat(built.river_mask), true)
 	_add_mesh("Water", built.water, _water_mat(), false)
-	_add_mesh("Rivers", built.rivers, _river_mat(), false)
 	_add_mesh("Borders", built.borders, _glow_mat(), false)
 	feature_points = built.features
 	_add_trees(built)
 	_spawn_terrain_kit()
-	_tris = _count_tris(built.land) + _count_tris(built.water) + _count_tris(built.rivers)
-	print("TRIS land %d water %d rivers %d" % [_count_tris(built.land), _count_tris(built.water), _count_tris(built.rivers)])
+	_tris = _count_tris(built.land) + _count_tris(built.water)
+	print("TRIS land %d water %d rivers 0" % [_count_tris(built.land), _count_tris(built.water)])
 	_build_cities()
 	_overlay = MeshInstance3D.new()
 	_overlay.name = "Overlay"
@@ -93,10 +92,13 @@ func _add_mesh(node_name: String, mesh: ArrayMesh, mat: Material, shadows: bool)
 	add_child(inst)
 
 
-func _land_mat() -> ShaderMaterial:
+func _land_mat(mask: Dictionary) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/land.gdshader")
-	mat.set_shader_parameter("grid_fade", 0.28)
+	mat.set_shader_parameter("grid_fade", 0.04)
+	mat.set_shader_parameter("river_map", mask.tex)
+	mat.set_shader_parameter("river_origin", mask.origin)
+	mat.set_shader_parameter("river_scale", mask.scale)
 	_land_shader = mat
 	return mat
 
@@ -110,12 +112,6 @@ func _water_mat() -> ShaderMaterial:
 func _glow_mat() -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/glow.gdshader")
-	return mat
-
-
-func _river_mat() -> ShaderMaterial:
-	var mat := ShaderMaterial.new()
-	mat.shader = load("res://shaders/river.gdshader")
 	return mat
 
 
@@ -274,13 +270,13 @@ func _measure() -> void:
 
 
 func _sync_grade() -> void:
-	var fade := 0.28
+	var fade := 0.04
 	var density := 0.00005
 	if zoom_index == 0:
-		fade = 0.06
+		fade = 0.015
 		density = 0.00012
 	elif zoom_index >= 2:
-		fade = 0.45
+		fade = 0.07
 		density = 0.00002
 	if _land_shader:
 		_land_shader.set_shader_parameter("grid_fade", fade)

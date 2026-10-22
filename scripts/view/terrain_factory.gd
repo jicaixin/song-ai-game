@@ -65,14 +65,14 @@ static func build() -> Dictionary:
 				heights[ax2] = _surface_height(center)
 	var land := _land_mesh(heights, colors)
 	var water := _water_mesh()
-	var rivers := _ribbon_mesh(true, heights, colors)
 	var borders := _ribbon_mesh(false, heights, colors)
+	var river_mask := _river_mask()
 	var woods := _tree_lists(heights)
 	return {
 		"land": land,
 		"water": water,
-		"rivers": rivers,
 		"borders": borders,
+		"river_mask": river_mask,
 		"heights": heights,
 		"pine_trunk": _trunk_mesh(),
 		"pine_leaf": _pine_leaf(),
@@ -436,8 +436,8 @@ static func _river_sink(p: Vector2) -> float:
 			along = clampf((p - a).dot(ab) / len2, 0.0, 1.0)
 		var dist := p.distance_to(a + ab * along)
 		var half := lerpf(float(seg.wa), float(seg.wb), along)
-		var radius := half * 0.9 + 0.6
-		var depth := 0.015 + 0.02 * clampf(half / 8.0, 0.0, 1.0)
+		var radius := half * 1.45 + 0.45
+		var depth := 0.03 + 0.045 * clampf(half / 3.12, 0.0, 1.0)
 		var bed := 1.0 - smoothstep(radius * 0.45, radius, dist)
 		best = maxf(best, depth * bed)
 	return best
@@ -752,6 +752,7 @@ static func _land_mesh(heights: Dictionary, colors: Dictionary) -> ArrayMesh:
 			if wet and not _touches_land(ax):
 				continue
 			var center := HexGrid.axial_to_pixel(ax.x, ax.y)
+			var hide_grid := _hide_grid(ax)
 			for edge in 6:
 				var a0 := deg_to_rad(60.0 * float(edge) - 30.0)
 				var a1 := deg_to_rad(60.0 * float(edge + 1) - 30.0)
@@ -784,8 +785,8 @@ static func _land_mesh(heights: Dictionary, colors: Dictionary) -> ArrayMesh:
 						var c00: Color = cols[s][k]
 						var c10: Color = cols[s + 1][k]
 						var c11: Color = cols[s + 1][k + 1]
-						var e0 := float(s) / float(n_div)
-						var e1 := float(s + 1) / float(n_div)
+						var e0 := 0.0 if hide_grid else float(s) / float(n_div)
+						var e1 := 0.0 if hide_grid else float(s + 1) / float(n_div)
 						if not (wet and p00.y < -0.32 and p10.y < -0.32 and p11.y < -0.32):
 							_tri(st, p00, p10, p11, c00, c10, c11, e0, e1, e1, 0.0)
 						if k < s:
@@ -875,6 +876,95 @@ static func _water_mesh() -> ArrayMesh:
 							_tri(st, p00, p11, p01, c00, c11, c01, 0.0, 0.0, 0.0, 0.0)
 	st.generate_normals()
 	return st.commit()
+
+
+static func _hide_grid(ax: Vector2i) -> bool:
+	# The hex hairline reads as a light ring around mountain and hill pieces.
+	if _raised_terrain(DataDB.terrain_id(ax.x, ax.y)):
+		return true
+	for d in HexGrid.DIRS:
+		var n: Vector2i = ax + d
+		if DataDB.in_bounds(n.x, n.y) and _raised_terrain(DataDB.terrain_id(n.x, n.y)):
+			return true
+	return false
+
+
+static func _raised_terrain(id: String) -> bool:
+	return id == "mountain" or id == "alpine" or id == "hill"
+
+
+static func _river_mask() -> Dictionary:
+	# Distance to the smoothed centreline, in a texture the terrain shader samples.
+	# R = (distance / half-width) / 2.4. GB = flow direction. Outside the brush, R = 1.
+	var texel := 1.25
+	var margin := 48.0
+	var min_p := Vector2(1.0e9, 1.0e9)
+	var max_p := Vector2(-1.0e9, -1.0e9)
+	for row in DataDB.height:
+		for col in DataDB.width:
+			var ax := HexGrid.axial_from_offset(col, row)
+			var p := HexGrid.axial_to_pixel(ax.x, ax.y)
+			min_p = min_p.min(p)
+			max_p = max_p.max(p)
+	min_p -= Vector2(margin, margin)
+	max_p += Vector2(margin, margin)
+	var span := max_p - min_p
+	var tw := int(ceil(span.x / texel))
+	var th := int(ceil(span.y / texel))
+	var bytes := PackedByteArray()
+	bytes.resize(tw * th * 4)
+	bytes.fill(255)
+	for course_v in _river_courses:
+		var course: Array = course_v
+		var nseg := course.size()
+		for si in range(nseg - 1):
+			var s0: Dictionary = course[si]
+			var s1: Dictionary = course[si + 1]
+			var a: Vector2 = s0.p
+			var b: Vector2 = s1.p
+			var wa := float(s0.w)
+			var wb := float(s1.w)
+			var ab := b - a
+			var len2 := ab.length_squared()
+			if len2 < 0.01:
+				continue
+			var dir := ab / sqrt(len2)
+			var reach := maxf(wa, wb) * 2.45 + texel
+			var ix0 := clampi(int(floor((minf(a.x, b.x) - reach - min_p.x) / texel)), 0, tw - 1)
+			var ix1 := clampi(int(ceil((maxf(a.x, b.x) + reach - min_p.x) / texel)), 0, tw - 1)
+			var iy0 := clampi(int(floor((minf(a.y, b.y) - reach - min_p.y) / texel)), 0, th - 1)
+			var iy1 := clampi(int(ceil((maxf(a.y, b.y) + reach - min_p.y) / texel)), 0, th - 1)
+			var gx := int(clampf(dir.x * 0.5 + 0.5, 0.0, 1.0) * 255.0)
+			var gz := int(clampf(dir.y * 0.5 + 0.5, 0.0, 1.0) * 255.0)
+			for iy in range(iy0, iy1 + 1):
+				var wz := min_p.y + (float(iy) + 0.5) * texel
+				for ix in range(ix0, ix1 + 1):
+					var wx := min_p.x + (float(ix) + 0.5) * texel
+					var ap := Vector2(wx - a.x, wz - a.y)
+					var along := clampf(ap.dot(ab) / len2, 0.0, 1.0)
+					var closest := a + ab * along
+					var dist := Vector2(wx, wz).distance_to(closest)
+					var half := lerpf(wa, wb, along)
+					if half < 0.05:
+						continue
+					var nd := dist / half
+					if nd > 2.4:
+						continue
+					var nr := int(clampf(nd / 2.4, 0.0, 1.0) * 255.0)
+					var idx := (iy * tw + ix) * 4
+					if nr < int(bytes[idx]):
+						bytes[idx] = nr
+						bytes[idx + 1] = gx
+						bytes[idx + 2] = gz
+						bytes[idx + 3] = 255
+	var img := Image.create_from_data(tw, th, false, Image.FORMAT_RGBA8, bytes)
+	var tex := ImageTexture.create_from_image(img)
+	print("RIVER MASK %d x %d" % [tw, th])
+	return {
+		"tex": tex,
+		"origin": min_p,
+		"scale": Vector2(1.0 / (float(tw) * texel), 1.0 / (float(th) * texel)),
+	}
 
 
 static func _ribbon_mesh(rivers: bool, heights: Dictionary, colors: Dictionary) -> ArrayMesh:
@@ -1013,10 +1103,12 @@ static func _nearest_water(p: Vector2, rad: int) -> Dictionary:
 
 
 static func _half_width(upstream: float) -> float:
+	# Flat-to-flat hex is SIZE·√3. Great courses cap at 0.2 of that, tributaries at 0.08.
+	var hex_w := HexGrid.SIZE * sqrt(3.0)
+	var minor := hex_w * 0.04
+	var major := hex_w * 0.10
 	var t := sqrt(clampf(upstream / 78.0, 0.0, 1.0))
-	# Square the taper so minor tributaries stay a thin thread and only the
-	# great mouths open up enough to read at strategic zoom.
-	return 0.55 + 11.0 * t * t
+	return lerpf(minor, major, t * t)
 
 
 static func _prepare_rivers() -> void:
@@ -1180,8 +1272,8 @@ static func _emit_chain(chain: Array, pos: Dictionary, up: Dictionary, water_mou
 		if aim.length() > 1.0:
 			aim = aim.normalized()
 			var wtip := float(raw[raw.size() - 1].w)
-			raw.append({"p": tip + aim * 12.0, "w": wtip * 1.04, "mouth": 0.45})
-			raw.append({"p": tip.lerp(info.p, 0.74), "w": wtip * 1.08, "mouth": 1.0})
+			raw.append({"p": tip + aim * 12.0, "w": wtip, "mouth": 0.45})
+			raw.append({"p": tip.lerp(info.p, 0.74), "w": wtip, "mouth": 1.0})
 	var smooth := _smooth_course(raw)
 	if smooth.size() < 2:
 		return
