@@ -21,7 +21,7 @@ void fragment() {
 	float crest = smoothstep(0.55, 0.9, along) * (1.0 - across);
 	col += vec3(0.06, 0.08, 0.07) * crest;
 	ALBEDO = col;
-	ROUGHNESS = 0.32;
+	ROUGHNESS = 0.42;
 	METALLIC = 0.0;
-	SPECULAR = 0.16;
+	SPECULAR = 0.06;
 }

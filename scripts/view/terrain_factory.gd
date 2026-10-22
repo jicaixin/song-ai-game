@@ -5,19 +5,19 @@ extends RefCounted
 ## not taken from any existing game.
 
 const PALETTE := {
-	"plain": "6f7354",
-	"grass": "62744c",
-	"hill": "74624c",
+	"plain": "6f7348",
+	"grass": "8a7d58",
+	"hill": "7a6248",
 	"mountain": "5c574f",
-	"alpine": "68726c",
-	"loess": "a48462",
-	"forest": "3d5640",
-	"marsh": "567064",
-	"desert": "c2b49a",
-	"erg": "c8ba9e",
-	"rice": "5c704c",
-	"lake": "3a687c",
-	"sea": "1e4868",
+	"alpine": "6c766c",
+	"loess": "b08a62",
+	"forest": "3d6844",
+	"marsh": "4e6e5a",
+	"desert": "c6b79a",
+	"erg": "d0c2a4",
+	"rice": "4a7644",
+	"lake": "3a6878",
+	"sea": "1c4664",
 }
 
 const HEIGHTS := {
@@ -54,7 +54,7 @@ static func build() -> Dictionary:
 				heights[ax2] = float(HEIGHTS.get(id2, -1.0))
 			else:
 				var center := HexGrid.axial_to_pixel(ax2.x, ax2.y)
-				heights[ax2] = _world_height(center)
+				heights[ax2] = _surface_height(center)
 	var land := _land_mesh(heights, colors)
 	var water := _water_mesh()
 	var rivers := _ribbon_mesh(true, heights, colors)
@@ -118,10 +118,30 @@ static func _center_height(id: String, ax: Vector2i) -> float:
 	return base + extra + wobble * 0.14
 
 
+static func swatch(id: String) -> Color:
+	return Color(str(PALETTE.get(id, "7a7358")))
+
+
 static func _tint(id: String, ax: Vector2i) -> Color:
-	var c := Color(str(PALETTE.get(id, "888888"))) as Color
-	var n := sin(float(ax.x) * 0.9 + float(ax.y) * 1.4) * 0.018
-	return Color(c.r + n, c.g + n * 0.7, c.b + n * 0.4)
+	var c := swatch(id)
+	# River valleys and the rice south read greener than the loess and steppe.
+	if id == "plain" and _hex_has_river(ax):
+		c = c.lerp(Color("4a7340"), 0.62)
+	elif id == "rice":
+		c = c.lerp(Color("3d6e3e"), 0.28)
+		if _hex_has_river(ax):
+			c = c.lerp(Color("347842"), 0.22)
+	elif id == "forest":
+		c = c.lerp(Color("2f6238"), 0.18)
+	var n := sin(float(ax.x) * 0.9 + float(ax.y) * 1.4) * 0.015
+	return Color(c.r + n, c.g + n * 0.85, c.b + n * 0.35)
+
+
+static func _hex_has_river(ax: Vector2i) -> bool:
+	var masks = DataDB.river_masks.get(ax, null)
+	if masks == null:
+		return false
+	return int(masks[0]) != 0 or int(masks[1]) != 0
 
 
 static func _smooth_colors(colors: Dictionary) -> Dictionary:
@@ -285,8 +305,9 @@ static func _world_height(p: Vector2) -> float:
 				continue
 			w *= w
 			var id := DataDB.terrain_id(c.x, c.y)
-			var hh := 0.02 if _water(id) else _relief(id, p)
-			h += hh * w
+			if _water(id):
+				continue
+			h += _relief(id, p) * w
 			wsum += w
 	if wsum <= 0.001:
 		return 0.3
@@ -329,27 +350,112 @@ static func _biome_color(p: Vector2, colors: Dictionary) -> Color:
 	var patch := _vnoise(p.x * 0.055, p.y * 0.055)
 	var fine := _vnoise(p.x * 0.2, p.y * 0.2)
 	var dirt := Color(base.r * 0.76, base.g * 0.68, base.b * 0.56)
-	var k := clampf((patch - 0.6) / 0.24, 0.0, 1.0)
-	base = base.lerp(dirt, k * 0.42)
+	var k := clampf((patch - 0.62) / 0.24, 0.0, 1.0)
+	base = base.lerp(dirt, k * 0.2)
 	var scale := 0.9 + fine * 0.12
 	return Color(base.r * scale, base.g * scale, base.b * scale, 1.0)
 
 
-static func _shore_amount(p: Vector2) -> float:
-	var ax := HexGrid.pixel_to_axial(p)
-	var best := 0.0
+static func _touches_land(ax: Vector2i) -> bool:
+	for d in HexGrid.DIRS:
+		var n: Vector2i = ax + d
+		if DataDB.in_bounds(n.x, n.y) and not _water(DataDB.terrain_id(n.x, n.y)):
+			return true
+	return false
+
+
+static func _touches_water(ax: Vector2i) -> bool:
+	for d in HexGrid.DIRS:
+		var n: Vector2i = ax + d
+		if DataDB.in_bounds(n.x, n.y) and _water(DataDB.terrain_id(n.x, n.y)):
+			return true
+	return false
+
+
+static func _coast_field(p: Vector2) -> float:
+	var home := HexGrid.pixel_to_axial(p)
+	if not DataDB.in_bounds(home.x, home.y):
+		return 0.0
+	if not _water(DataDB.terrain_id(home.x, home.y)) and not _touches_water(home):
+		return 0.0
+	# Warp the sample so the land/water contour leaves the hex edge and rounds the corners.
+	var warp := Vector2(
+		(_vnoise(p.x * 0.028 + 4.0, p.y * 0.028) - 0.5) * HexGrid.SIZE * 1.15,
+		(_vnoise(p.x * 0.026, p.y * 0.030 + 6.0) - 0.5) * HexGrid.SIZE * 1.15
+	)
+	warp += Vector2(
+		(_vnoise(p.x * 0.07 + 1.5, p.y * 0.07) - 0.5) * HexGrid.SIZE * 0.42,
+		(_vnoise(p.x * 0.07, p.y * 0.07 + 2.4) - 0.5) * HexGrid.SIZE * 0.42
+	)
+	var q := p + warp
+	var ax := HexGrid.pixel_to_axial(q)
+	var water_w := 0.0
+	var land_w := 0.0
+	var reach := HexGrid.SIZE * 2.35
 	for dz in range(-1, 2):
 		for dq in range(-1, 2):
 			var c := Vector2i(ax.x + dq, ax.y + dz)
 			if not DataDB.in_bounds(c.x, c.y):
 				continue
-			if not _water(DataDB.terrain_id(c.x, c.y)):
-				continue
 			var center := HexGrid.axial_to_pixel(c.x, c.y)
-			var dist := p.distance_to(center)
-			var t := clampf(1.0 - (dist - HexGrid.SIZE * 0.85) / (HexGrid.SIZE * 0.7), 0.0, 1.0)
-			best = maxf(best, t)
+			var dist := q.distance_to(center)
+			var w := maxf(0.0, 1.0 - dist / reach)
+			if w <= 0.0:
+				continue
+			w *= w
+			if _water(DataDB.terrain_id(c.x, c.y)):
+				water_w += w
+			else:
+				land_w += w
+	if water_w + land_w <= 0.001:
+		return 0.0
+	return water_w / (water_w + land_w)
+
+
+static func _dist_to_seg(p: Vector2, a: Vector2, b: Vector2) -> float:
+	var ab := b - a
+	var len2 := ab.length_squared()
+	if len2 < 0.001:
+		return p.distance_to(a)
+	var t := clampf((p - a).dot(ab) / len2, 0.0, 1.0)
+	return p.distance_to(a + ab * t)
+
+
+static func _river_sink(p: Vector2) -> float:
+	var ax := HexGrid.pixel_to_axial(p)
+	var best := 0.0
+	for dz in range(-1, 2):
+		for dq in range(-1, 2):
+			var c := Vector2i(ax.x + dq, ax.y + dz)
+			if not DataDB.river_masks.has(c):
+				continue
+			var masks: Array = DataDB.river_masks[c]
+			for i in 6:
+				var bit := 1 << i
+				var great := (int(masks[1]) & bit) != 0
+				var minor := (int(masks[0]) & bit) != 0
+				if not great and not minor:
+					continue
+				var corners := _edge_corners(c, i)
+				var dist := _dist_to_seg(p, corners[0], corners[1])
+				var radius := 12.0 if great else 5.4
+				var depth := 0.32 if great else 0.15
+				# Flat bottom, so the ribbon sits in the channel instead of riding up the banks.
+				var t := 1.0 - smoothstep(radius * 0.62, radius, dist)
+				best = maxf(best, depth * t)
 	return best
+
+
+static func _shaped_height(p: Vector2, coast: float) -> float:
+	var h := _world_height(p)
+	# Wide ramp so the bank leans into the water instead of ending in a cliff.
+	h = lerpf(h, -0.7, smoothstep(0.08, 0.52, coast))
+	h -= _river_sink(p)
+	return h
+
+
+static func _surface_height(p: Vector2) -> float:
+	return _shaped_height(p, _coast_field(p))
 
 
 static func _feature_list(heights: Dictionary) -> Array:
@@ -383,7 +489,10 @@ static func _land_mesh(heights: Dictionary, colors: Dictionary) -> ArrayMesh:
 	for row in DataDB.height:
 		for col in DataDB.width:
 			var ax := HexGrid.axial_from_offset(col, row)
-			if _water(DataDB.terrain_id(ax.x, ax.y)):
+			var tid := DataDB.terrain_id(ax.x, ax.y)
+			var wet := _water(tid)
+			# Open water has no land. Coastal water hexes are meshed so the bank can slope under the surface.
+			if wet and not _touches_land(ax):
 				continue
 			var center := HexGrid.axial_to_pixel(ax.x, ax.y)
 			for edge in 6:
@@ -402,10 +511,11 @@ static func _land_mesh(heights: Dictionary, colors: Dictionary) -> ArrayMesh:
 						var p2: Vector2 = center + off_a.lerp(off_b, v) * u
 						# Shared corners must be bit-identical or the index weld misses and a shading seam stays on the hex edge.
 						p2 = Vector2(snapped(p2.x, 0.02), snapped(p2.y, 0.02))
-						var sample_h := _world_height(p2)
+						var coast := _coast_field(p2)
+						var sample_h := _shaped_height(p2, coast)
 						row_pts.append(Vector3(p2.x, sample_h, p2.y))
 						var biome := _biome_color(p2, colors)
-						biome.a = _shore_amount(p2)
+						biome.a = coast
 						row_cols.append(biome)
 					pts.append(row_pts)
 					cols.append(row_cols)
@@ -419,11 +529,13 @@ static func _land_mesh(heights: Dictionary, colors: Dictionary) -> ArrayMesh:
 						var c11: Color = cols[s + 1][k + 1]
 						var e0 := float(s) / float(n_div)
 						var e1 := float(s + 1) / float(n_div)
-						_tri(st, p00, p10, p11, c00, c10, c11, e0, e1, e1, 0.0)
+						if not (wet and p00.y < -0.32 and p10.y < -0.32 and p11.y < -0.32):
+							_tri(st, p00, p10, p11, c00, c10, c11, e0, e1, e1, 0.0)
 						if k < s:
 							var p01: Vector3 = pts[s][k + 1]
 							var c01: Color = cols[s][k + 1]
-							_tri(st, p00, p11, p01, c00, c11, c01, e0, e1, e0, 0.0)
+							if not (wet and p00.y < -0.32 and p11.y < -0.32 and p01.y < -0.32):
+								_tri(st, p00, p11, p01, c00, c11, c01, e0, e1, e0, 0.0)
 	# Weld shared hex edges so normals average across the border instead of
 	# leaving a dark crease on every tile.
 	st.index()
@@ -446,40 +558,64 @@ static func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, ca: Color,
 static func _water_mesh() -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var y := -0.1
 	for row in DataDB.height:
 		for col in DataDB.width:
 			var ax := HexGrid.axial_from_offset(col, row)
 			var id := DataDB.terrain_id(ax.x, ax.y)
-			if not _water(id):
+			var wet := _water(id)
+			if not wet and not _touches_water(ax):
 				continue
 			var center := HexGrid.axial_to_pixel(ax.x, ax.y)
-			var lake := 0.0
-			if id == "lake":
-				lake = 1.0
-			var edge_shore: Array = []
-			for i in 6:
-				var nb: Vector2i = ax + HexGrid.DIRS[i]
-				var touch := 0.0
-				if DataDB.in_bounds(nb.x, nb.y) and not _water(DataDB.terrain_id(nb.x, nb.y)):
-					touch = 1.0
-				edge_shore.append(touch)
-			var shore_sum := 0.0
-			for i in 6:
-				shore_sum += float(edge_shore[i])
-			var center_shore := shore_sum / 6.0 * 0.28
-			if id == "lake":
-				center_shore = maxf(center_shore, 0.5)
-			var y := -0.02
-			var cp := Vector3(center.x, y, center.y)
-			var cc := Color(center_shore, lake, 0.0)
-			for i in 6:
-				var ang0 := deg_to_rad(60.0 * float(i) - 30.0)
-				var ang1 := deg_to_rad(60.0 * float(i + 1) - 30.0)
-				var a := Vector3(center.x + cos(ang0) * HexGrid.SIZE * 1.02, y, center.y + sin(ang0) * HexGrid.SIZE * 1.02)
-				var b := Vector3(center.x + cos(ang1) * HexGrid.SIZE * 1.02, y, center.y + sin(ang1) * HexGrid.SIZE * 1.02)
-				var s0 := maxf(float(edge_shore[(i + 5) % 6]), float(edge_shore[i]))
-				var s1 := maxf(float(edge_shore[i]), float(edge_shore[(i + 1) % 6]))
-				_tri(st, cp, a, b, cc, Color(s0, lake, 0.0), Color(s1, lake, 0.0), 0.0, 0.0, 0.0, center_shore)
+			var lake := 1.0 if id == "lake" else 0.0
+			# Open sea is a flat deep hex. Coasts and lakes are subdivided so the foam can follow the curved shore.
+			if wet and not _touches_land(ax):
+				var deep := Color(0.92, lake, 0.0)
+				var cp := Vector3(center.x, y, center.y)
+				for i in 6:
+					var ang0 := deg_to_rad(60.0 * float(i) - 30.0)
+					var ang1 := deg_to_rad(60.0 * float(i + 1) - 30.0)
+					var a := Vector3(center.x + cos(ang0) * HexGrid.SIZE * 1.01, y, center.y + sin(ang0) * HexGrid.SIZE * 1.01)
+					var b := Vector3(center.x + cos(ang1) * HexGrid.SIZE * 1.01, y, center.y + sin(ang1) * HexGrid.SIZE * 1.01)
+					_tri(st, cp, a, b, deep, deep, deep, 0.0, 0.0, 0.0, 0.0)
+				continue
+			var n_div := 3
+			for edge in 6:
+				var a0 := deg_to_rad(60.0 * float(edge) - 30.0)
+				var a1 := deg_to_rad(60.0 * float(edge + 1) - 30.0)
+				var off_a := Vector2(cos(a0), sin(a0)) * HexGrid.SIZE * 1.01
+				var off_b := Vector2(cos(a1), sin(a1)) * HexGrid.SIZE * 1.01
+				var pts: Array = []
+				var cols: Array = []
+				for s in n_div + 1:
+					var row_pts: Array = []
+					var row_cols: Array = []
+					var u := float(s) / float(n_div)
+					for k in s + 1:
+						var v := 0.0 if s == 0 else float(k) / float(s)
+						var p2: Vector2 = center + off_a.lerp(off_b, v) * u
+						var coast := _coast_field(p2)
+						row_pts.append(Vector3(p2.x, y, p2.y))
+						row_cols.append(Color(coast, lake, 0.0, 1.0))
+					pts.append(row_pts)
+					cols.append(row_cols)
+				for s in n_div:
+					for k in s + 1:
+						var c00: Color = cols[s][k]
+						var c10: Color = cols[s + 1][k]
+						var c11: Color = cols[s + 1][k + 1]
+						if maxf(c00.r, maxf(c10.r, c11.r)) < 0.3:
+							continue
+						var p00: Vector3 = pts[s][k]
+						var p10: Vector3 = pts[s + 1][k]
+						var p11: Vector3 = pts[s + 1][k + 1]
+						_tri(st, p00, p10, p11, c00, c10, c11, 0.0, 0.0, 0.0, 0.0)
+						if k < s:
+							var c01: Color = cols[s][k + 1]
+							if maxf(c00.r, maxf(c11.r, c01.r)) < 0.3:
+								continue
+							var p01: Vector3 = pts[s][k + 1]
+							_tri(st, p00, p11, p01, c00, c11, c01, 0.0, 0.0, 0.0, 0.0)
 	st.generate_normals()
 	return st.commit()
 
@@ -489,20 +625,7 @@ static func _ribbon_mesh(rivers: bool, heights: Dictionary, colors: Dictionary) 
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var seen := {}
 	if rivers:
-		for key_v in DataDB.river_masks.keys():
-			var key: Vector2i = key_v
-			var masks: Array = DataDB.river_masks[key]
-			for i in 6:
-				var bit := 1 << i
-				var great := (int(masks[1]) & bit) != 0
-				var minor := (int(masks[0]) & bit) != 0
-				if not great and not minor:
-					continue
-				var nb: Vector2i = key + HexGrid.DIRS[i]
-				var silt: float = 0.72 if great else 0.28
-				var width: float = 6.4 if great else 2.35
-				var bend: float = 2.1 if great else 0.85
-				_add_ribbon(st, key, nb, width, Color(0.22, 0.42, 0.52, silt), 0.08, heights, colors, bend)
+		_build_rivers(st)
 	else:
 		for row in DataDB.height:
 			for col in DataDB.width:
@@ -529,6 +652,130 @@ static func _ribbon_mesh(rivers: bool, heights: Dictionary, colors: Dictionary) 
 					_add_ribbon(st, ax, nb, 0.42, fc, 0.16, heights, colors)
 	st.generate_normals()
 	return st.commit()
+
+
+static func _corner_at(center: Vector2, i: int) -> Vector2:
+	var ang := deg_to_rad(60.0 * float(posmod(i, 6)) - 30.0)
+	var p := center + Vector2(cos(ang), sin(ang)) * HexGrid.SIZE
+	return Vector2(snapped(p.x, 0.05), snapped(p.y, 0.05))
+
+
+static func _edge_corners(ax: Vector2i, edge: int) -> Array:
+	var center := HexGrid.axial_to_pixel(ax.x, ax.y)
+	return [_corner_at(center, edge), _corner_at(center, edge + 1)]
+
+
+static func _build_rivers(st: SurfaceTool) -> void:
+	# One quad per hex edge, plus a disc at every shared corner so turns stay connected.
+	var edges: Array = []
+	var seen := {}
+	for key_v in DataDB.river_masks.keys():
+		var key: Vector2i = key_v
+		var masks: Array = DataDB.river_masks[key]
+		for i in 6:
+			var bit := 1 << i
+			var great := (int(masks[1]) & bit) != 0
+			var minor := (int(masks[0]) & bit) != 0
+			if not great and not minor:
+				continue
+			var nb: Vector2i = key + HexGrid.DIRS[i]
+			var mark := _edge_key(key, nb)
+			var mouth := Vector2.ZERO
+			var has_mouth := false
+			if DataDB.in_bounds(nb.x, nb.y) and _water(DataDB.terrain_id(nb.x, nb.y)):
+				has_mouth = true
+				mouth = HexGrid.axial_to_pixel(nb.x, nb.y)
+			if seen.has(mark):
+				var idx := int(seen[mark])
+				if great:
+					edges[idx]["wide"] = true
+				if has_mouth:
+					edges[idx]["has_mouth"] = true
+					edges[idx]["mouth"] = mouth
+				continue
+			seen[mark] = edges.size()
+			var corners := _edge_corners(key, i)
+			edges.append({
+				"a": corners[0],
+				"b": corners[1],
+				"wide": great,
+				"has_mouth": has_mouth,
+				"mouth": mouth,
+			})
+	var joints := {}
+	var wide_col := Color(0.24, 0.42, 0.52, 1.0)
+	var minor_col := Color(0.20, 0.36, 0.46, 1.0)
+	for e_v in edges:
+		var e: Dictionary = e_v
+		var half := 3.6 if bool(e.wide) else 1.65
+		var col := wide_col if bool(e.wide) else minor_col
+		var a: Vector2 = e.a
+		var b: Vector2 = e.b
+		var span := b - a
+		if span.length() > 0.2:
+			var dir := span / span.length()
+			a -= dir * 1.6
+			b += dir * 1.6
+		_river_segment(st, a, b, half, col)
+		_joint_widen(joints, a, half)
+		_joint_widen(joints, b, half)
+		if bool(e.has_mouth):
+			var mid: Vector2 = (a + b) * 0.5
+			var dest: Vector2 = mid.lerp(e.mouth, 0.78)
+			_river_segment(st, mid, dest, half, col)
+			_joint_widen(joints, mid, half)
+	for j_v in joints.values():
+		var j: Dictionary = j_v
+		_river_joint(st, j.p, float(j.w), wide_col)
+
+
+static func _joint_widen(joints: Dictionary, p: Vector2, half: float) -> void:
+	var key := "%d,%d" % [int(round(p.x * 20.0)), int(round(p.y * 20.0))]
+	if not joints.has(key):
+		joints[key] = {"p": p, "w": half}
+		return
+	var j: Dictionary = joints[key]
+	j["w"] = maxf(float(j.w), half)
+
+
+static func _river_segment(st: SurfaceTool, a: Vector2, b: Vector2, half: float, col: Color) -> void:
+	var delta := b - a
+	var length := delta.length()
+	if length < 0.05:
+		return
+	var n := delta / length
+	var side := Vector2(-n.y, n.x)
+	var steps := 4
+	var left: Array = []
+	var right: Array = []
+	for s in steps + 1:
+		var t := float(s) / float(steps)
+		var p: Vector2 = a.lerp(b, t)
+		# One height for the whole cross-section, taken on the centreline, so the
+		# sheet stays in the flat bottom of the bed.
+		var h := _surface_height(p) + 0.1
+		left.append(Vector3((p + side * half).x, h, (p + side * half).y))
+		right.append(Vector3((p - side * half).x, h, (p - side * half).y))
+	for s in steps:
+		var u0 := float(s)
+		var u1 := float(s + 1)
+		_tri_uv(st, left[s], left[s + 1], right[s + 1], col, Vector2(u0, 0.0), Vector2(u1, 0.0), Vector2(u1, 1.0))
+		_tri_uv(st, left[s], right[s + 1], right[s], col, Vector2(u0, 0.0), Vector2(u1, 1.0), Vector2(u0, 1.0))
+
+
+static func _river_joint(st: SurfaceTool, p: Vector2, half: float, col: Color) -> void:
+	var h := _surface_height(p) + 0.1
+	var c := Vector3(p.x, h, p.y)
+	var n := 8
+	var rim: Array = []
+	for i in n:
+		var ang := deg_to_rad(float(i) * 360.0 / float(n))
+		var q := Vector2(p.x + cos(ang) * half, p.y + sin(ang) * half)
+		rim.append(Vector3(q.x, h, q.y))
+	for i in n:
+		var a: Vector3 = rim[i]
+		var b: Vector3 = rim[(i + 1) % n]
+		_tri_uv(st, c, a, b, col, Vector2(0.0, 0.5), Vector2(1.0, 0.0), Vector2(1.0, 1.0))
 
 
 static func _edge_key(a: Vector2i, b: Vector2i) -> String:
@@ -562,7 +809,7 @@ static func _add_ribbon(st: SurfaceTool, a: Vector2i, b: Vector2i, width: float,
 	var corners := [q0 - side2, q1 - side2, q1 + side2, q0 + side2]
 	var pts: Array[Vector3] = []
 	for q in corners:
-		pts.append(Vector3(q.x, _world_height(q) + lift, q.y))
+		pts.append(Vector3(q.x, _surface_height(q) + lift, q.y))
 	_tri_uv(st, pts[0], pts[1], pts[2], color, Vector2(0, 0), Vector2(1, 0), Vector2(1, 1))
 	_tri_uv(st, pts[0], pts[2], pts[3], color, Vector2(0, 0), Vector2(1, 1), Vector2(0, 1))
 
@@ -637,7 +884,9 @@ static func _tree_lists(heights: Dictionary) -> Dictionary:
 				elif id == "desert":
 					tint = Color("c4b48c")
 				elif id == "rice":
-					tint = Color("6a7d50")
+					tint = Color("3f7a44")
+				elif id == "plain" and _hex_has_river(ax):
+					tint = Color("4a7344")
 				tufts.append({"t": Transform3D(Basis(Vector3.UP, ang2).scaled(Vector3(s2, s2, s2)), p2), "color": tint})
 			var rock_n := 0
 			if id == "mountain" or id == "alpine":

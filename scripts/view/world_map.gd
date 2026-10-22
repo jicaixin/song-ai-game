@@ -384,6 +384,9 @@ func _bake_mesh(mi: MeshInstance3D, xf: Transform3D, st: SurfaceTool) -> Vector3
 	var hi := 0.0
 	var nverts := 0
 	var normal_xf := xf.basis.inverse().transposed()
+	# The hex plate is a separate green tile. Fields and roads live on other nodes.
+	if str(mi.name).begins_with("hex_ground"):
+		return Vector3.ZERO
 	for s in mesh.get_surface_count():
 		var arrays: Array = mesh.surface_get_arrays(s)
 		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
