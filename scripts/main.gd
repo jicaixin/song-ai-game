@@ -30,7 +30,10 @@ func _ready() -> void:
 	ui = GameUI.new()
 	ui.name = "UI"
 	layer.add_child(ui)
+	# Node3D and CanvasLayer do not follow a Node2D parent's visible flag.
 	game_root.visible = false
+	world.visible = false
+	layer.visible = false
 	ready_flag = true
 	if OS.get_cmdline_user_args().has("--test"):
 		var runner = load("res://tests/test_core.gd").new()
@@ -58,6 +61,10 @@ func _on_continue() -> void:
 func _enter_game() -> void:
 	title_layer.visible = false
 	game_root.visible = true
+	world.visible = true
+	var layer := game_root.get_node("UI") as CanvasLayer
+	if layer:
+		layer.visible = true
 	world.full_refresh()
 	title.refresh_continue()
 
@@ -68,7 +75,7 @@ func _process(_delta: float) -> void:
 	if Engine.get_process_frames() % 8 != 0:
 		return
 	var screen := "title"
-	if game_root.visible and not title_layer.visible:
+	if world.visible and not title_layer.visible:
 		screen = "game"
 	var reachable: Array = []
 	var reach_px: Array = []

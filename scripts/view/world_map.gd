@@ -1,19 +1,15 @@
 class_name WorldMap
-extends Node2D
+extends Node3D
 
-const ZOOMS: Array[float] = [0.5, 1.0, 2.0]
+const DIST := [96.0, 54.0, 30.0]
+const PITCH := [58.0, 44.0, 30.0]
 const VIEW_ANCHOR := Vector2(244, 163)
 
-var camera: Camera2D
-var terrain_layer: Node2D
-var highlight_layer: Node2D
-var bar_layer: Node2D
-var city_layer: Node2D
-var unit_layer: Node2D
-var sprites := {}
+var camera: Camera3D
+var zoom_index := 1
+var look_xz := Vector2.ZERO
 var hover := Vector2i.ZERO
 var hover_ok := false
-var zoom_index := 1
 var reach_cost := {}
 var reach_parent := {}
 var dragging := false
@@ -24,41 +20,155 @@ var debug_clicks: Array = []
 var animating := false
 var suspend := 0
 var map_rect := Rect2()
-var _corners := PackedVector2Array()
+var heights := {}
+var sprites := {}
+var banners: Array[Node3D] = []
+var _overlay: MeshInstance3D
+var _focus_applied := ""
+var _unit_kinds := {}
+var _house: ArrayMesh
+var _pagoda: ArrayMesh
 
 func _ready() -> void:
-	_corners = HexGrid.corners()
-	var layer_script := load("res://scripts/view/map_layer.gd")
-	terrain_layer = _layer(layer_script, "terrain")
-	highlight_layer = _layer(layer_script, "highlight")
-	city_layer = Node2D.new()
-	city_layer.name = "Cities"
-	city_layer.z_index = 3
-	add_child(city_layer)
-	unit_layer = Node2D.new()
-	unit_layer.name = "Units"
-	unit_layer.z_index = 4
-	add_child(unit_layer)
-	bar_layer = _layer(layer_script, "bars")
-	bar_layer.z_index = 5
-	camera = Camera2D.new()
-	camera.name = "Camera2D"
-	camera.enabled = true
-	add_child(camera)
-	camera.make_current()
+	var built: Dictionary = TerrainFactory.build()
+	heights = built.heights
+	_add_mesh("Land", built.land, _land_mat(), true)
+	_add_mesh("Water", built.water, _water_mat(), false)
+	_add_mesh("Rivers", built.rivers, _river_mat(), false)
+	_add_mesh("Borders", built.borders, _glow_mat(), false)
+	_add_trees(built)
+	_house = TerrainFactory.house_mesh()
+	_pagoda = TerrainFactory.pagoda_mesh()
 	_build_cities()
+	_overlay = MeshInstance3D.new()
+	_overlay.name = "Overlay"
+	_overlay.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_overlay)
+	_unit_kinds = {
+		"infantry": TerrainFactory.unit_mesh("infantry"),
+		"archer": TerrainFactory.unit_mesh("archer"),
+		"cavalry": TerrainFactory.unit_mesh("cavalry"),
+		"heavy": TerrainFactory.unit_mesh("heavy"),
+	}
+	camera = Camera3D.new()
+	camera.name = "Camera3D"
+	camera.fov = 42.0
+	camera.near = 0.2
+	camera.far = 480.0
+	add_child(camera)
+	camera.current = true
+	_lighting()
 	_measure()
 	EventBus.state_changed.connect(_on_state)
 	focus_city(str(DataDB.scenario.get("focus_city", "yanzhou")))
+	_rebuild_units()
 
 
-func _layer(script: Script, k: String) -> Node2D:
-	var n := Node2D.new()
-	n.set_script(script)
-	n.set("kind", k)
-	n.name = k
-	add_child(n)
-	return n
+func get_viewport_rect() -> Rect2:
+	return get_viewport().get_visible_rect()
+
+
+func _add_mesh(node_name: String, mesh: ArrayMesh, mat: Material, shadows: bool) -> void:
+	var inst := MeshInstance3D.new()
+	inst.name = node_name
+	inst.mesh = mesh
+	inst.material_override = mat
+	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(inst)
+
+
+func _land_mat() -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/land.gdshader")
+	mat.set_shader_parameter("grain_tex", load("res://art/terrain/grain.png"))
+	return mat
+
+
+func _water_mat() -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/water.gdshader")
+	return mat
+
+
+func _glow_mat() -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/glow.gdshader")
+	return mat
+
+
+func _river_mat() -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/river.gdshader")
+	return mat
+
+
+func _add_trees(built: Dictionary) -> void:
+	_scatter("Pines", built.pines, built.pine_trunk, built.pine_leaf)
+	_scatter("Broads", built.broads, built.broad_trunk, built.broad_leaf)
+
+
+func _scatter(node_name: String, items: Array, trunk: Mesh, leaf: Mesh) -> void:
+	if items.is_empty():
+		return
+	for part in [["Trunk", trunk, "trunk"], ["Leaf", leaf, "leaf"]]:
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
+		mm.mesh = part[1]
+		mm.instance_count = items.size()
+		for i in items.size():
+			var item: Dictionary = items[i]
+			mm.set_instance_transform(i, item.t)
+			mm.set_instance_color(i, item[part[2]])
+		var inst := MultiMeshInstance3D.new()
+		inst.name = node_name + str(part[0])
+		inst.multimesh = mm
+		inst.material_override = _toon(Color.WHITE)
+		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		add_child(inst)
+
+
+func _toon(color: Color) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/toon.gdshader")
+	mat.set_shader_parameter("albedo", color)
+	return mat
+
+
+func _lighting() -> void:
+	var sun := DirectionalLight3D.new()
+	sun.name = "Sun"
+	sun.rotation_degrees = Vector3(-50, -32, 0)
+	sun.light_color = Color("ffe6c2")
+	sun.light_energy = 1.02
+	sun.shadow_enabled = true
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	sun.directional_shadow_max_distance = 220.0
+	sun.shadow_bias = 0.05
+	sun.shadow_normal_bias = 0.85
+	add_child(sun)
+	var fill := DirectionalLight3D.new()
+	fill.rotation_degrees = Vector3(-24, 148, 0)
+	fill.light_color = Color("b9cfe6")
+	fill.light_energy = 0.16
+	fill.shadow_enabled = false
+	add_child(fill)
+	var env := Environment.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color("8eb8d6")
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color("d7e4f0")
+	env.ambient_light_energy = 0.28
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.tonemap_exposure = 0.9
+	env.fog_enabled = true
+	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
+	env.fog_density = 0.0014
+	env.fog_light_color = Color("b7cfe2")
+	env.fog_aerial_perspective = 0.12
+	var we := WorldEnvironment.new()
+	we.environment = env
+	add_child(we)
 
 
 func _measure() -> void:
@@ -70,23 +180,68 @@ func _measure() -> void:
 			var p := HexGrid.axial_to_pixel(ax.x, ax.y)
 			min_p = min_p.min(p)
 			max_p = max_p.max(p)
-	map_rect = Rect2(min_p - Vector2(80, 80), (max_p - min_p) + Vector2(160, 160))
+	map_rect = Rect2(min_p - Vector2(40, 40), (max_p - min_p) + Vector2(80, 80))
 
 
 func _build_cities() -> void:
 	for c_v in DataDB.cities:
 		var city: Dictionary = c_v
-		var label := Label.new()
-		label.text = str(city.get("short", city.get("name", "")))
-		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		label.position = HexGrid.axial_to_pixel(int(city.q), int(city.r)) + Vector2(-24, -30)
-		label.size = Vector2(48, 16)
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		label.add_theme_color_override("font_color", Color("f4ead2"))
-		label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-		label.add_theme_constant_override("outline_size", 2)
-		city_layer.add_child(label)
+		var ax := Vector2i(int(city.q), int(city.r))
+		var px := HexGrid.axial_to_pixel(ax.x, ax.y)
+		var root := Node3D.new()
+		root.name = str(city.get("id", "city"))
+		root.position = Vector3(px.x, _height_of(ax), px.y)
+		var pop := int(city.get("pop", 1))
+		var count := clampi(1 + pop / 3, 1, 4)
+		for i in count:
+			var house := MeshInstance3D.new()
+			house.mesh = _house
+			house.material_override = _toon(Color.WHITE)
+			var ang := float(i) * 1.7
+			house.position = Vector3(cos(ang) * 2.4, 0, sin(ang) * 2.4)
+			house.rotation.y = ang
+			var s := 0.85 + float(pop) * 0.04
+			house.scale = Vector3(s, s, s)
+			root.add_child(house)
+		if bool(city.get("major", false)) or bool(city.get("capital", false)):
+			var pagoda := MeshInstance3D.new()
+			pagoda.mesh = _pagoda
+			pagoda.material_override = _toon(Color.WHITE)
+			pagoda.position = Vector3(0, 0, 0)
+			root.add_child(pagoda)
+		var fc := DataDB.color_of(str(DataDB.faction(str(city.get("faction", ""))).get("color", "ffffff")))
+		var quad := MeshInstance3D.new()
+		var qm := QuadMesh.new()
+		qm.size = Vector2(6.4, 1.5)
+		quad.mesh = qm
+		var qmat := StandardMaterial3D.new()
+		qmat.albedo_color = fc
+		qmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		qmat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		quad.material_override = qmat
+		quad.position = Vector3(0, 4.2, 0)
+		root.add_child(quad)
+		var lab := Label3D.new()
+		lab.text = "%s  %d" % [str(city.get("short", city.get("name", ""))), pop]
+		lab.font = Settings.font
+		lab.font_size = 28
+		lab.pixel_size = 0.038
+		lab.position = Vector3(0, 4.25, 0.05)
+		lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		lab.modulate = Color("f7f1e4")
+		lab.outline_modulate = Color(0.05, 0.08, 0.1)
+		lab.outline_size = 6
+		lab.no_depth_test = true
+		root.add_child(lab)
+		var pri := 1
+		if bool(city.get("major", false)):
+			pri = 2
+		if bool(city.get("capital", false)):
+			pri = 3
+		root.set_meta("pri", pri)
+		root.set_meta("banner", true)
+		add_child(root)
+		banners.append(root)
 
 
 func _on_state() -> void:
@@ -98,8 +253,7 @@ func _on_state() -> void:
 func full_refresh() -> void:
 	_rebuild_units()
 	recompute_reach()
-	highlight_layer.queue_redraw()
-	bar_layer.queue_redraw()
+	_refresh_overlay()
 
 
 func recompute_reach() -> void:
@@ -113,42 +267,105 @@ func recompute_reach() -> void:
 	reach_parent = info.get("parent", {})
 
 
+func _kind_for(sprite_id: String) -> String:
+	if sprite_id.find("archer") >= 0:
+		return "archer"
+	if sprite_id.find("tieyaozi") >= 0:
+		return "heavy"
+	if sprite_id.find("tribal") >= 0 or sprite_id.find("pishi") >= 0:
+		return "cavalry"
+	return "infantry"
+
+
+func _cloth(faction: String) -> Color:
+	if faction == "xia":
+		return Color("a3483c")
+	if faction == "liao":
+		return Color("d2b15c")
+	return Color("efe2c0")
+
+
 func _rebuild_units() -> void:
-	for c in unit_layer.get_children():
-		c.queue_free()
+	for id in sprites.keys():
+		var n: Node = sprites[id]
+		if is_instance_valid(n):
+			n.queue_free()
 	sprites.clear()
 	for u_v in GameState.units:
 		var u: Dictionary = u_v
 		if int(u.hp) <= 0:
 			continue
 		var spec := DataDB.unit_type(str(u.def_id))
-		var sprite := Sprite2D.new()
-		sprite.texture = ArtBank.unit_tex(str(spec.get("sprite", "")))
-		sprite.centered = true
-		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		sprite.position = HexGrid.axial_to_pixel(int(u.q), int(u.r))
-		if int(u.uid) == GameState.selected_uid:
-			sprite.modulate = Color(1.25, 1.15, 0.75)
-		elif str(u.faction) == "song" and int(u.mp) <= 0:
-			sprite.modulate = Color(0.72, 0.72, 0.72)
-		unit_layer.add_child(sprite)
-		sprites[int(u.uid)] = sprite
+		var kind := _kind_for(str(spec.get("sprite", "")))
+		var root := Node3D.new()
+		var body := MeshInstance3D.new()
+		body.mesh = _unit_kinds[kind]
+		body.material_override = _toon(_cloth(str(u.faction)))
+		root.add_child(body)
+		var pole := MeshInstance3D.new()
+		var pm := BoxMesh.new()
+		pm.size = Vector3(0.06, 1.6, 0.06)
+		pole.mesh = pm
+		pole.position = Vector3(-0.35, 2.6, 0)
+		pole.material_override = _toon(Color("5a4632"))
+		root.add_child(pole)
+		var flag := MeshInstance3D.new()
+		var fm := QuadMesh.new()
+		fm.size = Vector2(0.7, 0.46)
+		flag.mesh = fm
+		var fmat := StandardMaterial3D.new()
+		fmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		fmat.albedo_color = DataDB.color_of(str(DataDB.faction(str(u.faction)).get("color", "ffffff")))
+		fmat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		flag.material_override = fmat
+		flag.position = Vector3(0.05, 3.15, 0)
+		root.add_child(flag)
+		var ax := Vector2i(int(u.q), int(u.r))
+		root.position = _unit_pos(ax)
+		add_child(root)
+		sprites[int(u.uid)] = root
+
+
+func _unit_pos(ax: Vector2i) -> Vector3:
+	var p := HexGrid.axial_to_pixel(ax.x, ax.y)
+	return Vector3(p.x, _height_of(ax) + 0.05, p.y)
+
+
+func _height_of(ax: Vector2i) -> float:
+	if heights.has(ax):
+		return float(heights[ax])
+	return 0.4
 
 
 func animate_move(uid: int, path: Array) -> void:
-	var sprite: Sprite2D = sprites.get(uid, null)
-	if sprite == null:
-		bar_layer.queue_redraw()
+	var node: Node3D = sprites.get(uid, null)
+	if node == null:
 		return
 	animating = true
 	for h_v in path:
 		var h: Vector2i = h_v
+		var dest := _unit_pos(h)
+		var mid := node.position.lerp(dest, 0.5) + Vector3(0, 1.4, 0)
 		var tw := create_tween()
-		tw.tween_property(sprite, "position", HexGrid.axial_to_pixel(h.x, h.y), 0.12)
+		tw.tween_property(node, "position", mid, 0.09)
+		tw.tween_property(node, "position", dest, 0.1)
 		await tw.finished
 	animating = false
-	bar_layer.queue_redraw()
-	highlight_layer.queue_redraw()
+	_refresh_overlay()
+
+
+func animate_strike(uid: int, target: Vector2i) -> void:
+	var node: Node3D = sprites.get(uid, null)
+	if node == null:
+		return
+	var home := node.position
+	var dest := _unit_pos(target)
+	var lunge := home.lerp(dest, 0.28)
+	lunge.y = maxf(home.y, dest.y) + 0.4
+	var tw := create_tween()
+	tw.tween_property(node, "position", lunge, 0.12)
+	tw.tween_property(node, "position", home, 0.16)
+	await tw.finished
 
 
 func focus_city(id: String) -> void:
@@ -159,26 +376,75 @@ func focus_city(id: String) -> void:
 
 
 func focus_world(world: Vector2) -> void:
-	var screen_c := get_viewport_rect().size * 0.5
-	camera.position = world - (VIEW_ANCHOR - screen_c) / camera.zoom
-	_clamp_camera()
+	look_xz = world
+	_place_camera()
+	_seat_anchor(world)
 
 
-func _screen_center() -> Vector2:
-	return get_viewport_rect().size * 0.5
+func _place_camera() -> void:
+	var dist: float = DIST[zoom_index]
+	var pitch: float = deg_to_rad(PITCH[zoom_index])
+	var yaw := deg_to_rad(12.0)
+	var offset := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch)) * dist
+	var focus := Vector3(look_xz.x, 0.6, look_xz.y)
+	camera.position = focus + offset
+	camera.look_at(focus, Vector3.UP)
+
+
+func _seat_anchor(world: Vector2) -> void:
+	for _i in 8:
+		_place_camera()
+		var screen := world_to_screen(world)
+		var err := VIEW_ANCHOR - screen
+		if err.length() < 1.2:
+			return
+		var right := camera.global_transform.basis.x
+		var fwd := -camera.global_transform.basis.z
+		right.y = 0.0
+		fwd.y = 0.0
+		if right.length() < 0.001 or fwd.length() < 0.001:
+			return
+		right = right.normalized()
+		fwd = fwd.normalized()
+		var scale: float = DIST[zoom_index] / 320.0
+		look_xz += Vector2(right.x, right.z) * (-err.x) * scale
+		look_xz += Vector2(fwd.x, fwd.z) * err.y * scale
+	_place_camera()
 
 
 func world_to_screen(world: Vector2) -> Vector2:
-	return (world - camera.position) * camera.zoom + _screen_center()
+	var h := HexGrid.pixel_to_axial(world)
+	var y := _height_of(h)
+	return camera.unproject_position(Vector3(world.x, y, world.y))
 
 
 func screen_to_world(screen: Vector2) -> Vector2:
-	return camera.position + (screen - _screen_center()) / camera.zoom
+	var origin := camera.project_ray_origin(screen)
+	var dir := camera.project_ray_normal(screen)
+	if absf(dir.y) < 0.0001:
+		return Vector2(origin.x, origin.z)
+	var hit := origin
+	for _i in 3:
+		var t := (0.5 - origin.y) / dir.y
+		hit = origin + dir * t
+		var y := _height_of(HexGrid.pixel_to_axial(Vector2(hit.x, hit.z)))
+		t = (y - origin.y) / dir.y
+		hit = origin + dir * t
+	return Vector2(hit.x, hit.z)
 
 
-func _clamp_camera() -> void:
-	camera.position.x = clampf(camera.position.x, map_rect.position.x, map_rect.end.x)
-	camera.position.y = clampf(camera.position.y, map_rect.position.y, map_rect.end.y)
+func _clamp_look() -> void:
+	look_xz.x = clampf(look_xz.x, map_rect.position.x, map_rect.end.x)
+	look_xz.y = clampf(look_xz.y, map_rect.position.y, map_rect.end.y)
+
+
+func focus_after_load() -> void:
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		if str(u.faction) == "song":
+			focus_world(HexGrid.axial_to_pixel(int(u.q), int(u.r)))
+			return
+	focus_city("yanzhou")
 
 
 func _playing() -> bool:
@@ -193,6 +459,9 @@ func _modal() -> bool:
 
 
 func _process(delta: float) -> void:
+	_poll_focus()
+	if Engine.get_process_frames() % 12 == 0:
+		_cull_banners()
 	if not _playing():
 		return
 	var dir := Vector2.ZERO
@@ -204,9 +473,35 @@ func _process(delta: float) -> void:
 		dir.y -= 1
 	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
 		dir.y += 1
-	if dir != Vector2.ZERO:
-		camera.position += dir.normalized() * 280.0 * delta / camera.zoom.x
-		_clamp_camera()
+	if dir != Vector2.ZERO and camera != null:
+		var right := camera.global_transform.basis.x
+		var fwd := -camera.global_transform.basis.z
+		right.y = 0.0
+		fwd.y = 0.0
+		var step: Vector2 = dir.normalized() * (42.0 * delta * float(DIST[zoom_index]) / 54.0)
+		look_xz += Vector2(right.x, right.z) * step.x + Vector2(fwd.x, fwd.z) * step.y
+		_clamp_look()
+		_place_camera()
+
+
+func _poll_focus() -> void:
+	if not OS.has_feature("web"):
+		return
+	var raw = JavaScriptBridge.eval("window.__focusCity || ''")
+	if not (raw is String):
+		return
+	var text := str(raw)
+	if text == "" or text == _focus_applied:
+		return
+	_focus_applied = text
+	var bits := text.split(",")
+	if bits.size() > 1:
+		zoom_index = clampi(int(bits[1]), 0, DIST.size() - 1)
+	if bits[0].contains(":"):
+		var qr := bits[0].split(":")
+		focus_world(HexGrid.axial_to_pixel(int(qr[0]), int(qr[1])))
+	else:
+		focus_city(bits[0])
 
 
 func _note_click(mb: InputEventMouseButton) -> void:
@@ -220,19 +515,32 @@ func _note_click(mb: InputEventMouseButton) -> void:
 		debug_clicks.pop_front()
 
 
+func _blocked(screen: Vector2) -> bool:
+	if screen.y < 28.0:
+		return true
+	if screen.x < 220.0 and screen.y < 112.0:
+		return true
+	if screen.y > 286.0 and screen.x < 520.0:
+		return true
+	if screen.x > 536.0 and screen.y > 236.0:
+		return true
+	return false
+
+
 func _unhandled_input(event: InputEvent) -> void:
-	if not _playing():
+	if not _playing() or not visible:
 		return
 	if event is InputEventMouseMotion:
 		var mot := event as InputEventMouseMotion
-		# A middle press that does not drag issues the same order as a right
-		# click. Dragging pans the map.
 		if order_press and not order_moved and mot.relative.length() >= 5.0:
 			order_moved = true
 			dragging = true
 		if dragging:
-			camera.position -= mot.relative / camera.zoom
-			_clamp_camera()
+			var before := screen_to_world(mot.position - mot.relative)
+			var after := screen_to_world(mot.position)
+			look_xz += before - after
+			_clamp_look()
+			_place_camera()
 		_update_hover(mot.position)
 		return
 	if event is InputEventMouseButton and event.pressed:
@@ -287,7 +595,7 @@ func _key(event: InputEventKey) -> void:
 			GameState.selected_uid = -1
 			GameState.inspected_uid = -1
 			recompute_reach()
-			highlight_layer.queue_redraw()
+			_refresh_overlay()
 			EventBus.state_changed.emit()
 		return
 	if _modal() or GameState.input_locked:
@@ -326,19 +634,21 @@ func _cycle_unit() -> void:
 
 func _zoom_at(screen: Vector2, step: int) -> void:
 	var before := screen_to_world(screen)
-	zoom_index = clampi(zoom_index + step, 0, ZOOMS.size() - 1)
-	camera.zoom = Vector2.ONE * ZOOMS[zoom_index]
+	zoom_index = clampi(zoom_index + step, 0, DIST.size() - 1)
+	_place_camera()
 	var after := screen_to_world(screen)
-	camera.position += before - after
-	_clamp_camera()
+	look_xz += before - after
+	_clamp_look()
+	_place_camera()
 	_update_hover(screen)
+	_cull_banners()
 
 
 func _update_hover(screen: Vector2) -> void:
-	if screen.x > 488.0 or screen.y < 24.0 or screen.y > 300.0:
+	if _blocked(screen):
 		if hover_ok:
 			hover_ok = false
-			highlight_layer.queue_redraw()
+			_refresh_overlay()
 		return
 	var world := screen_to_world(screen)
 	var h := HexGrid.pixel_to_axial(world)
@@ -346,7 +656,7 @@ func _update_hover(screen: Vector2) -> void:
 	if ok != hover_ok or h != hover:
 		hover = h
 		hover_ok = ok
-		highlight_layer.queue_redraw()
+		_refresh_overlay()
 
 
 func _left_click(screen: Vector2) -> void:
@@ -445,7 +755,7 @@ func _move_to(u: Dictionary, dest: Vector2i) -> void:
 
 
 func _hex_at(screen: Vector2) -> Vector2i:
-	if screen.x > 488.0 or screen.y < 24.0 or screen.y > 300.0:
+	if _blocked(screen):
 		return Vector2i(999999, 0)
 	var h := HexGrid.pixel_to_axial(screen_to_world(screen))
 	if not DataDB.in_bounds(h.x, h.y):
@@ -453,77 +763,15 @@ func _hex_at(screen: Vector2) -> Vector2i:
 	return h
 
 
-func focus_after_load() -> void:
-	for u_v in GameState.units:
-		var u: Dictionary = u_v
-		if str(u.faction) == "song":
-			focus_world(HexGrid.axial_to_pixel(int(u.q), int(u.r)))
-			return
-	focus_city("yanzhou")
-
-
-func paint_terrain(c: CanvasItem) -> void:
-	for row in DataDB.height:
-		for col in DataDB.width:
-			var ax := HexGrid.axial_from_offset(col, row)
-			var center := HexGrid.axial_to_pixel(ax.x, ax.y)
-			var tid := DataDB.terrain_id(ax.x, ax.y)
-			var terr := DataDB.terrain(tid)
-			var color := DataDB.color_of(str(terr.get("color", "888888")))
-			var owner := DataDB.owner_id(ax.x, ax.y)
-			if owner != "" and tid != "sea" and tid != "lake":
-				var fc := DataDB.color_of(str(DataDB.faction(owner).get("color", "ffffff")))
-				color = color.lerp(fc, 0.33)
-			if not DataDB.city_at_hex(ax.x, ax.y).is_empty():
-				color = color.lightened(0.14)
-			var pts := PackedVector2Array()
-			for corner in _corners:
-				pts.append(center + corner)
-			c.draw_colored_polygon(pts, color)
-			for i in HexGrid.DIRS.size():
-				var nb: Vector2i = ax + HexGrid.DIRS[i]
-				var o2 := ""
-				if DataDB.in_bounds(nb.x, nb.y):
-					o2 = DataDB.owner_id(nb.x, nb.y)
-				if o2 == owner:
-					continue
-				if nb.x < ax.x or (nb.x == ax.x and nb.y < ax.y):
-					continue
-				var seg := _edge(center, HexGrid.axial_to_pixel(nb.x, nb.y))
-				var border := Color(0.1, 0.08, 0.06, 0.85)
-				if owner != "":
-					border = DataDB.color_of(str(DataDB.faction(owner).get("color", "241c16"))).darkened(0.2)
-				c.draw_line(seg[0], seg[1], border, 2.0)
-	for key_v in DataDB.river_masks.keys():
-		var key: Vector2i = key_v
-		var masks: Array = DataDB.river_masks[key]
-		var center := HexGrid.axial_to_pixel(key.x, key.y)
-		for i in 6:
-			var bit := 1 << i
-			var great := (int(masks[1]) & bit) != 0
-			var minor := (int(masks[0]) & bit) != 0
-			if not great and not minor:
-				continue
-			var nb: Vector2i = key + HexGrid.DIRS[i]
-			var seg := _edge(center, HexGrid.axial_to_pixel(nb.x, nb.y))
-			if great:
-				c.draw_line(seg[0], seg[1], Color("1a4f78"), 3.2)
-			else:
-				c.draw_line(seg[0], seg[1], Color("3d88b8"), 1.7)
-	for key_v in DataDB.feature_hexes.keys():
-		var key: Vector2i = key_v
-		var center := HexGrid.axial_to_pixel(key.x, key.y)
-		c.draw_circle(center + Vector2(0, 10), 2.4, Color("f0d060"))
-
-
-func paint_highlight(c: CanvasItem) -> void:
-	var reach_col := Color(0.18, 0.45, 0.36, 0.38)
+func _refresh_overlay() -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var reach_col := Color(0.25, 0.72, 0.48, 0.42)
 	for h_v in reach_cost.keys():
-		var h: Vector2i = h_v
-		_fill_hex(c, h, reach_col)
+		_fill_hex(st, h_v, reach_col)
 	var u := GameState.selected_unit()
 	if not u.is_empty():
-		_stroke_hex(c, Vector2i(int(u.q), int(u.r)), Color("f0d060"), 2.4)
+		_stroke_hex(st, Vector2i(int(u.q), int(u.r)), Color("f0d060"), 0.28)
 		var spec := DataDB.unit_type(str(u.def_id))
 		var max_range := int(spec.get("range", 0)) if int(spec.get("ranged", 0)) > 0 else 1
 		if int(u.mp) > 0:
@@ -533,59 +781,95 @@ func paint_highlight(c: CanvasItem) -> void:
 					continue
 				var dist := HexGrid.distance(Vector2i(int(u.q), int(u.r)), Vector2i(int(other.q), int(other.r)))
 				if dist >= 1 and dist <= max_range:
-					_stroke_hex(c, Vector2i(int(other.q), int(other.r)), Color("a33b2b"), 2.2)
-	if hover_ok and reach_cost.has(hover):
-		var start := Vector2i(int(u.q), int(u.r)) if not u.is_empty() else hover
-		var path := Pathfinder.reconstruct(reach_parent, start, hover)
-		var prev := start
-		for step in path:
-			c.draw_line(HexGrid.axial_to_pixel(prev.x, prev.y), HexGrid.axial_to_pixel(step.x, step.y), Color("f4ead2"), 1.5)
-			prev = step
+					_stroke_hex(st, Vector2i(int(other.q), int(other.r)), Color("c44a3a"), 0.26)
 	if hover_ok:
-		_stroke_hex(c, hover, Color(1, 1, 1, 0.9), 1.4)
+		_stroke_hex(st, hover, Color(1, 1, 1, 0.85), 0.16)
+	st.generate_normals()
+	_overlay.mesh = st.commit()
+	var mat := StandardMaterial3D.new()
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.vertex_color_use_as_albedo = true
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	_overlay.material_override = mat
 
 
-func paint_bars(c: CanvasItem) -> void:
-	for u_v in GameState.units:
-		var u: Dictionary = u_v
-		if int(u.hp) <= 0:
+func _fill_hex(st: SurfaceTool, h: Vector2i, color: Color) -> void:
+	var center := HexGrid.axial_to_pixel(h.x, h.y)
+	var y := _height_of(h) + 0.18
+	var cp := Vector3(center.x, y, center.y)
+	for i in 6:
+		var a0 := deg_to_rad(60.0 * float(i) - 30.0)
+		var a1 := deg_to_rad(60.0 * float(i + 1) - 30.0)
+		var p0 := Vector3(center.x + cos(a0) * HexGrid.SIZE * 0.92, y, center.y + sin(a0) * HexGrid.SIZE * 0.92)
+		var p1 := Vector3(center.x + cos(a1) * HexGrid.SIZE * 0.92, y, center.y + sin(a1) * HexGrid.SIZE * 0.92)
+		st.set_color(color)
+		st.add_vertex(cp)
+		st.set_color(color)
+		st.add_vertex(p0)
+		st.set_color(color)
+		st.add_vertex(p1)
+
+
+func _stroke_hex(st: SurfaceTool, h: Vector2i, color: Color, width: float) -> void:
+	var center := HexGrid.axial_to_pixel(h.x, h.y)
+	var y := _height_of(h) + 0.28
+	for i in 6:
+		var a0 := deg_to_rad(60.0 * float(i) - 30.0)
+		var a1 := deg_to_rad(60.0 * float(i + 1) - 30.0)
+		var p0 := Vector3(center.x + cos(a0) * HexGrid.SIZE, y, center.y + sin(a0) * HexGrid.SIZE)
+		var p1 := Vector3(center.x + cos(a1) * HexGrid.SIZE, y, center.y + sin(a1) * HexGrid.SIZE)
+		var dir := (p1 - p0)
+		if dir.length() < 0.001:
 			continue
-		var p := HexGrid.axial_to_pixel(int(u.q), int(u.r))
-		if animating and sprites.has(int(u.uid)):
-			p = (sprites[int(u.uid)] as Sprite2D).position
-		c.draw_rect(Rect2(p.x - 10, p.y + 12, 20, 3), Color(0, 0, 0, 0.7), true)
-		var w := 20.0 * clampf(float(int(u.hp)) / 100.0, 0.0, 1.0)
-		var col := Color("2f6d5a") if str(u.faction) == "song" else Color("a33b2b")
-		if str(u.faction) == "liao":
-			col = Color("a6842e")
-		c.draw_rect(Rect2(p.x - 10, p.y + 12, w, 3), col, true)
+		var side := dir.cross(Vector3.UP).normalized() * width
+		st.set_color(color)
+		st.add_vertex(p0 - side)
+		st.set_color(color)
+		st.add_vertex(p1 - side)
+		st.set_color(color)
+		st.add_vertex(p1 + side)
+		st.set_color(color)
+		st.add_vertex(p0 - side)
+		st.set_color(color)
+		st.add_vertex(p1 + side)
+		st.set_color(color)
+		st.add_vertex(p0 + side)
 
 
-func _fill_hex(c: CanvasItem, h: Vector2i, color: Color) -> void:
-	var center := HexGrid.axial_to_pixel(h.x, h.y)
-	var pts := PackedVector2Array()
-	for corner in _corners:
-		pts.append(center + corner)
-	c.draw_colored_polygon(pts, color)
-
-
-func _stroke_hex(c: CanvasItem, h: Vector2i, color: Color, width: float) -> void:
-	var center := HexGrid.axial_to_pixel(h.x, h.y)
-	var pts := PackedVector2Array()
-	for corner in _corners:
-		pts.append(center + corner)
-	pts.append(pts[0])
-	c.draw_polyline(pts, color, width)
-
-
-func _edge(center: Vector2, other: Vector2) -> PackedVector2Array:
-	var dir := other - center
-	if dir.length() < 0.001:
-		return PackedVector2Array([center, center])
-	dir = dir.normalized()
-	var mid := center + dir * (HexGrid.SIZE * sqrt(3.0) / 2.0)
-	var tang := Vector2(-dir.y, dir.x) * HexGrid.SIZE * 0.5
-	return PackedVector2Array([mid - tang, mid + tang])
+func _cull_banners() -> void:
+	if camera == null:
+		return
+	var ranked: Array = []
+	for node in banners:
+		if not is_instance_valid(node):
+			continue
+		var sp := camera.unproject_position(node.global_position + Vector3(0, 4.2, 0))
+		ranked.append({"n": node, "s": sp, "p": int(node.get_meta("pri", 1))})
+	ranked.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a.p) > int(b.p))
+	var gap := 78.0
+	if zoom_index == 1:
+		gap = 52.0
+	elif zoom_index >= 2:
+		gap = 34.0
+	var kept: Array[Vector2] = []
+	for item in ranked:
+		var pri := int(item.p)
+		var show := true
+		if zoom_index == 0 and pri < 2:
+			show = false
+		elif zoom_index == 1 and pri < 1:
+			show = false
+		if show:
+			var sp: Vector2 = item.s
+			for prev in kept:
+				if sp.distance_to(prev) < gap:
+					show = false
+					break
+			if show:
+				kept.append(sp)
+		(item.n as Node3D).visible = show
 
 
 func minimap_image() -> Image:
@@ -597,7 +881,7 @@ func minimap_image() -> Image:
 			var color := DataDB.color_of(str(DataDB.terrain(tid).get("color", "333333")))
 			var owner := DataDB.owner_id(ax.x, ax.y)
 			if owner != "" and tid != "sea" and tid != "lake":
-				color = color.lerp(DataDB.color_of(str(DataDB.faction(owner).get("color", "ffffff"))), 0.4)
+				color = color.lerp(DataDB.color_of(str(DataDB.faction(owner).get("color", "ffffff"))), 0.35)
 			img.set_pixel(col, row, color)
 	for u_v in GameState.units:
 		var u: Dictionary = u_v

@@ -1,0 +1,5 @@
+Noto Sans SC
+Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+The game ships a weight-400 subset in ui_zh.ttf / ui_zh.bytes, built by tools/build_ui_font.py.
+Source: https://github.com/notofonts/noto-cjk

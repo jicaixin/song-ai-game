@@ -1,95 +1,58 @@
 #!/usr/bin/env python3
-"""Subset Fusion Pixel and convert it from CFF/OTF to TrueType.
+"""Build the web UI font from Noto Sans SC (SIL OFL).
 
-The web export has no system fonts. The full CFF font was packed, but Chinese
-still drew as hex boxes. A small TrueType subset is loaded from raw bytes so
-the face does not depend on the editor import or on OS fallback.
+The browser has no system fonts. This instantiates the variable face at
+regular weight, keeps only the characters the game uses, and writes a
+static TrueType that Godot loads from raw bytes.
 """
 
 from pathlib import Path
 
-from fontTools.pens.cu2quPen import Cu2QuPen
-from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.ttLib import TTFont
+from fontTools.varLib.instancer import instantiateVariableFont
 from fontTools.subset import Subsetter, Options
-from fontTools.ttLib import TTFont, newTable
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "art" / "fonts" / "FusionPixel12-zh_hans.otf"
+SRC = Path("/tmp/fonts/NotoSansSC-VF.ttf")
 OUT_TTF = ROOT / "art" / "fonts" / "ui_zh.ttf"
 OUT_BYTES = ROOT / "art" / "fonts" / "ui_zh.bytes"
-SCAN_EXT = {".gd", ".json", ".cfg", ".tscn", ".md", ".txt"}
+SCAN_EXT = {".gd", ".json", ".cfg", ".tscn", ".md", ".txt", ".gdshader"}
 SKIP = {".godot", "build", "agent-tools", "uploads"}
 
 
 def collect_text() -> str:
     chars = {chr(c) for c in range(0x20, 0x7F)}
+    chars.update("粮钱匠电民心回合终开罢关闭存读档科技树自动槽一二三写入读取空")
     for path in ROOT.rglob("*"):
         if not path.is_file() or path.suffix.lower() not in SCAN_EXT:
             continue
         if any(part in SKIP for part in path.parts):
             continue
-        if path.name in {"OFL.txt", "ui_zh.ttf"}:
+        if path.name in {"OFL.txt", "OFL-NotoSans.txt", "ui_zh.ttf"}:
             continue
         chars.update(path.read_text("utf-8", errors="ignore"))
     return "".join(sorted(chars))
 
 
-def to_ttf(font: TTFont) -> None:
-    glyph_order = font.getGlyphOrder()
-    font["loca"] = newTable("loca")
-    glyf = newTable("glyf")
-    glyf.glyphOrder = glyph_order
-    glyphs = {}
-    source = font.getGlyphSet()
-    for name in glyph_order:
-        pen = TTGlyphPen(None)
-        source[name].draw(Cu2QuPen(pen, 1.0, reverse_direction=True))
-        glyphs[name] = pen.glyph()
-    glyf.glyphs = glyphs
-    font["glyf"] = glyf
-    del font["CFF "]
-    glyf.compile(font)
-    hmtx = font["hmtx"]
-    for name, glyph in glyf.glyphs.items():
-        if hasattr(glyph, "xMin"):
-            hmtx[name] = (hmtx[name][0], glyph.xMin)
-    maxp = newTable("maxp")
-    maxp.tableVersion = 0x00010000
-    maxp.maxZones = 1
-    maxp.maxTwilightPoints = 0
-    maxp.maxStorage = 0
-    maxp.maxFunctionDefs = 0
-    maxp.maxInstructionDefs = 0
-    maxp.maxStackElements = 0
-    maxp.maxSizeOfInstructions = 0
-    maxp.maxComponentElements = max(
-        (len(g.components) for g in glyf.glyphs.values() if hasattr(g, "components")),
-        default=0,
-    )
-    font["maxp"] = maxp
-    post = font["post"]
-    post.formatType = 3.0
-    font.sfntVersion = "\000\001\000\000"
-
-
 def main() -> None:
+    if not SRC.exists():
+        raise SystemExit(f"missing {SRC}; download Noto Sans SC VF first")
     text = collect_text()
-    font = TTFont(SRC)
+    font = instantiateVariableFont(TTFont(SRC), {"wght": 400}, inplace=False)
     options = Options()
     options.glyph_names = True
     options.notdef_glyph = True
     options.notdef_outline = True
     options.recommended_glyphs = True
     options.legacy_cmap = True
-    options.symbol_cmap = True
     options.name_IDs = ["*"]
     options.layout_features = ["*"]
     options.name_legacy = True
     options.name_languages = ["*"]
+    options.drop_tables = ["DSIG"]
     subsetter = Subsetter(options=options)
     subsetter.populate(text=text)
     subsetter.subset(font)
-    to_ttf(font)
     OUT_TTF.parent.mkdir(parents=True, exist_ok=True)
     font.save(OUT_TTF)
     data = OUT_TTF.read_bytes()
