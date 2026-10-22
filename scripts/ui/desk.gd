@@ -143,6 +143,7 @@ func _place_paper(wide: float, high: float) -> PanelContainer:
 	paper.position = Vector2((1280.0 - wide) * 0.5, (720.0 - high) * 0.5)
 	paper.size = Vector2(wide, high)
 	paper.custom_minimum_size = Vector2(wide, high)
+	paper.clip_contents = true
 	host.add_child(paper)
 	return paper
 
@@ -353,7 +354,7 @@ func _page_console(box: VBoxContainer) -> void:
 	full.texture = Kit.portrait_full("doushabao", Kit.mood_key(GameState.advisor_mood))
 	if full.texture == null:
 		full.texture = Kit.portrait_bust("doushabao", Kit.mood_key(GameState.advisor_mood))
-	full.custom_minimum_size = Vector2(160, 240)
+	full.custom_minimum_size = Vector2(112, 156)
 	full.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	full.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	full.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -377,7 +378,7 @@ func _page_console(box: VBoxContainer) -> void:
 	box.add_child(Kit.label("固件", "H3Label"))
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.custom_minimum_size = Vector2(0, 360)
+	scroll.custom_minimum_size = Vector2(0, 180)
 	box.add_child(scroll)
 	var list := VBoxContainer.new()
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
