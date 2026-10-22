@@ -31,6 +31,7 @@ var _tris := 0
 var _cluster_mesh := {}
 var _kit_mesh := {}
 var _city_material: StandardMaterial3D
+var _bake_mode := ""
 var _env: Environment
 var _land_shader: ShaderMaterial
 var feature_points: Array = []
@@ -303,7 +304,8 @@ func spawn_hex_features(mesh_key: String, mesh: Mesh, lift: float = 0.0, detail_
 			continue
 		var yaw := float(item.get("yaw", 0.0))
 		var pos := Vector3(float(item.x), float(item.y) + lift, float(item.z))
-		var basis := Basis(Vector3.UP, yaw).scaled(Vector3(CITY_SCALE, CITY_SCALE, CITY_SCALE))
+		var sy := float(item.get("sy", 1.0))
+		var basis := Basis(Vector3.UP, yaw).scaled(Vector3(CITY_SCALE, CITY_SCALE * sy, CITY_SCALE))
 		var cq := int(floor(float(item.q) / 6.0))
 		var cr := int(floor(float(item.r) / 6.0))
 		var ck := Vector2i(cq, cr)
@@ -349,7 +351,7 @@ func _spawn_terrain_kit() -> void:
 	var keys: Array[String] = [
 		"mountain_a", "mountain_b", "mountain_c",
 		"mountain_ridge", "mountain_ridge_bend", "mountain_ridge_end",
-		"hills_a", "hills_b", "hills_c", "hills_loess",
+		"hills_a", "hills_b", "hills_c", "hills_loess", "hills_a_loess", "hills_b_loess",
 		"forest_conifer_a", "forest_conifer_b",
 		"forest_mixed_a", "forest_mixed_b", "forest_sparse",
 		"farm_fields", "rice_paddies",
@@ -365,10 +367,25 @@ func _spawn_terrain_kit() -> void:
 func _terrain_mesh(key: String) -> ArrayMesh:
 	if _kit_mesh.has(key):
 		return _kit_mesh[key]
-	var path := "res://art/models/song_terrain/%s.glb" % key
+	var source := key
+	_bake_mode = ""
+	if key == "hills_a_loess":
+		source = "hills_a"
+		_bake_mode = "loess_hill"
+	elif key == "hills_b_loess":
+		source = "hills_b"
+		_bake_mode = "loess_hill"
+	elif key == "hills_loess":
+		_bake_mode = "loess"
+	elif key.begins_with("mountain"):
+		_bake_mode = "mountain"
+	elif key == "farm_fields":
+		_bake_mode = "farm"
+	var path := "res://art/models/song_terrain/%s.glb" % source
 	var packed: PackedScene = load(path)
 	if packed == null:
 		push_error("missing terrain mesh " + path)
+		_bake_mode = ""
 		return null
 	var scene := packed.instantiate()
 	var st := SurfaceTool.new()
@@ -376,6 +393,7 @@ func _terrain_mesh(key: String) -> ArrayMesh:
 	st.set_material(_city_mat())
 	var stats := _bake_cluster(scene, Transform3D.IDENTITY, st)
 	scene.free()
+	_bake_mode = ""
 	var mesh := st.commit()
 	_kit_mesh[key] = mesh
 	print("TERRAIN %s tris %d verts %d color %.2f..%.2f" % [key, _count_tris(mesh), stats.x, stats.y, stats.z])
@@ -406,6 +424,7 @@ func _cluster_kind(city: Dictionary) -> String:
 
 
 func _merged_cluster(kind: String) -> ArrayMesh:
+	_bake_mode = ""
 	if _cluster_mesh.has(kind):
 		return _cluster_mesh[kind]
 	var path := "res://art/models/song_city/clusters/cluster_%s.glb" % kind
@@ -481,6 +500,10 @@ func _bake_mesh(mi: MeshInstance3D, xf: Transform3D, st: SurfaceTool) -> Vector3
 			if i < cols.size():
 				col = cols[i]
 			col = Color(col.r * albedo.r, col.g * albedo.g, col.b * albedo.b, 1.0)
+			var v := verts[i]
+			var tinted := _tint_baked(col, albedo, v)
+			col = tinted.color
+			v = tinted.vertex
 			var lum := col.r * 0.3 + col.g * 0.5 + col.b * 0.2
 			lo = minf(lo, lum)
 			hi = maxf(hi, lum)
@@ -489,7 +512,7 @@ func _bake_mesh(mi: MeshInstance3D, xf: Transform3D, st: SurfaceTool) -> Vector3
 			if i < norms.size():
 				n = (normal_xf * norms[i]).normalized()
 			st.set_normal(n)
-			st.add_vertex(xf * verts[i])
+			st.add_vertex(xf * v)
 			nverts += 1
 	return Vector3(float(nverts), lo, hi)
 
@@ -1266,16 +1289,62 @@ func _cull_banners() -> void:
 			city_mesh.visible = show_mesh
 
 
+func _gray_of(col: Color, albedo: Color) -> float:
+	var gray := 0.75
+	if albedo.r > 0.08:
+		gray = col.r / albedo.r
+	elif albedo.g > 0.08:
+		gray = col.g / albedo.g
+	elif albedo.b > 0.08:
+		gray = col.b / albedo.b
+	return clampf(gray, 0.35, 1.0)
+
+
+func _retint(col: Color, albedo: Color, target: Color) -> Color:
+	var gray := _gray_of(col, albedo)
+	return Color(target.r * gray, target.g * gray, target.b * gray, 1.0)
+
+
+func _tint_baked(col: Color, albedo: Color, v: Vector3) -> Dictionary:
+	if _bake_mode == "mountain":
+		var meadow := albedo.g > 0.30 and albedo.g > albedo.r * 1.12 and albedo.b < 0.22
+		if meadow:
+			# The kit's grassy ring is a hex-shaped plate. Sink it and fade it
+			# toward soil so the peak meets the ground without a green pad.
+			var oy := v.y
+			if oy < 1.05:
+				var sink_t := 1.0 - smoothstep(0.2, 1.05, oy)
+				v.y = lerpf(oy, -0.32, sink_t * 0.95)
+			if oy < 1.7:
+				var t := 1.0 - smoothstep(0.0, 1.55, maxf(oy, 0.0))
+				col = col.lerp(Color(0.40, 0.35, 0.28), clampf(0.4 + t * 0.56, 0.0, 0.96))
+	elif _bake_mode == "loess":
+		var green := albedo.g > 0.30 and albedo.g > albedo.r * 1.12 and albedo.b < 0.22
+		if green:
+			col = _retint(col, albedo, Color("b08a62"))
+		elif albedo.r > 0.34 and albedo.r < 0.48 and albedo.g < 0.32 and albedo.b < 0.2:
+			col = col.lerp(_retint(col, albedo, Color(0.58, 0.46, 0.28)), 0.78)
+	elif _bake_mode == "loess_hill":
+		if albedo.g > albedo.r and albedo.g > albedo.b:
+			col = col.lerp(_retint(col, albedo, Color(0.64, 0.50, 0.30)), 0.84)
+	elif _bake_mode == "farm":
+		if albedo.b > 0.28 and albedo.g > 0.28 and albedo.r < 0.28:
+			col = _retint(col, albedo, Color(0.10, 0.15, 0.17))
+		elif albedo.r > 0.48 or (albedo.g > 0.30 and albedo.g > albedo.r):
+			col = col.lerp(_retint(col, albedo, Color(0.44, 0.42, 0.26)), 0.74)
+	return {"color": col, "vertex": v}
+
+
 func minimap_image() -> Image:
 	var img := Image.create(DataDB.width, DataDB.height, false, Image.FORMAT_RGBA8)
 	for row in DataDB.height:
 		for col in DataDB.width:
 			var ax := HexGrid.axial_from_offset(col, row)
 			var tid := DataDB.terrain_id(ax.x, ax.y)
-			var color := DataDB.color_of(str(DataDB.terrain(tid).get("color", "333333")))
+			var color := TerrainFactory.swatch(tid)
 			var owner := DataDB.owner_id(ax.x, ax.y)
 			if owner != "" and tid != "sea" and tid != "lake":
-				color = color.lerp(DataDB.color_of(str(DataDB.faction(owner).get("color", "ffffff"))), 0.35)
+				color = color.lerp(DataDB.color_of(str(DataDB.faction(owner).get("color", "ffffff"))), 0.12)
 			img.set_pixel(col, row, color)
 	for u_v in GameState.units:
 		var u: Dictionary = u_v

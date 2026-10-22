@@ -36,8 +36,16 @@ const HEIGHTS := {
 	"alpine": 12.2,
 }
 
+# Mask bit i follows DIRS[i]. The geometric edge whose midpoint lies on that
+# neighbour is not edge i: corners sit at 60°·k−30°, so edge k faces 60°·k.
+const RIVER_DIR_EDGE := [0, 5, 4, 3, 2, 1]
+
+static var _river_buckets: Dictionary = {}
+static var _river_courses: Array = []
+
 
 static func build() -> Dictionary:
+	_prepare_rivers()
 	var heights := {}
 	var colors := {}
 	for row in DataDB.height:
@@ -214,8 +222,6 @@ static func _corner_sample(ax: Vector2i, i: int, heights: Dictionary, colors: Di
 			h = lerpf(low, h, 0.66)
 	if wet:
 		h = minf(h, 0.07)
-	if _river_on(ax, i) or _river_on(ax, prev):
-		h -= 0.46
 	var ang := deg_to_rad(60.0 * float(i) - 30.0)
 	var center := HexGrid.axial_to_pixel(ax.x, ax.y)
 	var pos := Vector3(center.x + cos(ang) * HexGrid.SIZE, h, center.y + sin(ang) * HexGrid.SIZE)
@@ -415,26 +421,25 @@ static func _dist_to_seg(p: Vector2, a: Vector2, b: Vector2) -> float:
 
 static func _river_sink(p: Vector2) -> float:
 	var ax := HexGrid.pixel_to_axial(p)
+	if not _river_buckets.has(ax):
+		return 0.0
 	var best := 0.0
-	for dz in range(-1, 2):
-		for dq in range(-1, 2):
-			var c := Vector2i(ax.x + dq, ax.y + dz)
-			if not DataDB.river_masks.has(c):
-				continue
-			var masks: Array = DataDB.river_masks[c]
-			for i in 6:
-				var bit := 1 << i
-				var great := (int(masks[1]) & bit) != 0
-				var minor := (int(masks[0]) & bit) != 0
-				if not great and not minor:
-					continue
-				var corners := _edge_corners(c, i)
-				var dist := _dist_to_seg(p, corners[0], corners[1])
-				var radius := 12.0 if great else 5.4
-				var depth := 0.32 if great else 0.15
-				# Flat bottom, so the ribbon sits in the channel instead of riding up the banks.
-				var t := 1.0 - smoothstep(radius * 0.62, radius, dist)
-				best = maxf(best, depth * t)
+	var bucket: Array = _river_buckets[ax]
+	for seg_v in bucket:
+		var seg: Dictionary = seg_v
+		var a: Vector2 = seg.a
+		var b: Vector2 = seg.b
+		var ab := b - a
+		var len2 := ab.length_squared()
+		var along := 0.0
+		if len2 > 0.001:
+			along = clampf((p - a).dot(ab) / len2, 0.0, 1.0)
+		var dist := p.distance_to(a + ab * along)
+		var half := lerpf(float(seg.wa), float(seg.wb), along)
+		var radius := half + 5.6
+		var depth := 0.17 + 0.16 * clampf(half / 7.2, 0.0, 1.0)
+		var bed := 1.0 - smoothstep(radius * 0.56, radius, dist)
+		best = maxf(best, depth * bed)
 	return best
 
 
@@ -452,6 +457,12 @@ static func _surface_height(p: Vector2) -> float:
 
 static func _hn(q: int, r: int, m: int) -> int:
 	return posmod(q * 17 + r * 31 + q * r * 3, m)
+
+
+static func _mix(q: int, r: int, m: int) -> int:
+	# _hn stripes along a latitude. This one does not, so loess pieces scatter.
+	var n: int = (q * 73856093) ^ (r * 19349663) ^ ((q + 13) * (r + 7) * 83492791)
+	return absi(n) % m
 
 
 static func _is_peak(id: String) -> bool:
@@ -562,7 +573,49 @@ static func _near_north_city(ax: Vector2i) -> bool:
 	return false
 
 
-static func _push_feature(out: Array, ax: Vector2i, id: String, mesh: String, yaw_deg: int, heights: Dictionary, nudge: Vector2) -> void:
+static func _farm_targets() -> Dictionary:
+	# One or two plain hexes beside each northern city, not a ring of six.
+	var picked := {}
+	for city_v in DataDB.cities:
+		var city: Dictionary = city_v
+		if int(city.r) > 34:
+			continue
+		var there := Vector2i(int(city.q), int(city.r))
+		var cands: Array = []
+		for dir_i in 6:
+			var n: Vector2i = there + HexGrid.DIRS[dir_i]
+			if not DataDB.in_bounds(n.x, n.y) or _city_here(n):
+				continue
+			var tid := DataDB.terrain_id(n.x, n.y)
+			if tid != "plain" and tid != "grass":
+				continue
+			var score := _hn(n.x, n.y, 17)
+			if tid == "plain":
+				score -= 20
+			cands.append({"ax": n, "score": score})
+		for ai in cands.size():
+			var best := ai
+			for bi in range(ai + 1, cands.size()):
+				if int(cands[bi].score) < int(cands[best].score):
+					best = bi
+			if best != ai:
+				var swap = cands[ai]
+				cands[ai] = cands[best]
+				cands[best] = swap
+		var want := 2
+		if _hn(there.x, there.y, 3) == 0:
+			want = 1
+		var got := 0
+		for cand_v in cands:
+			if got >= want:
+				break
+			var cand: Dictionary = cand_v
+			picked[cand.ax] = true
+			got += 1
+	return picked
+
+
+static func _push_feature(out: Array, ax: Vector2i, id: String, mesh: String, yaw_deg: int, heights: Dictionary, nudge: Vector2, drop: float = 0.0, sy: float = 1.0) -> void:
 	var p := HexGrid.axial_to_pixel(ax.x, ax.y) + nudge
 	var y := float(heights.get(ax, 0.4))
 	if nudge != Vector2.ZERO:
@@ -573,9 +626,10 @@ static func _push_feature(out: Array, ax: Vector2i, id: String, mesh: String, ya
 		"id": id,
 		"mesh": mesh,
 		"x": p.x,
-		"y": y,
+		"y": y - drop,
 		"z": p.y,
 		"yaw": deg_to_rad(float(yaw_deg)),
+		"sy": sy,
 	})
 
 
@@ -638,6 +692,7 @@ static func _feature_list(heights: Dictionary) -> Array:
 		if mesh == "":
 			continue
 		_push_feature(out, peak, id, mesh, yaw, heights, Vector2.ZERO)
+	var farms := _farm_targets()
 	for row2 in DataDB.height:
 		for col2 in DataDB.width:
 			var ax2 := HexGrid.axial_from_offset(col2, row2)
@@ -645,12 +700,19 @@ static func _feature_list(heights: Dictionary) -> Array:
 				continue
 			var id2 := DataDB.terrain_id(ax2.x, ax2.y)
 			var spin := _hn(ax2.x, ax2.y, 6) * 60
-			if id2 == "hill" or id2 == "loess":
-				var hill := "hills_loess"
-				if id2 == "hill" and not _loess_belt(ax2):
-					var hills := ["hills_a", "hills_b", "hills_c"]
-					hill = str(hills[_hn(ax2.x, ax2.y, 3)])
-				_push_feature(out, ax2, id2, hill, spin, heights, Vector2.ZERO)
+			if id2 == "loess" or (id2 == "hill" and _loess_belt(ax2)):
+				# Most of the plateau stays flat ground. A minority keeps the
+				# terrace mesh; the rest borrow a softer ochre hill.
+				var roll := _mix(ax2.x, ax2.y, 10)
+				var lyaw := _mix(ax2.x, ax2.y, 6) * 60
+				if roll <= 3:
+					_push_feature(out, ax2, id2, "hills_loess", lyaw, heights, Vector2.ZERO, 0.0, 0.7)
+				elif roll <= 6:
+					var ochre := "hills_a_loess" if _mix(ax2.x + 3, ax2.y, 2) == 0 else "hills_b_loess"
+					_push_feature(out, ax2, id2, ochre, lyaw, heights, Vector2.ZERO, 0.0, 0.7)
+			elif id2 == "hill":
+				var hills := ["hills_a", "hills_b", "hills_c"]
+				_push_feature(out, ax2, id2, str(hills[_hn(ax2.x, ax2.y, 3)]), spin, heights, Vector2.ZERO)
 			elif id2 == "forest":
 				var woods := "forest_sparse"
 				if _forest_neighbors(ax2) >= 2:
@@ -659,8 +721,8 @@ static func _feature_list(heights: Dictionary) -> Array:
 					else:
 						woods = "forest_mixed_a" if _hn(ax2.x, ax2.y, 2) == 0 else "forest_mixed_b"
 				_push_feature(out, ax2, id2, woods, spin, heights, Vector2.ZERO)
-			elif (id2 == "plain" or id2 == "grass") and _near_north_city(ax2):
-				_push_feature(out, ax2, id2, "farm_fields", spin, heights, Vector2.ZERO)
+			elif farms.has(ax2):
+				_push_feature(out, ax2, id2, "farm_fields", spin, heights, Vector2.ZERO, 0.12, 1.0)
 			elif id2 == "rice":
 				_push_feature(out, ax2, id2, "rice_paddies", spin, heights, Vector2.ZERO)
 			if id2 == "marsh" or (_hex_has_river(ax2) and (id2 == "plain" or id2 == "grass") and not _near_north_city(ax2) and _hn(ax2.x, ax2.y, 2) == 0):
@@ -855,122 +917,382 @@ static func _corner_at(center: Vector2, i: int) -> Vector2:
 	return Vector2(snapped(p.x, 0.05), snapped(p.y, 0.05))
 
 
-static func _edge_corners(ax: Vector2i, edge: int) -> Array:
+static func _pkey(p: Vector2) -> Vector2i:
+	return Vector2i(int(round(p.x * 20.0)), int(round(p.y * 20.0)))
+
+
+static func _pair_key(a: Vector2i, b: Vector2i) -> String:
+	if a.x < b.x or (a.x == b.x and a.y <= b.y):
+		return "%d,%d|%d,%d" % [a.x, a.y, b.x, b.y]
+	return "%d,%d|%d,%d" % [b.x, b.y, a.x, a.y]
+
+
+static func _edge_midpoint(ax: Vector2i, dir_i: int) -> Vector2:
+	var edge := int(RIVER_DIR_EDGE[dir_i])
+	var ang := deg_to_rad(60.0 * float(edge))
 	var center := HexGrid.axial_to_pixel(ax.x, ax.y)
-	return [_corner_at(center, edge), _corner_at(center, edge + 1)]
+	var ap := HexGrid.SIZE * sqrt(3.0) * 0.5
+	return center + Vector2(cos(ang), sin(ang)) * ap
+
+
+static func _link_nodes(adj: Dictionary, a: Vector2i, b: Vector2i) -> void:
+	if a == b:
+		return
+	if not adj.has(a):
+		adj[a] = []
+	if not adj.has(b):
+		adj[b] = []
+	var na: Array = adj[a]
+	if not na.has(b):
+		na.append(b)
+	adj[a] = na
+	var nb: Array = adj[b]
+	if not nb.has(a):
+		nb.append(a)
+	adj[b] = nb
+
+
+static func _river_graph() -> Dictionary:
+	# A river crosses a hex from one flagged edge to the other. Opposite edges
+	# do not share a corner, so the polyline is midpoint to midpoint.
+	var adj := {}
+	var pos := {}
+	var great := {}
+	for key_v in DataDB.river_masks.keys():
+		var ax: Vector2i = key_v
+		var masks: Array = DataDB.river_masks[ax]
+		var wide := int(masks[1])
+		var bits := int(masks[0]) | wide
+		var dirs: Array = []
+		for dir_i in 6:
+			if (bits & (1 << dir_i)) != 0:
+				dirs.append(dir_i)
+		if dirs.size() < 2:
+			continue
+		var mids: Array = []
+		for dir_v in dirs:
+			var raw := _edge_midpoint(ax, int(dir_v))
+			var mid := _pkey(raw)
+			if not pos.has(mid):
+				pos[mid] = Vector2(float(mid.x) / 20.0, float(mid.y) / 20.0)
+			mids.append(mid)
+		if dirs.size() == 2:
+			var ga := (wide & (1 << int(dirs[0]))) != 0 or (wide & (1 << int(dirs[1]))) != 0
+			_link_nodes(adj, mids[0], mids[1])
+			great[_pair_key(mids[0], mids[1])] = ga
+		else:
+			var center_raw := HexGrid.axial_to_pixel(ax.x, ax.y)
+			var center := _pkey(center_raw)
+			pos[center] = Vector2(float(center.x) / 20.0, float(center.y) / 20.0)
+			for mi in mids.size():
+				var gbit := (wide & (1 << int(dirs[mi]))) != 0
+				_link_nodes(adj, center, mids[mi])
+				great[_pair_key(center, mids[mi])] = gbit
+	return {"adj": adj, "pos": pos, "great": great}
+
+
+static func _nearest_water(p: Vector2, rad: int) -> Dictionary:
+	var ax := HexGrid.pixel_to_axial(p)
+	var best := Vector2.ZERO
+	var best_d := 1.0e9
+	var found := false
+	for dz in range(-rad, rad + 1):
+		for dq in range(-rad, rad + 1):
+			var c := Vector2i(ax.x + dq, ax.y + dz)
+			if not DataDB.in_bounds(c.x, c.y):
+				continue
+			if not _water(DataDB.terrain_id(c.x, c.y)):
+				continue
+			var center := HexGrid.axial_to_pixel(c.x, c.y)
+			var d := p.distance_to(center)
+			if d < best_d:
+				best_d = d
+				best = center
+				found = true
+	return {"ok": found, "p": best, "d": best_d}
+
+
+static func _half_width(upstream: float) -> float:
+	var t := sqrt(clampf(upstream / 78.0, 0.0, 1.0))
+	return 2.25 + 5.35 * t
+
+
+static func _prepare_rivers() -> void:
+	_river_buckets = {}
+	_river_courses = []
+	var graph := _river_graph()
+	var adj: Dictionary = graph.adj
+	var pos: Dictionary = graph.pos
+	var great: Dictionary = graph.great
+	var seen := {}
+	var kept := 0
+	for start_v in adj.keys():
+		var start: Vector2i = start_v
+		if seen.has(start):
+			continue
+		var comp: Array = []
+		var queue: Array = [start]
+		seen[start] = true
+		var qi := 0
+		while qi < queue.size():
+			var cur: Vector2i = queue[qi]
+			qi += 1
+			comp.append(cur)
+			var nbrs: Array = adj[cur]
+			for nb_v in nbrs:
+				var nb: Vector2i = nb_v
+				if seen.has(nb):
+					continue
+				seen[nb] = true
+				queue.append(nb)
+		if comp.size() < 6:
+			continue
+		kept += comp.size()
+		_flow_component(comp, adj, pos, great)
+	var pts := 0
+	for course_v in _river_courses:
+		pts += (course_v as Array).size()
+	print("RIVERS courses %d pts %d nodes %d" % [_river_courses.size(), pts, kept])
+
+
+static func _flow_component(comp: Array, adj: Dictionary, pos: Dictionary, great: Dictionary) -> void:
+	var mouths: Array = []
+	var water_mouth := {}
+	var leaves: Array = []
+	var east := Vector2i.ZERO
+	var south := Vector2i.ZERO
+	var have_leaf := false
+	var min_x := 1.0e9
+	var max_x := -1.0e9
+	var min_y := 1.0e9
+	var max_y := -1.0e9
+	for n_v in comp:
+		var n: Vector2i = n_v
+		var p: Vector2 = pos[n]
+		min_x = minf(min_x, p.x)
+		max_x = maxf(max_x, p.x)
+		min_y = minf(min_y, p.y)
+		max_y = maxf(max_y, p.y)
+		if (adj[n] as Array).size() > 1:
+			continue
+		leaves.append(n)
+		if not have_leaf or p.x > (pos[east] as Vector2).x:
+			east = n
+		if not have_leaf or p.y > (pos[south] as Vector2).y:
+			south = n
+		have_leaf = true
+		var water := _nearest_water(p, 2)
+		if bool(water.ok) and float(water.d) <= HexGrid.SIZE * 2.6:
+			mouths.append(n)
+			water_mouth[n] = water
+	if mouths.is_empty():
+		if not have_leaf:
+			mouths.append(comp[0])
+		elif max_y - min_y > (max_x - min_x) * 1.15:
+			mouths.append(south)
+		else:
+			mouths.append(east)
+	var down := {}
+	var dist := {}
+	var bfs: Array = []
+	for m_v in mouths:
+		var m: Vector2i = m_v
+		if dist.has(m):
+			continue
+		dist[m] = 0
+		bfs.append(m)
+	var qj := 0
+	while qj < bfs.size():
+		var cur2: Vector2i = bfs[qj]
+		qj += 1
+		var nbrs2: Array = adj[cur2]
+		for nb2_v in nbrs2:
+			var nb2: Vector2i = nb2_v
+			if dist.has(nb2):
+				continue
+			dist[nb2] = int(dist[cur2]) + 1
+			down[nb2] = cur2
+			bfs.append(nb2)
+	var up := {}
+	var order: Array = dist.keys()
+	for ai in order.size():
+		var best := ai
+		for bi in range(ai + 1, order.size()):
+			if int(dist[order[bi]]) > int(dist[order[best]]):
+				best = bi
+		if best != ai:
+			var swap = order[ai]
+			order[ai] = order[best]
+			order[best] = swap
+	for n2_v in order:
+		var n2: Vector2i = n2_v
+		var own := 1.0
+		if down.has(n2) and bool(great.get(_pair_key(n2, down[n2]), false)):
+			own = 2.15
+		var acc := own
+		var nbrs3: Array = adj[n2]
+		for nb3_v in nbrs3:
+			var nb3: Vector2i = nb3_v
+			if down.has(nb3) and down[nb3] == n2:
+				acc += float(up.get(nb3, 0.0))
+		up[n2] = acc
+	var inflow := {}
+	for src_v in down.keys():
+		var dest: Vector2i = down[src_v]
+		inflow[dest] = int(inflow.get(dest, 0)) + 1
+	for src2_v in dist.keys():
+		var src2: Vector2i = src2_v
+		if not down.has(src2):
+			continue
+		if int(inflow.get(src2, 0)) == 1:
+			continue
+		var chain: Array = [src2]
+		var walk := src2
+		var guard := 0
+		while down.has(walk) and guard < 400:
+			guard += 1
+			var nxt: Vector2i = down[walk]
+			chain.append(nxt)
+			if int(inflow.get(nxt, 0)) >= 2 or not down.has(nxt):
+				break
+			walk = nxt
+		_emit_chain(chain, pos, up, water_mouth)
+
+
+static func _emit_chain(chain: Array, pos: Dictionary, up: Dictionary, water_mouth: Dictionary) -> void:
+	if chain.size() < 2:
+		return
+	var raw: Array = []
+	for node_v in chain:
+		var node: Vector2i = node_v
+		raw.append({
+			"p": pos[node],
+			"w": _half_width(float(up.get(node, 1.0))),
+			"mouth": 0.0,
+		})
+	var last: Vector2i = chain[chain.size() - 1]
+	if water_mouth.has(last):
+		var info: Dictionary = water_mouth[last]
+		var tip: Vector2 = raw[raw.size() - 1].p
+		var aim: Vector2 = info.p - tip
+		if aim.length() > 1.0:
+			aim = aim.normalized()
+			var wtip := float(raw[raw.size() - 1].w)
+			raw.append({"p": tip + aim * 12.0, "w": wtip * 1.04, "mouth": 0.45})
+			raw.append({"p": tip.lerp(info.p, 0.74), "w": wtip * 1.08, "mouth": 1.0})
+	var smooth := _smooth_course(raw)
+	if smooth.size() < 2:
+		return
+	_river_courses.append(smooth)
+	for si in range(smooth.size() - 1):
+		var s0: Dictionary = smooth[si]
+		var s1: Dictionary = smooth[si + 1]
+		_add_river_seg(s0.p, s1.p, float(s0.w), float(s1.w))
+
+
+static func _catmull2(p0: Vector2, p1: Vector2, p2: Vector2, p3: Vector2, t: float) -> Vector2:
+	var t2 := t * t
+	var t3 := t2 * t
+	return 0.5 * (
+		(2.0 * p1)
+		+ (-p0 + p2) * t
+		+ (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+		+ (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
+	)
+
+
+static func _smooth_course(raw: Array) -> Array:
+	var n := raw.size()
+	if n < 3:
+		return raw
+	var out: Array = []
+	for i in range(n - 1):
+		var i0 := i - 1
+		if i0 < 0:
+			i0 = 0
+		var i3 := i + 2
+		if i3 > n - 1:
+			i3 = n - 1
+		var p0: Vector2 = raw[i0].p
+		var p1: Vector2 = raw[i].p
+		var p2: Vector2 = raw[i + 1].p
+		var p3: Vector2 = raw[i3].p
+		var span := p1.distance_to(p2)
+		var steps := int(round(span / 10.0))
+		if steps < 1:
+			steps = 1
+		if steps > 6:
+			steps = 6
+		for s in steps:
+			var t := float(s) / float(steps)
+			out.append({
+				"p": _catmull2(p0, p1, p2, p3, t),
+				"w": lerpf(float(raw[i].w), float(raw[i + 1].w), t),
+				"mouth": lerpf(float(raw[i].mouth), float(raw[i + 1].mouth), t),
+			})
+	out.append(raw[n - 1])
+	return out
+
+
+static func _add_river_seg(a: Vector2, b: Vector2, wa: float, wb: float) -> void:
+	var seg := {"a": a, "b": b, "wa": wa, "wb": wb}
+	var seen := {}
+	var probes: Array[Vector2] = [a, b, (a + b) * 0.5]
+	for probe in probes:
+		var home := HexGrid.pixel_to_axial(probe)
+		for dz in range(-1, 2):
+			for dq in range(-1, 2):
+				var cell := Vector2i(home.x + dq, home.y + dz)
+				if seen.has(cell):
+					continue
+				seen[cell] = true
+				if not _river_buckets.has(cell):
+					_river_buckets[cell] = []
+				var bucket: Array = _river_buckets[cell]
+				bucket.append(seg)
+				_river_buckets[cell] = bucket
 
 
 static func _build_rivers(st: SurfaceTool) -> void:
-	# One quad per hex edge, plus a disc at every shared corner so turns stay connected.
-	var edges: Array = []
-	var seen := {}
-	for key_v in DataDB.river_masks.keys():
-		var key: Vector2i = key_v
-		var masks: Array = DataDB.river_masks[key]
-		for i in 6:
-			var bit := 1 << i
-			var great := (int(masks[1]) & bit) != 0
-			var minor := (int(masks[0]) & bit) != 0
-			if not great and not minor:
-				continue
-			var nb: Vector2i = key + HexGrid.DIRS[i]
-			var mark := _edge_key(key, nb)
-			var mouth := Vector2.ZERO
-			var has_mouth := false
-			if DataDB.in_bounds(nb.x, nb.y) and _water(DataDB.terrain_id(nb.x, nb.y)):
-				has_mouth = true
-				mouth = HexGrid.axial_to_pixel(nb.x, nb.y)
-			if seen.has(mark):
-				var idx := int(seen[mark])
-				if great:
-					edges[idx]["wide"] = true
-				if has_mouth:
-					edges[idx]["has_mouth"] = true
-					edges[idx]["mouth"] = mouth
-				continue
-			seen[mark] = edges.size()
-			var corners := _edge_corners(key, i)
-			edges.append({
-				"a": corners[0],
-				"b": corners[1],
-				"wide": great,
-				"has_mouth": has_mouth,
-				"mouth": mouth,
-			})
-	var joints := {}
-	var wide_col := Color(0.24, 0.42, 0.52, 1.0)
-	var minor_col := Color(0.20, 0.36, 0.46, 1.0)
-	for e_v in edges:
-		var e: Dictionary = e_v
-		var half := 3.6 if bool(e.wide) else 1.65
-		var col := wide_col if bool(e.wide) else minor_col
-		var a: Vector2 = e.a
-		var b: Vector2 = e.b
-		var span := b - a
-		if span.length() > 0.2:
-			var dir := span / span.length()
-			a -= dir * 1.6
-			b += dir * 1.6
-		_river_segment(st, a, b, half, col)
-		_joint_widen(joints, a, half)
-		_joint_widen(joints, b, half)
-		if bool(e.has_mouth):
-			var mid: Vector2 = (a + b) * 0.5
-			var dest: Vector2 = mid.lerp(e.mouth, 0.78)
-			_river_segment(st, mid, dest, half, col)
-			_joint_widen(joints, mid, half)
-	for j_v in joints.values():
-		var j: Dictionary = j_v
-		_river_joint(st, j.p, float(j.w), wide_col)
+	var col := Color(0.62, 0.74, 0.78, 1.0)
+	for course_v in _river_courses:
+		_course_ribbon(st, course_v, col)
 
 
-static func _joint_widen(joints: Dictionary, p: Vector2, half: float) -> void:
-	var key := "%d,%d" % [int(round(p.x * 20.0)), int(round(p.y * 20.0))]
-	if not joints.has(key):
-		joints[key] = {"p": p, "w": half}
+static func _course_ribbon(st: SurfaceTool, course: Array, col: Color) -> void:
+	var n := course.size()
+	if n < 2:
 		return
-	var j: Dictionary = joints[key]
-	j["w"] = maxf(float(j.w), half)
-
-
-static func _river_segment(st: SurfaceTool, a: Vector2, b: Vector2, half: float, col: Color) -> void:
-	var delta := b - a
-	var length := delta.length()
-	if length < 0.05:
-		return
-	var n := delta / length
-	var side := Vector2(-n.y, n.x)
-	var steps := 4
 	var left: Array = []
 	var right: Array = []
-	for s in steps + 1:
-		var t := float(s) / float(steps)
-		var p: Vector2 = a.lerp(b, t)
-		# One height for the whole cross-section, taken on the centreline, so the
-		# sheet stays in the flat bottom of the bed.
-		var h := _surface_height(p) + 0.1
-		left.append(Vector3((p + side * half).x, h, (p + side * half).y))
-		right.append(Vector3((p - side * half).x, h, (p - side * half).y))
-	for s in steps:
-		var u0 := float(s)
-		var u1 := float(s + 1)
-		_tri_uv(st, left[s], left[s + 1], right[s + 1], col, Vector2(u0, 0.0), Vector2(u1, 0.0), Vector2(u1, 1.0))
-		_tri_uv(st, left[s], right[s + 1], right[s], col, Vector2(u0, 0.0), Vector2(u1, 1.0), Vector2(u0, 1.0))
-
-
-static func _river_joint(st: SurfaceTool, p: Vector2, half: float, col: Color) -> void:
-	var h := _surface_height(p) + 0.1
-	var c := Vector3(p.x, h, p.y)
-	var n := 8
-	var rim: Array = []
+	var along: Array = []
+	var acc := 0.0
 	for i in n:
-		var ang := deg_to_rad(float(i) * 360.0 / float(n))
-		var q := Vector2(p.x + cos(ang) * half, p.y + sin(ang) * half)
-		rim.append(Vector3(q.x, h, q.y))
-	for i in n:
-		var a: Vector3 = rim[i]
-		var b: Vector3 = rim[(i + 1) % n]
-		_tri_uv(st, c, a, b, col, Vector2(0.0, 0.5), Vector2(1.0, 0.0), Vector2(1.0, 1.0))
+		var here: Dictionary = course[i]
+		var p: Vector2 = here.p
+		var tangent := Vector2.RIGHT
+		if i == 0:
+			tangent = (course[1] as Dictionary).p - p
+		elif i == n - 1:
+			tangent = p - (course[i - 1] as Dictionary).p
+		else:
+			tangent = (course[i + 1] as Dictionary).p - (course[i - 1] as Dictionary).p
+		if tangent.length() < 0.001:
+			tangent = Vector2.RIGHT
+		tangent = tangent.normalized()
+		var side := Vector2(-tangent.y, tangent.x) * float(here.w)
+		var h := _surface_height(p) + 0.035
+		h = lerpf(h, -0.06, float(here.mouth))
+		left.append(Vector3(p.x + side.x, h, p.y + side.y))
+		right.append(Vector3(p.x - side.x, h, p.y - side.y))
+		along.append(acc)
+		if i + 1 < n:
+			acc += p.distance_to((course[i + 1] as Dictionary).p) / 16.0
+	for j in n - 1:
+		var u0 := float(along[j])
+		var u1 := float(along[j + 1])
+		_tri_uv(st, left[j], left[j + 1], right[j + 1], col, Vector2(u0, 0.0), Vector2(u1, 0.0), Vector2(u1, 1.0))
+		_tri_uv(st, left[j], right[j + 1], right[j], col, Vector2(u0, 0.0), Vector2(u1, 1.0), Vector2(u0, 1.0))
 
 
 static func _edge_key(a: Vector2i, b: Vector2i) -> String:
