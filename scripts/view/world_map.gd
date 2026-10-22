@@ -66,6 +66,7 @@ func _ready() -> void:
 	EventBus.state_changed.connect(_on_state)
 	focus_city(str(DataDB.scenario.get("focus_city", "yanzhou")))
 	_rebuild_units()
+	_log_geometry()
 
 
 func get_viewport_rect() -> Rect2:
@@ -111,6 +112,43 @@ func _add_trees(built: Dictionary) -> void:
 	_scatter("Broads", built.broads, built.broad_trunk, built.broad_leaf, true)
 	_scatter_one("Tufts", built.tufts, built.tuft_mesh, false)
 	_scatter_one("Rocks", built.rocks, built.rock_mesh, true)
+
+
+func _log_geometry() -> void:
+	var meshes := 0
+	var shadowers := 0
+	var tris := 0
+	var stack: Array[Node] = [self]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		for child in node.get_children():
+			stack.append(child)
+		if node is MultiMeshInstance3D:
+			var mm := (node as MultiMeshInstance3D).multimesh
+			if mm == null or mm.mesh == null:
+				continue
+			meshes += 1
+			var count := mm.visible_instance_count
+			if count < 0:
+				count = mm.instance_count
+			var t := _count_tris(mm.mesh) * count
+			tris += t
+			if (node as GeometryInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+				shadowers += 1
+			print("MESH ", node.name, " inst ", count, " tris ", t)
+		elif node is MeshInstance3D:
+			var mi := node as MeshInstance3D
+			if mi.mesh == null:
+				continue
+			meshes += 1
+			var t2 := _count_tris(mi.mesh)
+			tris += t2
+			if mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+				shadowers += 1
+	_tris = tris
+	set_meta("mesh_draws", meshes)
+	set_meta("shadow_draws", shadowers)
+	print("GEOM draws %d shadowers %d tris %d" % [meshes, shadowers, tris])
 
 
 func _count_tris(mesh: Mesh) -> int:
@@ -570,13 +608,14 @@ func _modal() -> bool:
 
 
 func _process(delta: float) -> void:
-	if _perf_frames < 3:
+	if _playing() and not has_meta("perf_ready"):
 		_perf_frames += 1
-		if _perf_frames == 2:
+		if _perf_frames >= 6:
 			var draws := Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
 			var prims := Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
 			set_meta("draw_calls", draws)
 			set_meta("prims", prims)
+			set_meta("perf_ready", true)
 			print("PERF draws %.0f prims %.0f tris %d span %.1f" % [draws, prims, _tris, visible_hex_span()])
 	_poll_focus()
 	if Engine.get_process_frames() % 12 == 0:

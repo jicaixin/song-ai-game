@@ -134,4 +134,6 @@ func _process(_delta: float) -> void:
 		"draw_calls": world.get_meta("draw_calls", -1),
 		"prims": world.get_meta("prims", -1),
 		"tris": world.get_meta("tris", world._tris),
+		"mesh_draws": world.get_meta("mesh_draws", -1),
+		"shadow_draws": world.get_meta("shadow_draws", -1),
 	})
