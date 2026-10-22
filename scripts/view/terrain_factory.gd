@@ -971,8 +971,120 @@ static func _river_mask() -> Dictionary:
 	}
 
 
+static func _hex_channels(owner: String) -> Vector3i:
+	# Shader samples this texture as sRGB, so the bytes stay the HTML channels.
+	var hex := str(DataDB.faction(owner).get("color", "ffffff"))
+	if hex.begins_with("#"):
+		hex = hex.substr(1)
+	if hex.length() < 6:
+		return Vector3i(255, 255, 255)
+	return Vector3i(hex.substr(0, 2).hex_to_int(), hex.substr(2, 2).hex_to_int(), hex.substr(4, 2).hex_to_int())
+
+
+static func _in_pointy_hex(p: Vector2, center: Vector2) -> bool:
+	var dx := absf(p.x - center.x) / HexGrid.SIZE
+	var dy := absf(p.y - center.y) / HexGrid.SIZE
+	if dx > 0.8660254 or dy > 1.0:
+		return false
+	return dx * 0.5 + dy * 0.8660254 <= 0.8660254
+
+
+static func _border_chords() -> Array:
+	# Join border-edge midpoints so a straight frontier becomes one line and
+	# each hex corner is cut off instead of drawn as a stair.
+	var at := {}
+	for row in DataDB.height:
+		for col in DataDB.width:
+			var ax := HexGrid.axial_from_offset(col, row)
+			var owner := DataDB.owner_id(ax.x, ax.y)
+			if owner == "":
+				continue
+			var tid := DataDB.terrain_id(ax.x, ax.y)
+			if tid == "sea" or tid == "lake":
+				continue
+			var center := HexGrid.axial_to_pixel(ax.x, ax.y)
+			var rgb := _hex_channels(owner)
+			var tint := DataDB.color_of(str(DataDB.faction(owner).get("color", "ffffff")))
+			for dir_i in 6:
+				var nb: Vector2i = ax + HexGrid.DIRS[dir_i]
+				if DataDB.in_bounds(nb.x, nb.y):
+					if DataDB.terrain_id(nb.x, nb.y) == "lake":
+						continue
+					if DataDB.owner_id(nb.x, nb.y) == owner:
+						continue
+				var edge := int(RIVER_DIR_EDGE[dir_i])
+				var c0 := _corner_at(center, edge)
+				var c1 := _corner_at(center, edge + 1)
+				var mid := (c0 + c1) * 0.5
+				var inward := center - mid
+				if inward.length_squared() < 0.01:
+					continue
+				inward = inward.normalized()
+				for tip_i in 2:
+					var tip := c0 if tip_i == 0 else c1
+					var key := "%s|%d,%d" % [owner, _pkey(tip).x, _pkey(tip).y]
+					var rec := {
+						"mid": mid,
+						"tip": tip,
+						"inward": inward,
+						"color": tint,
+						"cr": rgb.x,
+						"cg": rgb.y,
+						"cb": rgb.z,
+					}
+					if not at.has(key):
+						at[key] = []
+					var bucket: Array = at[key]
+					bucket.append(rec)
+					at[key] = bucket
+	var chords: Array = []
+	for key in at.keys():
+		var elist: Array = at[key]
+		if elist.size() == 2:
+			var e0: Dictionary = elist[0]
+			var e1: Dictionary = elist[1]
+			var pa: Vector2 = e0["mid"]
+			var pb: Vector2 = e1["mid"]
+			var span2 := pa.distance_squared_to(pb)
+			if span2 < 0.25 or span2 > 1600.0:
+				continue
+			var inn: Vector2 = e0["inward"] + e1["inward"]
+			if inn.length_squared() < 0.0001:
+				inn = e0["inward"]
+			else:
+				inn = inn.normalized()
+			chords.append({
+				"a": pa,
+				"b": pb,
+				"inward": inn,
+				"color": e0["color"],
+				"cr": int(e0["cr"]),
+				"cg": int(e0["cg"]),
+				"cb": int(e0["cb"]),
+			})
+		else:
+			for item in elist:
+				var edge_rec: Dictionary = item
+				var end_pt: Vector2 = edge_rec["tip"]
+				var mid_pt: Vector2 = edge_rec["mid"]
+				if end_pt.distance_squared_to(mid_pt) < 0.25:
+					continue
+				chords.append({
+					"a": mid_pt,
+					"b": end_pt,
+					"inward": edge_rec["inward"],
+					"color": edge_rec["color"],
+					"cr": int(edge_rec["cr"]),
+					"cg": int(edge_rec["cg"]),
+					"cb": int(edge_rec["cb"]),
+				})
+	return chords
+
+
 static func _border_mask() -> Dictionary:
-	# Alpha is metres from the owning side of a frontier edge. Each realm keeps its colour.
+	# Alpha is metres from the smoothed frontier, 0 on the line and 255 at 24 m.
+	# RGB is the faction on every owned texel, plus a skirt just outside the line
+	# so the sea half of a coast stroke still has a colour.
 	var texel := 2.0
 	var margin := 48.0
 	var min_p := Vector2(1.0e9, 1.0e9)
@@ -988,75 +1100,81 @@ static func _border_mask() -> Dictionary:
 	var span := max_p - min_p
 	var tw := int(ceil(span.x / texel))
 	var th := int(ceil(span.y / texel))
-	var bytes := PackedByteArray()
-	bytes.resize(tw * th * 4)
-	bytes.fill(0)
-	var cell := 0
-	while cell < tw * th:
-		bytes[cell * 4 + 3] = 255
-		cell += 1
-	var hex_w := HexGrid.SIZE * sqrt(3.0)
-	var reach := hex_w * 0.48
-	var edges := 0
+	var img0 := Image.create(tw, th, false, Image.FORMAT_RGBA8)
+	img0.fill(Color(0, 0, 0, 1))
+	var bytes := img0.get_data()
+	var reach := 24.0
+	var skirt := 16.0
 	for row2 in DataDB.height:
 		for col2 in DataDB.width:
 			var ax2 := HexGrid.axial_from_offset(col2, row2)
-			var owner := DataDB.owner_id(ax2.x, ax2.y)
-			if owner == "":
+			var owner2 := DataDB.owner_id(ax2.x, ax2.y)
+			if owner2 == "":
 				continue
 			var tid := DataDB.terrain_id(ax2.x, ax2.y)
 			if tid == "sea" or tid == "lake":
 				continue
-			var fc := DataDB.color_of(str(DataDB.faction(owner).get("color", "ffffff")))
-			var cr := int(clampf(fc.r * 255.0, 0.0, 255.0))
-			var cg := int(clampf(fc.g * 255.0, 0.0, 255.0))
-			var cb := int(clampf(fc.b * 255.0, 0.0, 255.0))
+			var rgb := _hex_channels(owner2)
 			var center := HexGrid.axial_to_pixel(ax2.x, ax2.y)
-			for dir_i in 6:
-				var nb: Vector2i = ax2 + HexGrid.DIRS[dir_i]
-				if DataDB.in_bounds(nb.x, nb.y):
-					if DataDB.terrain_id(nb.x, nb.y) == "lake":
+			var ix0 := clampi(int(floor((center.x - HexGrid.SIZE - min_p.x) / texel)), 0, tw - 1)
+			var ix1 := clampi(int(ceil((center.x + HexGrid.SIZE - min_p.x) / texel)), 0, tw - 1)
+			var iy0 := clampi(int(floor((center.y - HexGrid.SIZE - min_p.y) / texel)), 0, th - 1)
+			var iy1 := clampi(int(ceil((center.y + HexGrid.SIZE - min_p.y) / texel)), 0, th - 1)
+			for iy in range(iy0, iy1 + 1):
+				var wz := min_p.y + (float(iy) + 0.5) * texel
+				for ix in range(ix0, ix1 + 1):
+					var wx := min_p.x + (float(ix) + 0.5) * texel
+					if not _in_pointy_hex(Vector2(wx, wz), center):
 						continue
-					if DataDB.owner_id(nb.x, nb.y) == owner:
-						continue
-				var edge := int(RIVER_DIR_EDGE[dir_i])
-				var c0 := _corner_at(center, edge)
-				var c1 := _corner_at(center, edge + 1)
-				var mid := (c0 + c1) * 0.5
-				var inward := center - mid
-				if inward.length_squared() < 0.01:
+					var idx := (iy * tw + ix) * 4
+					bytes[idx] = rgb.x
+					bytes[idx + 1] = rgb.y
+					bytes[idx + 2] = rgb.z
+	var chords := _border_chords()
+	for chord_v in chords:
+		var chord: Dictionary = chord_v
+		var pa: Vector2 = chord["a"]
+		var pb: Vector2 = chord["b"]
+		var inward: Vector2 = chord["inward"]
+		var cr: int = int(chord["cr"])
+		var cg: int = int(chord["cg"])
+		var cb: int = int(chord["cb"])
+		var ab := pb - pa
+		var len2 := ab.length_squared()
+		if len2 < 0.01:
+			continue
+		var jx0 := clampi(int(floor((minf(pa.x, pb.x) - reach - min_p.x) / texel)), 0, tw - 1)
+		var jx1 := clampi(int(ceil((maxf(pa.x, pb.x) + reach - min_p.x) / texel)), 0, tw - 1)
+		var jy0 := clampi(int(floor((minf(pa.y, pb.y) - reach - min_p.y) / texel)), 0, th - 1)
+		var jy1 := clampi(int(ceil((maxf(pa.y, pb.y) + reach - min_p.y) / texel)), 0, th - 1)
+		for jy in range(jy0, jy1 + 1):
+			var wz2 := min_p.y + (float(jy) + 0.5) * texel
+			for jx in range(jx0, jx1 + 1):
+				var wx2 := min_p.x + (float(jx) + 0.5) * texel
+				var p2 := Vector2(wx2, wz2)
+				var along := clampf((p2 - pa).dot(ab) / len2, 0.0, 1.0)
+				var delta := p2 - (pa + ab * along)
+				var dist := delta.length()
+				if dist > reach:
 					continue
-				var inward_n := inward.normalized()
-				var ab := c1 - c0
-				var len2 := ab.length_squared()
-				if len2 < 0.01:
-					continue
-				edges += 1
-				var ix0 := clampi(int(floor((minf(c0.x, c1.x) - reach - min_p.x) / texel)), 0, tw - 1)
-				var ix1 := clampi(int(ceil((maxf(c0.x, c1.x) + reach - min_p.x) / texel)), 0, tw - 1)
-				var iy0 := clampi(int(floor((minf(c0.y, c1.y) - reach - min_p.y) / texel)), 0, th - 1)
-				var iy1 := clampi(int(ceil((maxf(c0.y, c1.y) + reach - min_p.y) / texel)), 0, th - 1)
-				for iy in range(iy0, iy1 + 1):
-					var wz := min_p.y + (float(iy) + 0.5) * texel
-					for ix in range(ix0, ix1 + 1):
-						var wx := min_p.x + (float(ix) + 0.5) * texel
-						var p2 := Vector2(wx, wz)
-						if (p2 - mid).dot(inward_n) < -0.4:
-							continue
-						var along := clampf((p2 - c0).dot(ab) / len2, 0.0, 1.0)
-						var dist := p2.distance_to(c0 + ab * along)
-						if dist > reach:
-							continue
-						var na := int(clampf(dist / 18.0, 0.0, 1.0) * 255.0)
-						var idx := (iy * tw + ix) * 4
-						if na < int(bytes[idx + 3]):
-							bytes[idx] = cr
-							bytes[idx + 1] = cg
-							bytes[idx + 2] = cb
-							bytes[idx + 3] = na
+				var signed := delta.dot(inward)
+				var new_a := int(clampf(dist / reach, 0.0, 1.0) * 255.0)
+				var idx2 := (jy * tw + jx) * 4
+				var old_a := int(bytes[idx2 + 3])
+				if new_a < old_a:
+					bytes[idx2 + 3] = new_a
+				if new_a <= old_a and signed >= -0.45:
+					bytes[idx2] = cr
+					bytes[idx2 + 1] = cg
+					bytes[idx2 + 2] = cb
+				elif new_a <= old_a and signed < -0.45 and signed >= -skirt and dist <= skirt:
+					if int(bytes[idx2]) == 0 and int(bytes[idx2 + 1]) == 0 and int(bytes[idx2 + 2]) == 0:
+						bytes[idx2] = cr
+						bytes[idx2 + 1] = cg
+						bytes[idx2 + 2] = cb
 	var img := Image.create_from_data(tw, th, false, Image.FORMAT_RGBA8, bytes)
 	var tex := ImageTexture.create_from_image(img)
-	print("BORDER MASK %d x %d edges %d" % [tw, th, edges])
+	print("BORDER MASK %d x %d chords %d" % [tw, th, chords.size()])
 	return {
 		"tex": tex,
 		"origin": min_p,

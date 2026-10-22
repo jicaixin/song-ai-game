@@ -21,6 +21,8 @@ var event_label: Label
 var advisor_label: Label
 var portrait: TextureRect
 var minimap: TextureRect
+var mini_frame: Panel
+var mini_caption: Label
 var end_button: Button
 var save_button: Button
 var load_button: Button
@@ -83,19 +85,28 @@ func _build_side() -> void:
 	event_label.add_theme_color_override("font_color", Color("f4ead2"))
 	event_label.add_theme_font_size_override("font_size", 16)
 	minimap = TextureRect.new()
-	minimap.position = Vector2(1096, 536)
-	minimap.size = Vector2(168, 168)
+	minimap.position = Vector2(1064, 522)
+	minimap.size = Vector2(204, 186)
 	minimap.stretch_mode = TextureRect.STRETCH_SCALE
 	minimap.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	minimap.mouse_filter = Control.MOUSE_FILTER_STOP
 	minimap.gui_input.connect(_on_mini)
 	add_child(minimap)
-	var mini_frame := Panel.new()
-	mini_frame.position = Vector2(1090, 530)
-	mini_frame.size = Vector2(180, 180)
+	mini_frame = Panel.new()
+	mini_frame.position = Vector2(1058, 516)
+	mini_frame.size = Vector2(216, 198)
 	mini_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(mini_frame)
+	mini_caption = Label.new()
+	mini_caption.text = "全图"
+	mini_caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mini_caption.add_theme_font_size_override("font_size", 15)
+	mini_caption.add_theme_color_override("font_color", Color("f4efe4"))
+	mini_caption.add_theme_color_override("font_outline_color", Color(0.05, 0.04, 0.03, 0.9))
+	mini_caption.add_theme_constant_override("outline_size", 6)
+	add_child(mini_caption)
 	move_child(minimap, get_child_count() - 1)
+	move_child(mini_caption, get_child_count() - 1)
 	end_button = Settings.cinnabar_button("结束回合", 8)
 	end_button.position = Vector2(1090, 468)
 	end_button.size = Vector2(180, 52)
@@ -352,6 +363,7 @@ func _refresh() -> void:
 	if minimap.texture == null or Engine.get_process_frames() % 20 == 0:
 		var map := get_tree().get_first_node_in_group("world_map") as WorldMap
 		if map:
+			_fit_minimap(map)
 			minimap.texture = ImageTexture.create_from_image(map.minimap_image())
 
 
@@ -449,17 +461,34 @@ func modal_open() -> bool:
 	return combat_panel.visible or tech_panel.visible or save_panel.visible
 
 
+func _fit_minimap(map: WorldMap) -> void:
+	var src := map.minimap_pixel_size()
+	if src.x < 2.0 or src.y < 2.0:
+		return
+	var fit := Vector2(220, 186)
+	var s := minf(fit.x / src.x, fit.y / src.y)
+	minimap.size = src * s
+	minimap.position = Vector2(1268.0 - minimap.size.x, 708.0 - minimap.size.y)
+	if mini_frame:
+		mini_frame.position = minimap.position - Vector2(6, 6)
+		mini_frame.size = minimap.size + Vector2(12, 12)
+	if mini_caption:
+		mini_caption.position = minimap.position + Vector2(8, 4)
+
+
 func _on_mini(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed:
 		var mb := event as InputEventMouseButton
 		if mb.button_index != MOUSE_BUTTON_LEFT:
 			return
-		var col := clampi(int(mb.position.x / minimap.size.x * float(DataDB.width)), 0, DataDB.width - 1)
-		var row := clampi(int(mb.position.y / minimap.size.y * float(DataDB.height)), 0, DataDB.height - 1)
-		var ax := HexGrid.axial_from_offset(col, row)
 		var map := get_tree().get_first_node_in_group("world_map") as WorldMap
-		if map:
-			map.focus_world(HexGrid.axial_to_pixel(ax.x, ax.y))
+		if map == null:
+			return
+		if not map.overview:
+			map.enter_overview()
+			return
+		var ax := map.minimap_axial(mb.position.x / minimap.size.x, mb.position.y / minimap.size.y)
+		map.focus_from_minimap(ax)
 
 
 func debug_buttons() -> Dictionary:

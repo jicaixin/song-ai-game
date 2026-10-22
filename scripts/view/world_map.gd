@@ -34,8 +34,31 @@ var _city_material: StandardMaterial3D
 var _bake_mode := ""
 var _env: Environment
 var _land_shader: ShaderMaterial
+var _water_shader: ShaderMaterial
 var _debug_dist := 0.0
+var overview := false
+var _overview_dist := 1400.0
+var _saved_look := Vector2.ZERO
+var _saved_zoom := 1
+var _label_layer: CanvasLayer
+var _realm_labels := {}
+var _realm_centroid := {}
+var _mini_base: Image
+var _mini_size := Vector2.ZERO
 var feature_points: Array = []
+
+const MINI_HEX_W := 8.0
+const MINI_PAD := 8.0
+const REALM_NAMES := {
+	"song": "大宋",
+	"liao": "大辽",
+	"xia": "西夏",
+	"gusiluo": "吐蕃唃厮啰",
+	"dali": "大理",
+	"jiaozhi": "交趾",
+	"goryeo": "高丽",
+	"uyghur": "西州回鹘",
+}
 
 const CITY_SCALE := 1.8
 # Camera distance is 280 at the default zoom and 780 at strategic. Detail
@@ -46,7 +69,7 @@ func _ready() -> void:
 	var built: Dictionary = TerrainFactory.build()
 	heights = built.heights
 	_add_mesh("Land", built.land, _land_mat(built.river_mask, built.border_mask), true)
-	_add_mesh("Water", built.water, _water_mat(), false)
+	_add_mesh("Water", built.water, _water_mat(built.border_mask), false)
 	feature_points = built.features
 	_add_trees(built)
 	_spawn_terrain_kit()
@@ -73,6 +96,7 @@ func _ready() -> void:
 	_lighting()
 	_sync_grade()
 	_measure()
+	_build_realm_labels()
 	EventBus.state_changed.connect(_on_state)
 	focus_city(str(DataDB.scenario.get("focus_city", "yanzhou")))
 	_rebuild_units()
@@ -102,14 +126,20 @@ func _land_mat(mask: Dictionary, border: Dictionary) -> ShaderMaterial:
 	mat.set_shader_parameter("border_map", border.tex)
 	mat.set_shader_parameter("border_origin", border.origin)
 	mat.set_shader_parameter("border_scale", border.scale)
-	mat.set_shader_parameter("border_px", 2.6)
+	mat.set_shader_parameter("border_px", 7.0)
+	mat.set_shader_parameter("border_fill", 0.0)
 	_land_shader = mat
 	return mat
 
 
-func _water_mat() -> ShaderMaterial:
+func _water_mat(border: Dictionary) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/water.gdshader")
+	mat.set_shader_parameter("border_map", border.tex)
+	mat.set_shader_parameter("border_origin", border.origin)
+	mat.set_shader_parameter("border_scale", border.scale)
+	mat.set_shader_parameter("border_px", 7.0)
+	_water_shader = mat
 	return mat
 
 
@@ -274,25 +304,39 @@ func _measure() -> void:
 
 
 func _sync_grade() -> void:
+	# border_px is the screen width drawn on each side of the frontier.
 	var fade := 0.04
 	var density := 0.00005
-	var border_px := 2.6
-	if zoom_index == 0:
+	var border_px := 7.0
+	var border_fill := 0.0
+	if overview:
+		fade = 0.0
+		density = 0.000008
+		border_px = 5.5
+		border_fill = 0.45
+	elif zoom_index == 0:
 		fade = 0.015
 		density = 0.00012
-		border_px = 3.6
+		border_px = 4.5
 	elif zoom_index >= 2:
 		fade = 0.07
 		density = 0.00002
-		border_px = 2.2
-	if _debug_dist > 900.0:
+		border_px = 6.0
+	if _debug_dist > 900.0 and not overview:
 		density = 0.00007
-		border_px = 4.0
+		border_px = 5.0
 	if _land_shader:
 		_land_shader.set_shader_parameter("grid_fade", fade)
 		_land_shader.set_shader_parameter("border_px", border_px)
+		_land_shader.set_shader_parameter("border_fill", border_fill)
+	if _water_shader:
+		_water_shader.set_shader_parameter("border_px", border_px)
 	if _env:
 		_env.fog_density = density
+		_env.fog_aerial_perspective = 0.0 if overview else 0.08
+	if _label_layer:
+		_label_layer.visible = overview
+	_apply_overview_actors()
 
 
 func spawn_hex_features(mesh_key: String, mesh: Mesh, lift: float = 0.0, detail_range: float = 0.0) -> MultiMeshInstance3D:
@@ -709,6 +753,7 @@ func _rebuild_units() -> void:
 		root.position = _unit_pos(ax)
 		root.scale = Vector3(2.5, 2.5, 2.5)
 		add_child(root)
+		root.visible = not overview
 		sprites[int(u.uid)] = root
 
 
@@ -781,6 +826,8 @@ func focus_world(world: Vector2) -> void:
 
 
 func _cam_dist() -> float:
+	if overview:
+		return _overview_dist
 	if _debug_dist > 1.0:
 		return _debug_dist
 	return DIST[zoom_index]
@@ -789,7 +836,9 @@ func _cam_dist() -> float:
 func _place_camera() -> void:
 	var dist := _cam_dist()
 	var pitch_deg: float = float(PITCH[zoom_index])
-	if _debug_dist > 1.0:
+	if overview:
+		pitch_deg = 68.0
+	elif _debug_dist > 1.0:
 		pitch_deg = 48.0
 	var pitch := deg_to_rad(pitch_deg)
 	var yaw := deg_to_rad(12.0)
@@ -800,10 +849,14 @@ func _place_camera() -> void:
 
 
 func _seat_anchor(world: Vector2) -> void:
+	_seat_toward(world, VIEW_ANCHOR)
+
+
+func _seat_toward(world: Vector2, anchor: Vector2) -> void:
 	for _i in 8:
 		_place_camera()
 		var screen := world_to_screen(world)
-		var err := VIEW_ANCHOR - screen
+		var err := anchor - screen
 		if err.length() < 1.2:
 			return
 		var right := camera.global_transform.basis.x
@@ -821,6 +874,138 @@ func _seat_anchor(world: Vector2) -> void:
 		look_xz += Vector2(right.x, right.z) * (-err.x) * scale
 		look_xz += Vector2(fwd.x, fwd.z) * err.y * scale
 	_place_camera()
+
+
+func enter_overview() -> void:
+	_enter_overview()
+
+
+func focus_from_minimap(ax: Vector2i) -> void:
+	overview = false
+	_debug_dist = 0.0
+	zoom_index = 1
+	_sync_grade()
+	focus_world(HexGrid.axial_to_pixel(ax.x, ax.y))
+
+
+func _enter_overview() -> void:
+	if not overview:
+		_saved_look = look_xz
+		_saved_zoom = zoom_index
+	_debug_dist = 0.0
+	overview = true
+	if map_rect.size.x < 10.0:
+		_measure()
+	var pitch := deg_to_rad(68.0)
+	var dist_h := map_rect.size.x * 1.1 / 1.658
+	var dist_v := map_rect.size.y * 1.12 * sin(pitch) / 0.932
+	_overview_dist = clampf(maxf(dist_h, dist_v), 900.0, 3000.0)
+	var center := map_rect.get_center()
+	look_xz = center
+	_sync_grade()
+	_seat_toward(center, Vector2(600, 300))
+	_place_realm_labels()
+	print("OVERVIEW dist %.0f" % _overview_dist)
+
+
+func _leave_overview(restore: bool) -> void:
+	if not overview:
+		return
+	overview = false
+	_debug_dist = 0.0
+	if restore:
+		look_xz = _saved_look
+		zoom_index = _saved_zoom
+	_sync_grade()
+	_place_camera()
+
+
+func _apply_overview_actors() -> void:
+	for id in sprites.keys():
+		var node: Node = sprites[id]
+		if is_instance_valid(node):
+			node.visible = not overview
+	_cull_banners()
+
+
+func _build_realm_labels() -> void:
+	var sum := {}
+	var count := {}
+	for row in DataDB.height:
+		for col in DataDB.width:
+			var ax := HexGrid.axial_from_offset(col, row)
+			var owner := DataDB.owner_id(ax.x, ax.y)
+			if owner == "" or not REALM_NAMES.has(owner):
+				continue
+			var tid := DataDB.terrain_id(ax.x, ax.y)
+			if tid == "sea" or tid == "lake":
+				continue
+			var p := HexGrid.axial_to_pixel(ax.x, ax.y)
+			if not sum.has(owner):
+				sum[owner] = Vector2.ZERO
+				count[owner] = 0
+			sum[owner] = sum[owner] + p
+			count[owner] = int(count[owner]) + 1
+	_realm_centroid = {}
+	for owner in sum.keys():
+		_realm_centroid[owner] = sum[owner] / float(count[owner])
+	_label_layer = CanvasLayer.new()
+	_label_layer.name = "RealmLabels"
+	_label_layer.layer = 8
+	_label_layer.visible = false
+	add_child(_label_layer)
+	var root := Control.new()
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_label_layer.add_child(root)
+	for owner2 in REALM_NAMES.keys():
+		var lab := Label.new()
+		lab.text = str(REALM_NAMES[owner2])
+		lab.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		lab.add_theme_font_override("font", Settings.font)
+		var size := 32
+		if owner2 == "song":
+			size = 44
+		elif owner2 == "liao":
+			size = 40
+		elif owner2 == "xia" or owner2 == "gusiluo":
+			size = 30
+		elif owner2 == "jiaozhi" or owner2 == "uyghur":
+			size = 26
+		lab.add_theme_font_size_override("font_size", size)
+		var ink := DataDB.color_of(str(DataDB.faction(owner2).get("color", "ffffff"))).lerp(Color("f7f1e4"), 0.42)
+		lab.add_theme_color_override("font_color", ink)
+		lab.add_theme_color_override("font_outline_color", Color(0.07, 0.05, 0.04, 0.92))
+		lab.add_theme_constant_override("outline_size", 12)
+		lab.visible = false
+		root.add_child(lab)
+		_realm_labels[owner2] = lab
+	var hint := Label.new()
+	hint.text = "按 M 返回"
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hint.position = Vector2(430, 68)
+	hint.add_theme_font_override("font", Settings.font)
+	hint.add_theme_font_size_override("font_size", 18)
+	hint.add_theme_color_override("font_color", Color("f4efe4"))
+	hint.add_theme_color_override("font_outline_color", Color(0.07, 0.05, 0.04, 0.92))
+	hint.add_theme_constant_override("outline_size", 8)
+	root.add_child(hint)
+	_realm_labels["_hint"] = hint
+
+
+func _place_realm_labels() -> void:
+	if _label_layer == null:
+		return
+	var vp := get_viewport_rect().size
+	for owner in _realm_centroid.keys():
+		var lab: Label = _realm_labels[owner]
+		var sp := world_to_screen(_realm_centroid[owner])
+		var on_screen := sp.x > 8.0 and sp.y > 48.0 and sp.x < vp.x - 8.0 and sp.y < vp.y - 8.0
+		lab.visible = on_screen
+		if not on_screen:
+			continue
+		lab.reset_size()
+		lab.position = sp - lab.size * 0.5
 
 
 func world_to_screen(world: Vector2) -> Vector2:
@@ -882,6 +1067,8 @@ func _process(delta: float) -> void:
 			set_meta("draw_calls", draws)
 			set_meta("prims", prims)
 	_poll_focus()
+	if overview:
+		_place_realm_labels()
 	if Engine.get_process_frames() % 12 == 0:
 		_cull_banners()
 	if not _playing():
@@ -918,6 +1105,11 @@ func _poll_focus() -> void:
 	_focus_applied = text
 	var bits := text.split(",")
 	_debug_dist = 0.0
+	if bits[0] == "overview":
+		_enter_overview()
+		return
+	if overview:
+		overview = false
 	if bits.size() > 1:
 		zoom_index = clampi(int(bits[1]), 0, DIST.size() - 1)
 	if bits.size() > 3:
@@ -948,7 +1140,7 @@ func _blocked(screen: Vector2) -> bool:
 		return true
 	if screen.y > 608.0 and screen.x < 900.0:
 		return true
-	if screen.x > 1064.0 and screen.y > 440.0:
+	if screen.x > 1036.0 and screen.y > 500.0:
 		return true
 	return false
 
@@ -1039,6 +1231,11 @@ func _key(event: InputEventKey) -> void:
 	elif event.keycode == KEY_F9:
 		if SaveManager.load_slot(1):
 			focus_after_load()
+	elif event.keycode == KEY_M:
+		if overview:
+			_leave_overview(true)
+		else:
+			_enter_overview()
 
 
 func _cycle_unit() -> void:
@@ -1061,7 +1258,11 @@ func _cycle_unit() -> void:
 func _zoom_at(screen: Vector2, step: int) -> void:
 	var before := screen_to_world(screen)
 	_debug_dist = 0.0
-	zoom_index = clampi(zoom_index + step, 0, DIST.size() - 1)
+	if overview:
+		overview = false
+		zoom_index = clampi(step, 0, DIST.size() - 1)
+	else:
+		zoom_index = clampi(zoom_index + step, 0, DIST.size() - 1)
 	_sync_grade()
 	_place_camera()
 	var after := screen_to_world(screen)
@@ -1269,6 +1470,17 @@ func _stroke_hex(st: SurfaceTool, h: Vector2i, color: Color, width: float) -> vo
 func _cull_banners() -> void:
 	if camera == null:
 		return
+	if overview:
+		for node in banners:
+			if not is_instance_valid(node):
+				continue
+			var banner_node := node.get_node_or_null("Banner") as Node3D
+			if banner_node:
+				banner_node.visible = false
+			var city_mesh := node.get_node_or_null("CityMesh") as MeshInstance3D
+			if city_mesh:
+				city_mesh.visible = false
+		return
 	var ranked: Array = []
 	for node in banners:
 		if not is_instance_valid(node):
@@ -1383,10 +1595,61 @@ func _tint_baked(col: Color, albedo: Color, v: Vector3, mname: String) -> Dictio
 	return {"color": col, "vertex": v}
 
 
+func minimap_pixel_size() -> Vector2:
+	return _minimap_size()
+
+
+func minimap_axial(u: float, v: float) -> Vector2i:
+	var sz := _minimap_size()
+	var row_h := MINI_HEX_W * 0.8660254
+	var hex_r := MINI_HEX_W / sqrt(3.0)
+	var y := v * sz.y
+	var row := clampi(int(round((y - MINI_PAD - hex_r) / row_h)), 0, DataDB.height - 1)
+	var x := u * sz.x
+	var q_plus := (x - MINI_PAD - MINI_HEX_W * 0.5) / MINI_HEX_W
+	var col := clampi(int(round(q_plus - 0.5 * float(row & 1))), 0, DataDB.width - 1)
+	return HexGrid.axial_from_offset(col, row)
+
+
 func minimap_image() -> Image:
-	var scale := 4
-	var img := Image.create(DataDB.width * scale, DataDB.height * scale, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0.10, 0.13, 0.16, 1.0))
+	if _mini_base == null:
+		_mini_base = _paint_minimap_base()
+		_mini_size = Vector2(_mini_base.get_width(), _mini_base.get_height())
+	var img := _mini_base.duplicate()
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		var world := HexGrid.axial_to_pixel(int(u.q), int(u.r))
+		var at := _mini_point(world)
+		var dot := Color("f4ead2")
+		if str(u.faction) == "xia":
+			dot = Color("d7a8cc")
+		elif str(u.faction) == "liao":
+			dot = Color("9ec0ea")
+		_mini_disc(img, at, 3.2, dot, dot)
+	return img
+
+
+func _minimap_size() -> Vector2:
+	var row_h := MINI_HEX_W * 0.8660254
+	var hex_r := MINI_HEX_W / sqrt(3.0)
+	var w := MINI_PAD * 2.0 + (float(DataDB.width) + 0.5) * MINI_HEX_W
+	var h := MINI_PAD * 2.0 + float(DataDB.height - 1) * row_h + hex_r * 2.0
+	return Vector2(w, h)
+
+
+func _mini_point(world: Vector2) -> Vector2:
+	var r := world.y / (HexGrid.SIZE * 1.5)
+	var q_plus := world.x / (HexGrid.SIZE * sqrt(3.0))
+	var row_h := MINI_HEX_W * 0.8660254
+	var hex_r := MINI_HEX_W / sqrt(3.0)
+	return Vector2(MINI_PAD + q_plus * MINI_HEX_W + MINI_HEX_W * 0.5, MINI_PAD + r * row_h + hex_r)
+
+
+func _paint_minimap_base() -> Image:
+	var sz := _minimap_size()
+	var img := Image.create(int(ceil(sz.x)), int(ceil(sz.y)), false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.08, 0.12, 0.16, 1.0))
+	var hex_r := MINI_HEX_W / sqrt(3.0)
 	for row in DataDB.height:
 		for col in DataDB.width:
 			var ax := HexGrid.axial_from_offset(col, row)
@@ -1394,66 +1657,59 @@ func minimap_image() -> Image:
 			var color := TerrainFactory.swatch(tid)
 			var owner := DataDB.owner_id(ax.x, ax.y)
 			if owner != "" and tid != "sea" and tid != "lake":
-				color = color.lerp(DataDB.color_of(str(DataDB.faction(owner).get("color", "ffffff"))), 0.48)
-			for py in scale:
-				for px in scale:
-					img.set_pixel(col * scale + px, row * scale + py, color)
-	for row2 in DataDB.height:
-		for col2 in DataDB.width:
-			var ax2 := HexGrid.axial_from_offset(col2, row2)
-			var owner2 := DataDB.owner_id(ax2.x, ax2.y)
-			var tid2 := DataDB.terrain_id(ax2.x, ax2.y)
-			if owner2 == "" or tid2 == "sea" or tid2 == "lake":
-				continue
-			var pure := DataDB.color_of(str(DataDB.faction(owner2).get("color", "ffffff")))
-			for dir_i in 6:
-				var nb: Vector2i = ax2 + HexGrid.DIRS[dir_i]
-				var draw := true
-				if DataDB.in_bounds(nb.x, nb.y):
-					if DataDB.terrain_id(nb.x, nb.y) == "lake":
-						draw = false
-					elif DataDB.owner_id(nb.x, nb.y) == owner2:
-						draw = false
-				if draw:
-					_minimap_edge(img, col2, row2, scale, dir_i, pure)
-	for u_v in GameState.units:
-		var u: Dictionary = u_v
-		var off := HexGrid.offset_from_axial(int(u.q), int(u.r))
-		if off.x < 0 or off.y < 0 or off.x >= DataDB.width or off.y >= DataDB.height:
-			continue
-		var dot := Color("f4ead2")
-		if str(u.faction) == "xia":
-			dot = Color("d7a8cc")
-		elif str(u.faction) == "liao":
-			dot = Color("9ec0ea")
-		for py2 in 2:
-			for px2 in 2:
-				img.set_pixel(off.x * scale + 1 + px2, off.y * scale + 1 + py2, dot)
+				color = color.lerp(DataDB.color_of(str(DataDB.faction(owner).get("color", "ffffff"))), 0.62)
+			var center := _mini_point(HexGrid.axial_to_pixel(ax.x, ax.y))
+			_mini_fill_hex(img, center, hex_r * 0.98, color)
+	var chords: Array = TerrainFactory._border_chords()
+	for chord_v in chords:
+		var chord: Dictionary = chord_v
+		var tint: Color = chord["color"]
+		var a := _mini_point(chord["a"])
+		var b := _mini_point(chord["b"])
+		_mini_stroke(img, a, b, tint.darkened(0.55), 5.2)
+	for chord_v2 in chords:
+		var chord2: Dictionary = chord_v2
+		var tint2: Color = chord2["color"]
+		var a2 := _mini_point(chord2["a"])
+		var b2 := _mini_point(chord2["b"])
+		_mini_stroke(img, a2, b2, tint2.lightened(0.28), 2.4)
 	return img
 
 
-func _minimap_edge(img: Image, col: int, row: int, scale: int, dir_i: int, color: Color) -> void:
-	# Pointy neighbours folded onto the square cell: east/west columns, the two
-	# northern neighbours share the top edge, the two southern ones the bottom.
-	var x0 := col * scale
-	var y0 := row * scale
-	var thick := 2
-	if dir_i == 0:
-		for py in scale:
-			for t in thick:
-				img.set_pixel(x0 + scale - 1 - t, y0 + py, color)
-	elif dir_i == 3:
-		for py2 in scale:
-			for t2 in thick:
-				img.set_pixel(x0 + t2, y0 + py2, color)
-	elif dir_i == 1 or dir_i == 2:
-		for px in scale:
-			for t3 in thick:
-				img.set_pixel(x0 + px, y0 + t3, color)
-	else:
-		for px2 in scale:
-			for t4 in thick:
-				img.set_pixel(x0 + px2, y0 + scale - 1 - t4, color)
+func _mini_fill_hex(img: Image, center: Vector2, radius: float, color: Color) -> void:
+	var x0 := clampi(int(floor(center.x - radius - 1.0)), 0, img.get_width() - 1)
+	var x1 := clampi(int(ceil(center.x + radius + 1.0)), 0, img.get_width() - 1)
+	var y0 := clampi(int(floor(center.y - radius - 1.0)), 0, img.get_height() - 1)
+	var y1 := clampi(int(ceil(center.y + radius + 1.0)), 0, img.get_height() - 1)
+	for y in range(y0, y1 + 1):
+		for x in range(x0, x1 + 1):
+			var dx := absf(float(x) + 0.5 - center.x) / radius
+			var dy := absf(float(y) + 0.5 - center.y) / radius
+			if dx <= 0.8660254 and dy <= 1.0 and dx * 0.5 + dy * 0.8660254 <= 0.8660254:
+				img.set_pixel(x, y, color)
+
+
+func _mini_stroke(img: Image, a: Vector2, b: Vector2, color: Color, width: float) -> void:
+	var ab := b - a
+	var length := ab.length()
+	var steps := int(maxf(length * 2.0, 1.0))
+	var rad := width * 0.5
+	for s in steps + 1:
+		var p := a.lerp(b, float(s) / float(steps))
+		_mini_disc(img, p, rad, color, color)
+
+
+func _mini_disc(img: Image, p: Vector2, rad: float, core: Color, edge: Color) -> void:
+	var x0 := clampi(int(floor(p.x - rad)), 0, img.get_width() - 1)
+	var x1 := clampi(int(ceil(p.x + rad)), 0, img.get_width() - 1)
+	var y0 := clampi(int(floor(p.y - rad)), 0, img.get_height() - 1)
+	var y1 := clampi(int(ceil(p.y + rad)), 0, img.get_height() - 1)
+	for y in range(y0, y1 + 1):
+		for x in range(x0, x1 + 1):
+			var d := Vector2(float(x) + 0.5, float(y) + 0.5).distance_to(p)
+			if d <= rad:
+				var t := clampf(d / rad, 0.0, 1.0)
+				img.set_pixel(x, y, core.lerp(edge, t))
 
 
 func debug_units() -> Array:

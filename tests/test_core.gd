@@ -42,6 +42,7 @@ func check_font() -> void:
 	var face := Settings.font
 	check("font_wo", face != null and face.has_char("我".unicode_at(0)))
 	check("font_song", face != null and face.has_char("宋".unicode_at(0)))
+	check("font_realm", face != null and face.has_char("唃".unicode_at(0)) and face.has_char("厮".unicode_at(0)) and face.has_char("啰".unicode_at(0)) and face.has_char("鹘".unicode_at(0)))
 	if face is FontFile:
 		check("font_no_sys", not (face as FontFile).allow_system_fallback)
 		check("font_aa", (face as FontFile).antialiasing == TextServer.FONT_ANTIALIASING_GRAY)

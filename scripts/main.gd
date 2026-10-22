@@ -130,6 +130,7 @@ func _process(_delta: float) -> void:
 		"last_event": GameState.last_event,
 		"clicks": world.debug_clicks,
 		"zoom": world.zoom_index,
+		"overview": world.overview,
 		"span": world.visible_hex_span(),
 		"draw_calls": world.get_meta("draw_calls", -1),
 		"prims": world.get_meta("prims", -1),

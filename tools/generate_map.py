@@ -144,18 +144,21 @@ OUTPUT = {
 POP = {"jing": 10, "fu": 6, "zhou": 4, "jun": 2}
 
 # Eastern shore of the mainland: sea lies east of this longitude. Used south of Bohai.
+# Chengshantou and the Yangtze mouth sit a little east of the previous polyline,
+# which was cutting the Shandong tip and flattening the delta.
 EAST_COAST = [
-    (38.4, 122.5),
-    (37.6, 122.6),
-    (37.0, 122.3),
-    (36.4, 120.7),
-    (35.4, 119.8),
-    (34.5, 119.5),
-    (33.6, 120.3),
-    (32.4, 121.0),
-    (31.4, 121.7),
-    (30.3, 122.0),
-    (29.3, 121.7),
+    (38.4, 122.55),
+    (37.48, 122.85),
+    (37.05, 122.55),
+    (36.4, 120.95),
+    (35.4, 119.85),
+    (34.5, 119.55),
+    (33.6, 120.45),
+    (32.45, 121.25),
+    (31.55, 121.98),
+    (30.75, 122.08),
+    (30.15, 121.9),
+    (29.3, 121.75),
     (28.2, 121.1),
     (27.0, 120.6),
     (26.1, 119.8),
@@ -170,8 +173,11 @@ SOUTH_COAST = [
     (107.6, 21.55),
     (108.6, 21.45),
     (109.6, 21.35),
-    (110.15, 20.85),
-    (110.7, 21.25),
+    (109.85, 21.1),
+    (110.05, 20.48),
+    (110.22, 20.26),
+    (110.48, 20.72),
+    (110.7, 21.22),
     (111.6, 21.45),
     (113.0, 21.95),
     (114.3, 22.45),
@@ -218,6 +224,24 @@ TAIWAN = [
     (120.05, 22.7),
     (120.15, 24.4),
     (120.7, 25.15),
+]
+# Hainan sits south of the mainland coast test, so it has to be forced to land
+# the same way Taiwan is. The Qiongzhou strait stays the gap above this ring.
+HAINAN = [
+    (110.02, 20.16),
+    (110.48, 20.1),
+    (110.9, 19.92),
+    (111.03, 19.5),
+    (110.9, 19.05),
+    (110.45, 18.55),
+    (109.95, 18.22),
+    (109.35, 18.15),
+    (108.85, 18.4),
+    (108.58, 18.85),
+    (108.6, 19.35),
+    (108.9, 19.78),
+    (109.4, 20.02),
+    (109.78, 20.12),
 ]
 
 QINLING = [(106.2, 34.05), (107.4, 33.85), (108.6, 33.95), (109.8, 34.05), (110.8, 33.85), (111.6, 33.55)]
@@ -419,8 +443,12 @@ def in_taiwan(lon: float, lat: float) -> bool:
     return in_poly(lon, lat, TAIWAN)
 
 
+def in_hainan(lon: float, lat: float) -> bool:
+    return in_poly(lon, lat, HAINAN)
+
+
 def is_sea(lon: float, lat: float) -> bool:
-    if in_taiwan(lon, lat):
+    if in_taiwan(lon, lat) or in_hainan(lon, lat):
         return False
     if in_korea(lon, lat) or in_liaodong(lon, lat):
         return False

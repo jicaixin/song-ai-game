@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Rewrite 1040 owners and the Yellow River mouth. Does not refit the layout or touch terrain.
+"""Rewrite 1040 owners, the coast hexes, and the Yellow River mouth.
 
-Reads the pinned Lambert layout and the stored terrain grid, then paints owners
-from generate_map.faction_of. City hexes are checked against their faction and
-are not moved. Rivers are rebuilt with the same densify/greedy walk; sea hexes
-are skipped. Pass --write to replace owners, owner_legend, rivers, and notes.
+Reads the pinned Lambert layout. Does not refit it and does not move cities.
+Coast hexes whose sea/land state disagrees with generate_map.is_sea are flipped:
+sea becomes whatever classify() returns, land becomes sea unless it is a city or
+a lake. Owners are then painted from faction_of. Rivers are rebuilt with the
+same densify/greedy walk; sea hexes are skipped. Pass --write to replace
+terrains, owners, owner_legend, rivers, and notes.
 """
 
 from __future__ import annotations
@@ -39,6 +41,32 @@ def load_terrain(mp: dict) -> dict[tuple[int, int], str]:
             q, r = gm.offset_to_axial(col, row)
             terrain[(q, r)] = legend[ch]
     return terrain
+
+
+def retouch_coast(
+    layout: gm.Layout,
+    terrain: dict[tuple[int, int], str],
+    cities: list[dict],
+) -> list[tuple]:
+    """Flip only the hexes whose sea test changed. Returns a log of edits."""
+    occupied = {(int(c["q"]), int(c["r"])): c["id"] for c in cities}
+    edits = []
+    for key, tid in list(terrain.items()):
+        x, y = layout.axial_to_km(*key)
+        lon, lat = gm.lambert_inverse(x, y)
+        sea = gm.is_sea(lon, lat)
+        if tid == "lake":
+            continue
+        if sea and tid != "sea":
+            if key in occupied:
+                edits.append((key, round(lon, 2), round(lat, 2), tid, "kept-city"))
+                continue
+            terrain[key] = "sea"
+            edits.append((key, round(lon, 2), round(lat, 2), tid, "sea"))
+        elif not sea and tid == "sea":
+            terrain[key] = gm.classify(lon, lat)
+            edits.append((key, round(lon, 2), round(lat, 2), "sea", terrain[key]))
+    return edits
 
 
 def paint(layout: gm.Layout, terrain: dict[tuple[int, int], str]) -> dict[tuple[int, int], str]:
@@ -114,6 +142,10 @@ def main() -> None:
     cities = json.loads(CITIES_PATH.read_text(encoding="utf-8"))["cities"]
     layout = pinned_layout(mp)
     terrain = load_terrain(mp)
+    edits = retouch_coast(layout, terrain, cities)
+    print(f"coast edits {len(edits)}")
+    for row in edits:
+        print(" ", row)
     owner = paint(layout, terrain)
 
     worst = 0.0
@@ -202,13 +234,48 @@ def main() -> None:
         raise SystemExit("refusing to write: city owners disagree with the polygons")
     if terrain.get((xq, xr)) in (None, "sea", "lake"):
         raise SystemExit("xizhou hex is not land")
-    if (xq, xr) in occupied:
+    if (xq, xr) in occupied and occupied[(xq, xr)] != "xizhou":
         raise SystemExit("xizhou hex collides with " + occupied[(xq, xr)])
     if owner.get((xq, xr)) != "uyghur":
         raise SystemExit("xizhou hex is not uyghur")
+    def box_count(lon0: float, lon1: float, lat0: float, lat1: float) -> tuple[int, int, int]:
+        land = sea = song = 0
+        for (q, r), tid in terrain.items():
+            lon, lat = gm.lambert_inverse(*layout.axial_to_km(q, r))
+            if not (lon0 <= lon <= lon1 and lat0 <= lat <= lat1):
+                continue
+            if tid == "sea":
+                sea += 1
+            elif tid != "lake":
+                land += 1
+                if owner[(q, r)] == "song":
+                    song += 1
+        return land, sea, song
+
+    for name, box in (
+        ("hainan", (108.5, 111.15, 18.05, 20.25)),
+        ("leizhou", (109.7, 110.55, 20.2, 21.45)),
+        ("shandong_tip", (122.15, 122.95, 37.15, 37.7)),
+        ("delta", (120.8, 122.2, 30.7, 32.0)),
+        ("taiwan", (120.0, 122.1, 21.9, 25.4)),
+        ("korea", (124.4, 129.5, 34.3, 42.2)),
+        ("bohai", (118.2, 121.2, 37.9, 40.2)),
+    ):
+        print(f"  {name} land/sea/song {box_count(*box)}")
+
     if not write:
         print("dry run (pass --write to update the json)")
         return
+
+    legend = mp["terrain_legend"]
+    terrain_rows = []
+    for row in range(gm.H):
+        chars_row = []
+        for col in range(gm.W):
+            q, r = gm.offset_to_axial(col, row)
+            chars_row.append(legend[terrain[(q, r)]])
+        terrain_rows.append("".join(chars_row))
+    mp["terrains"] = terrain_rows
 
     rows = []
     for row in range(gm.H):
@@ -223,7 +290,8 @@ def main() -> None:
     mp["notes"] = (
         "1040 疆域近似，见 docs/song_1040_borders.md。"
         "兰伯特等角圆锥，标准纬线 25°N/45°N，中央经线 112°E。尖顶六边形，奇数行偏移。"
-        "高山仍属所在政权。海、湖与台湾无主。黄河为 1048 商胡决口前的滨州入海故道。"
+        "高山仍属所在政权。海、湖与台湾无主。海南岛为陆，属宋。"
+        "黄河为 1048 商胡决口前的滨州入海故道。"
     )
     MAP_PATH.write_text(json.dumps(mp, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
