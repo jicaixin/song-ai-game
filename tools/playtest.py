@@ -36,8 +36,8 @@ def wait_song(page, pred, timeout=30):
 
 def click_vp(page, x, y, button="left"):
     box = page.locator("canvas").bounding_box()
-    px = box["x"] + (x + 0.5) / 640.0 * box["width"]
-    py = box["y"] + (y + 0.5) / 360.0 * box["height"]
+    px = box["x"] + (x + 0.5) / 1280.0 * box["width"]
+    py = box["y"] + (y + 0.5) / 720.0 * box["height"]
     # A same-frame right-click from Playwright never reaches Godot's input flush.
     # Move, let a frame land, then press and release.
     if button == "right":
@@ -172,8 +172,8 @@ def main() -> int:
         mover = _bring_on_screen(page, mover["name"])
         print("mover", mover["name"], "at", round(mover["sx"], 1), round(mover["sy"], 1), "hex", mover["q"], mover["r"])
         box = page.locator("canvas").bounding_box()
-        mpx = box["x"] + (mover["sx"] + 0.5) / 640.0 * box["width"]
-        mpy = box["y"] + (mover["sy"] + 0.5) / 360.0 * box["height"]
+        mpx = box["x"] + (mover["sx"] + 0.5) / 1280.0 * box["width"]
+        mpy = box["y"] + (mover["sy"] + 0.5) / 720.0 * box["height"]
         page.mouse.move(mpx, mpy)
         state = wait_song(
             page,

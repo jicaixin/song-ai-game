@@ -11,28 +11,33 @@ const TEAL := Color("10282e")
 
 var theme: Theme
 var font: Font
+var banner_font: Font
 
 func _ready() -> void:
-	font = _load_font()
+	font = _load_font(false)
+	banner_font = _load_font(true)
 	theme = _build_theme()
 	get_tree().root.theme = theme
 	# Web builds cannot see OS fonts. The engine default only covers Latin,
 	# so any control that misses the theme still needs this face.
 	ThemeDB.fallback_font = font
-	ThemeDB.fallback_font_size = 13
+	ThemeDB.fallback_font_size = 18
 	DisplayServer.window_set_title("我带着AI穿越大宋")
 
 
-func _load_font() -> Font:
-	# Raw bytes, not the imported CFF face. The importer's .fontdata loaded in
-	# the editor (where system fallback hides missing glyphs) and still drew
-	# hex boxes in the browser.
+func _load_font(msdf: bool) -> Font:
+	# Raw bytes, not the imported face. The importer stored a font with
+	# antialiasing off, and the editor's system fallback hid missing glyphs.
 	var ff := FontFile.new()
 	ff.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
 	ff.hinting = TextServer.HINTING_LIGHT
-	ff.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_DISABLED
-	ff.oversampling = 2.0
+	ff.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_AUTO
+	ff.oversampling = 0.0
 	ff.allow_system_fallback = false
+	if msdf:
+		ff.multichannel_signed_distance_field = true
+		ff.msdf_pixel_range = 8
+		ff.msdf_size = 48
 	var bytes := FileAccess.get_file_as_bytes("res://art/fonts/ui_zh.bytes")
 	ff.data = bytes
 	if bytes.is_empty() or not ff.has_char("我".unicode_at(0)):
@@ -44,7 +49,7 @@ func _load_font() -> Font:
 func _build_theme() -> Theme:
 	var t := Theme.new()
 	t.default_font = font
-	t.default_font_size = 13
+	t.default_font_size = 18
 	var normal := _box(CELADON, WOOD, 3)
 	var hover := _box(Color("245e6a"), WOOD, 3)
 	var pressed := _box(Color("0e3036"), WOOD, 3)
@@ -61,10 +66,10 @@ func _build_theme() -> Theme:
 		t.set_color("font_focus_color", kind, INK)
 		t.set_color("font_disabled_color", kind, Color("8d8070"))
 		t.set_font("font", kind, font)
-		t.set_font_size("font_size", kind, 13)
+		t.set_font_size("font_size", kind, 18)
 	t.set_color("font_color", "Label", INK)
 	t.set_font("font", "Label", font)
-	t.set_font_size("font_size", "Label", 13)
+	t.set_font_size("font_size", "Label", 18)
 	t.set_stylebox("panel", "Panel", _box(Color("10282ee0"), WOOD, 3))
 	t.set_stylebox("panel", "PanelContainer", _box(Color("10282ee0"), WOOD, 3))
 	return t

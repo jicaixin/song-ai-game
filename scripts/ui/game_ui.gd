@@ -53,48 +53,52 @@ func _ready() -> void:
 func _build_top() -> void:
 	var panel := Panel.new()
 	panel.position = Vector2(0, 0)
-	panel.size = Vector2(640, 26)
+	panel.size = Vector2(1280, 52)
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(panel)
 	top_label = Label.new()
-	top_label.position = Vector2(8, 4)
-	top_label.size = Vector2(430, 18)
+	top_label.position = Vector2(16, 8)
+	top_label.size = Vector2(900, 36)
 	top_label.clip_text = true
+	top_label.add_theme_font_size_override("font_size", 20)
 	top_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(top_label)
-	tech_button = _small_button(panel, "科技", Vector2(444, 2), Vector2(60, 22))
+	tech_button = _small_button(panel, "科技", Vector2(960, 6), Vector2(96, 40))
 	tech_button.pressed.connect(func() -> void: tech_panel.visible = true)
-	save_button = _small_button(panel, "存档", Vector2(508, 2), Vector2(60, 22))
+	save_button = _small_button(panel, "存档", Vector2(1064, 6), Vector2(96, 40))
 	save_button.pressed.connect(func() -> void: _open_save(true))
-	load_button = _small_button(panel, "读档", Vector2(572, 2), Vector2(60, 22))
+	load_button = _small_button(panel, "读档", Vector2(1168, 6), Vector2(96, 40))
 	load_button.pressed.connect(func() -> void: _open_save(false))
 
 
 func _build_side() -> void:
 	var panel := Panel.new()
-	panel.position = Vector2(8, 32)
-	panel.size = Vector2(206, 76)
+	panel.position = Vector2(16, 64)
+	panel.size = Vector2(400, 176)
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(panel)
-	tile_label = _wrap_label(panel, Vector2(6, 2), Vector2(194, 40))
-	unit_label = _wrap_label(panel, Vector2(6, 40), Vector2(194, 34))
+	tile_label = _wrap_label(panel, Vector2(12, 8), Vector2(376, 52))
+	unit_label = _wrap_label(panel, Vector2(12, 62), Vector2(376, 48))
+	event_label = _wrap_label(panel, Vector2(12, 114), Vector2(376, 52))
+	event_label.add_theme_color_override("font_color", Color("f4ead2"))
+	event_label.add_theme_font_size_override("font_size", 16)
 	minimap = TextureRect.new()
-	minimap.position = Vector2(548, 268)
-	minimap.size = Vector2(84, 84)
+	minimap.position = Vector2(1096, 536)
+	minimap.size = Vector2(168, 168)
 	minimap.stretch_mode = TextureRect.STRETCH_SCALE
-	minimap.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	minimap.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	minimap.mouse_filter = Control.MOUSE_FILTER_STOP
 	minimap.gui_input.connect(_on_mini)
 	add_child(minimap)
 	var mini_frame := Panel.new()
-	mini_frame.position = Vector2(546, 266)
-	mini_frame.size = Vector2(88, 88)
+	mini_frame.position = Vector2(1090, 530)
+	mini_frame.size = Vector2(180, 180)
 	mini_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(mini_frame)
 	move_child(minimap, get_child_count() - 1)
-	end_button = Settings.cinnabar_button("结束回合", 18)
-	end_button.position = Vector2(548, 214)
-	end_button.size = Vector2(84, 44)
+	end_button = Settings.cinnabar_button("结束回合", 8)
+	end_button.position = Vector2(1090, 468)
+	end_button.size = Vector2(180, 52)
 	end_button.pressed.connect(func() -> void: TurnManager.request_end())
 	add_child(end_button)
 	btn_map = {
@@ -107,60 +111,54 @@ func _build_side() -> void:
 
 func _build_advisor() -> void:
 	var panel := Panel.new()
-	panel.position = Vector2(8, 292)
-	panel.size = Vector2(508, 62)
+	panel.position = Vector2(16, 624)
+	panel.size = Vector2(860, 84)
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(panel)
 	portrait = TextureRect.new()
-	portrait.position = Vector2(4, 6)
-	portrait.size = Vector2(48, 48)
+	portrait.position = Vector2(8, 10)
+	portrait.size = Vector2(64, 64)
 	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	portrait.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	portrait.texture = ArtBank.face_tex("serious")
 	panel.add_child(portrait)
 	var scroll := ScrollContainer.new()
-	scroll.position = Vector2(56, 4)
-	scroll.size = Vector2(444, 54)
+	scroll.position = Vector2(84, 8)
+	scroll.size = Vector2(760, 68)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.mouse_filter = Control.MOUSE_FILTER_STOP
 	panel.add_child(scroll)
 	advisor_label = Label.new()
 	advisor_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	advisor_label.custom_minimum_size = Vector2(444, 0)
-	advisor_label.size = Vector2(444, 54)
+	advisor_label.custom_minimum_size = Vector2(760, 0)
+	advisor_label.size = Vector2(760, 68)
+	advisor_label.add_theme_font_size_override("font_size", 18)
 	advisor_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	scroll.add_child(advisor_label)
 
 
 func _build_event() -> void:
-	event_label = Label.new()
-	event_label.position = Vector2(8, 272)
-	event_label.size = Vector2(520, 18)
-	event_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	event_label.add_theme_color_override("font_color", Color("f4ead2"))
-	event_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	event_label.add_theme_constant_override("outline_size", 2)
-	add_child(event_label)
+	pass
 
 
 func _build_combat() -> void:
 	combat_panel = Panel.new()
-	combat_panel.position = Vector2(48, 48)
-	combat_panel.size = Vector2(392, 200)
+	combat_panel.position = Vector2(360, 160)
+	combat_panel.size = Vector2(560, 280)
 	combat_panel.visible = false
 	combat_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(combat_panel)
-	combat_label = _wrap_label(combat_panel, Vector2(8, 8), Vector2(376, 148))
+	combat_label = _wrap_label(combat_panel, Vector2(16, 12), Vector2(528, 196))
 	fight_button = Settings.cinnabar_button("开战")
-	fight_button.position = Vector2(8, 164)
-	fight_button.size = Vector2(120, 28)
+	fight_button.position = Vector2(16, 220)
+	fight_button.size = Vector2(160, 44)
 	fight_button.pressed.connect(_confirm_fight)
 	combat_panel.add_child(fight_button)
 	cancel_button = Button.new()
 	cancel_button.text = "罢手"
-	cancel_button.position = Vector2(140, 164)
-	cancel_button.size = Vector2(120, 28)
+	cancel_button.position = Vector2(192, 220)
+	cancel_button.size = Vector2(160, 44)
 	cancel_button.focus_mode = Control.FOCUS_NONE
 	cancel_button.pressed.connect(hide_combat)
 	combat_panel.add_child(cancel_button)
@@ -170,31 +168,32 @@ func _build_combat() -> void:
 
 func _build_tech() -> void:
 	tech_panel = Panel.new()
-	tech_panel.position = Vector2(16, 28)
-	tech_panel.size = Vector2(460, 300)
+	tech_panel.position = Vector2(80, 80)
+	tech_panel.size = Vector2(760, 520)
 	tech_panel.visible = false
 	tech_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(tech_panel)
 	var title := Label.new()
 	title.text = "科技树 · 下回可研究"
-	title.position = Vector2(8, 6)
-	title.size = Vector2(360, 16)
+	title.position = Vector2(16, 10)
+	title.size = Vector2(560, 28)
+	title.add_theme_font_size_override("font_size", 20)
 	tech_panel.add_child(title)
 	var close := Button.new()
 	close.text = "关闭"
-	close.position = Vector2(376, 4)
-	close.size = Vector2(72, 22)
+	close.position = Vector2(640, 8)
+	close.size = Vector2(100, 36)
 	close.focus_mode = Control.FOCUS_NONE
 	close.pressed.connect(func() -> void: tech_panel.visible = false)
 	tech_panel.add_child(close)
 	btn_map["tech_close"] = close
 	var scroll := ScrollContainer.new()
-	scroll.position = Vector2(8, 30)
-	scroll.size = Vector2(444, 262)
+	scroll.position = Vector2(16, 52)
+	scroll.size = Vector2(728, 452)
 	tech_panel.add_child(scroll)
 	var box := VBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	box.custom_minimum_size = Vector2(420, 0)
+	box.custom_minimum_size = Vector2(700, 0)
 	scroll.add_child(box)
 	var era_names := {}
 	for era_v in DataDB.eras:
@@ -206,7 +205,7 @@ func _build_tech() -> void:
 		var tech: Dictionary = tech_v
 		var line := Label.new()
 		line.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
-		line.custom_minimum_size = Vector2(420, 0)
+		line.custom_minimum_size = Vector2(700, 0)
 		line.text = _tech_line(tech, era_names, branch_names)
 		box.add_child(line)
 
@@ -243,21 +242,21 @@ func _tech_line(tech: Dictionary, era_names: Dictionary, branch_names: Dictionar
 
 func _build_save() -> void:
 	save_panel = Panel.new()
-	save_panel.position = Vector2(120, 70)
-	save_panel.size = Vector2(250, 210)
+	save_panel.position = Vector2(420, 160)
+	save_panel.size = Vector2(420, 320)
 	save_panel.visible = false
 	save_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(save_panel)
 	var title := Label.new()
 	title.name = "SaveTitle"
-	title.position = Vector2(8, 6)
-	title.size = Vector2(160, 16)
+	title.position = Vector2(16, 10)
+	title.size = Vector2(240, 28)
 	title.text = "存档"
 	save_panel.add_child(title)
 	var close := Button.new()
 	close.text = "关闭"
-	close.position = Vector2(168, 4)
-	close.size = Vector2(72, 22)
+	close.position = Vector2(300, 8)
+	close.size = Vector2(100, 36)
 	close.focus_mode = Control.FOCUS_NONE
 	close.pressed.connect(func() -> void: save_panel.visible = false)
 	save_panel.add_child(close)
@@ -283,8 +282,8 @@ func _open_save(writing: bool) -> void:
 		else:
 			b.text = "读取%s%s" % [labels[i], "" if has else "（空）"]
 			b.disabled = not has
-		b.position = Vector2(12, 36 + i * 36)
-		b.size = Vector2(226, 28)
+		b.position = Vector2(20, 64 + i * 56)
+		b.size = Vector2(380, 44)
 		b.focus_mode = Control.FOCUS_NONE
 		var slot := i
 		if writing:

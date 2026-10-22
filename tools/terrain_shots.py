@@ -30,8 +30,8 @@ def wait_song(page, pred, timeout=50):
 
 def click_vp(page, x, y, button="left"):
     box = page.locator("canvas").bounding_box()
-    px = box["x"] + (x + 0.5) / 640.0 * box["width"]
-    py = box["y"] + (y + 0.5) / 360.0 * box["height"]
+    px = box["x"] + (x + 0.5) / 1280.0 * box["width"]
+    py = box["y"] + (y + 0.5) / 720.0 * box["height"]
     page.mouse.click(px, py, button=button)
 
 
@@ -54,11 +54,11 @@ def canvas_png(page, name):
     return path
 
 
-def focus(page, city, zoom):
+def focus(page, city, zoom, name=None):
     token = f"{city},{zoom},{time.time()}"
     page.evaluate("(t) => { window.__focusCity = t; }", token)
     page.wait_for_timeout(700)
-    canvas_png(page, f"terrain_{city}_z{zoom}")
+    canvas_png(page, name or f"terrain_{city}_z{zoom}")
 
 
 def sample_fps(page):
@@ -139,6 +139,60 @@ def main() -> None:
         ]:
             focus(page, city, zoom)
         sample_fps(page)
+        meta = song(page) or {}
+        canvas = page.evaluate(
+            """() => {
+                const c = document.querySelector('canvas');
+                return c ? {w: c.width, h: c.height, cw: c.clientWidth, ch: c.clientHeight, dpr: window.devicePixelRatio} : {};
+            }"""
+        )
+        meta_out = {
+            "span": meta.get("span"),
+            "zoom": meta.get("zoom"),
+            "draw_calls": meta.get("draw_calls"),
+            "prims": meta.get("prims"),
+            "tris": meta.get("tris"),
+            "canvas": canvas,
+        }
+        print("meta", json.dumps(meta_out, ensure_ascii=False))
+        (OUT / "terrain_meta.json").write_text(json.dumps(meta_out, indent=2))
+        browser.close()
+        browser = p.chromium.launch(
+            headless=True,
+            executable_path="/usr/local/bin/google-chrome",
+            args=[
+                "--use-gl=angle",
+                "--use-angle=swiftshader",
+                "--disable-gpu-sandbox",
+                "--force-device-scale-factor=2",
+                "--disk-cache-size=1",
+            ],
+        )
+        context = browser.new_context(
+            viewport={"width": 1280, "height": 720},
+            device_scale_factor=2,
+        )
+        page = context.new_page()
+        client = context.new_cdp_session(page)
+        client.send("Network.setCacheDisabled", {"cacheDisabled": True})
+        page.goto(URL, wait_until="domcontentloaded")
+        state = wait_song(page, lambda s: s.get("ready") and s.get("screen") == "title", 90)
+        page.wait_for_timeout(500)
+        canvas_png(page, "text_hidpi_title")
+        btn = state["buttons"]["new_game"]
+        click_vp(page, btn["x"] + btn["w"] / 2, btn["y"] + btn["h"] / 2)
+        wait_song(page, lambda s: s.get("screen") == "game", 40)
+        page.wait_for_timeout(900)
+        focus(page, "yanzhou", 1, "text_hidpi_map")
+        hidpi = page.evaluate(
+            """() => {
+                const c = document.querySelector('canvas');
+                if (!c) return {};
+                return {w: c.width, h: c.height, cw: c.clientWidth, ch: c.clientHeight, dpr: window.devicePixelRatio};
+            }"""
+        )
+        print("hidpi", json.dumps(hidpi))
+        (OUT / "terrain_hidpi.json").write_text(json.dumps(hidpi, indent=2))
         browser.close()
 
 

@@ -7,26 +7,22 @@ varying vec3 v_wpos;
 void vertex() {
 	v_uv = UV;
 	vec3 p = VERTEX;
-	p.y += sin(p.x * 0.55 + TIME * 1.6) * 0.025;
+	p.y += sin(p.x * 0.8 + TIME * 1.3) * 0.02;
 	VERTEX = p;
 	v_wpos = (MODEL_MATRIX * vec4(p, 1.0)).xyz;
 }
 
 void fragment() {
-	float along = fract(v_uv.x * 3.0 - TIME * 0.35);
+	float along = fract(v_uv.x * 2.0 - TIME * 0.28);
 	float across = abs(v_uv.y * 2.0 - 1.0);
-	vec3 deep = vec3(0.08, 0.28, 0.52);
-	vec3 midc = vec3(0.2, 0.5, 0.68);
-	vec3 silt = vec3(0.55, 0.48, 0.26);
-	vec3 col = mix(midc, deep, smoothstep(0.0, 0.85, across));
-	// COLOR.b carries silt (Yellow River) vs clearer water.
-	col = mix(col, silt, COLOR.b * 0.55);
-	float crest = smoothstep(0.62, 0.95, along) * (1.0 - across);
-	col += vec3(0.22, 0.26, 0.24) * crest;
-	float bank = smoothstep(0.72, 1.0, across);
-	col = mix(col, vec3(0.9, 0.94, 0.92), bank * 0.35);
+	vec3 mud = vec3(0.55, 0.42, 0.18);
+	vec3 water = vec3(0.28, 0.48, 0.42);
+	vec3 col = mix(water, mud, 0.72);
+	col = mix(col, mud * 1.15, COLOR.b * 0.45);
+	float crest = smoothstep(0.55, 0.92, along) * (1.0 - across);
+	col += vec3(0.12, 0.1, 0.05) * crest;
 	ALBEDO = col;
-	ROUGHNESS = 0.18;
+	ROUGHNESS = 0.35;
 	METALLIC = 0.0;
-	SPECULAR = 0.5;
+	SPECULAR = 0.25;
 }

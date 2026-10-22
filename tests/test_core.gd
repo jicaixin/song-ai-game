@@ -27,9 +27,15 @@ func check_camera() -> void:
 	map.focus_city("yanzhou")
 	var yan := DataDB.city_by_id("yanzhou")
 	var screen := map.world_to_screen(HexGrid.axial_to_pixel(int(yan.q), int(yan.r)))
-	var dx := absf(screen.x - 244.0)
-	var dy := absf(screen.y - 163.0)
-	check("camera", dx < 30.0 and dy < 30.0, "screen %s cam %s vp %s" % [screen, map.camera.position, map.get_viewport_rect().size])
+	var dx := absf(screen.x - 488.0)
+	var dy := absf(screen.y - 326.0)
+	check("camera", dx < 50.0 and dy < 50.0, "screen %s cam %s vp %s" % [screen, map.camera.position, map.get_viewport_rect().size])
+	for z in 3:
+		map.zoom_index = z
+		map.focus_city("yanzhou")
+		print("SPAN z%d %.2f" % [z, map.visible_hex_span()])
+	map.zoom_index = 1
+	map.focus_city("yanzhou")
 
 
 func check_font() -> void:
@@ -38,6 +44,11 @@ func check_font() -> void:
 	check("font_song", face != null and face.has_char("宋".unicode_at(0)))
 	if face is FontFile:
 		check("font_no_sys", not (face as FontFile).allow_system_fallback)
+		check("font_aa", (face as FontFile).antialiasing == TextServer.FONT_ANTIALIASING_GRAY)
+	var banner := Settings.banner_font
+	check("banner_font", banner != null and banner.has_char("延".unicode_at(0)))
+	if banner is FontFile:
+		check("banner_msdf", (banner as FontFile).multichannel_signed_distance_field)
 	else:
 		check("font_file", false, "not a FontFile")
 

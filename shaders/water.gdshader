@@ -9,35 +9,33 @@ void vertex() {
 	v_shore = COLOR.r;
 	v_lake = COLOR.g;
 	vec3 p = VERTEX;
-	float amp = mix(0.1, 0.028, v_shore);
-	float wx = p.x * 0.16 + TIME * 1.05;
-	float wz = p.z * 0.14 + TIME * 0.72;
-	float wave = sin(wx) * cos(wz);
+	float amp = mix(0.06, 0.02, v_shore);
+	float wx = p.x * 0.42 + TIME * 0.9;
+	float wz = p.z * 0.37 + TIME * 0.6;
+	float wave = sin(wx) * cos(wz) + 0.35 * sin(p.x * 0.9 + TIME * 1.4);
 	p.y += wave * amp;
-	float dwdx = cos(wx) * 0.16 * cos(wz) * amp;
-	float dwdz = sin(wx) * (-sin(wz)) * 0.14 * amp;
+	float dwdx = cos(wx) * 0.42 * cos(wz) * amp;
+	float dwdz = sin(wx) * (-sin(wz)) * 0.37 * amp;
 	NORMAL = normalize(vec3(-dwdx, 1.0, -dwdz));
 	VERTEX = p;
 	v_wpos = (MODEL_MATRIX * vec4(p, 1.0)).xyz;
 }
 
 void fragment() {
-	vec3 deep = vec3(0.025, 0.1, 0.24);
-	vec3 midc = vec3(0.04, 0.24, 0.42);
-	vec3 shallow = vec3(0.12, 0.4, 0.4);
-	vec3 lagoon = vec3(0.08, 0.32, 0.36);
+	vec3 deep = vec3(0.02, 0.18, 0.48);
+	vec3 midc = vec3(0.05, 0.38, 0.62);
+	vec3 shallow = vec3(0.18, 0.72, 0.7);
 	float s = clamp(v_shore, 0.0, 1.0);
-	vec3 col = mix(deep, midc, smoothstep(0.0, 0.42, s));
-	col = mix(col, shallow, smoothstep(0.38, 1.0, s));
-	col = mix(col, lagoon, v_lake * 0.55);
-	float rip = sin(v_wpos.x * 0.42 + TIME * 1.3) * sin(v_wpos.z * 0.37 - TIME * 0.9);
-	col += vec3(0.05, 0.08, 0.09) * rip * (1.0 - s * 0.4);
-	float foam = smoothstep(0.55, 0.92, s);
-	float band = 0.5 + 0.5 * sin(TIME * 1.8 + v_wpos.x * 0.31 + v_wpos.z * 0.27);
-	foam *= 0.45 + 0.55 * band;
-	col = mix(col, vec3(0.92, 0.96, 0.94), foam * 0.78);
+	vec3 col = mix(deep, midc, smoothstep(0.0, 0.35, s));
+	col = mix(col, shallow, smoothstep(0.45, 0.95, s));
+	col = mix(col, vec3(0.08, 0.42, 0.5), v_lake * 0.4);
+	float rip = sin(v_wpos.x * 0.85 + TIME * 1.2) * sin(v_wpos.z * 0.7 - TIME);
+	col += vec3(0.03, 0.05, 0.05) * rip;
+	float foam_band = smoothstep(0.72, 0.9, s) * (1.0 - smoothstep(0.9, 0.99, s));
+	float fizz = 0.65 + 0.35 * sin(TIME * 2.0 + v_wpos.x * 0.6 + v_wpos.z * 0.4);
+	col = mix(col, vec3(0.92, 0.96, 0.94), foam_band * fizz);
 	ALBEDO = col;
-	ROUGHNESS = mix(0.28, 0.5, s);
+	ROUGHNESS = mix(0.18, 0.42, s);
 	METALLIC = 0.0;
-	SPECULAR = 0.28;
+	SPECULAR = 0.45;
 }

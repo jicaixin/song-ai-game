@@ -5,17 +5,17 @@ extends RefCounted
 ## not taken from any existing game.
 
 const PALETTE := {
-	"plain": "6e6238",
-	"grass": "3c7434",
-	"hill": "6a5034",
-	"mountain": "5a4e44",
-	"alpine": "4a545c",
-	"loess": "8c4c1c",
-	"forest": "214e26",
-	"marsh": "3a624c",
-	"desert": "9a6c2e",
-	"erg": "b0883c",
-	"rice": "4e8234",
+	"plain": "a08c3c",
+	"grass": "3f8a38",
+	"hill": "8a6840",
+	"mountain": "6e6258",
+	"alpine": "5c656e",
+	"loess": "c46228",
+	"forest": "2c6234",
+	"marsh": "4a7a58",
+	"desert": "d4a258",
+	"erg": "e6c078",
+	"rice": "3d9a55",
 	"lake": "2a6e96",
 	"sea": "123e6e",
 }
@@ -45,10 +45,18 @@ static func build() -> Dictionary:
 		for col in DataDB.width:
 			var ax := HexGrid.axial_from_offset(col, row)
 			var id := DataDB.terrain_id(ax.x, ax.y)
-			heights[ax] = _center_height(id, ax)
 			colors[ax] = _tint(id, ax)
 			shore[ax] = _touches_water(ax)
 	colors = _smooth_colors(colors)
+	for row in DataDB.height:
+		for col in DataDB.width:
+			var ax2 := HexGrid.axial_from_offset(col, row)
+			var id2 := DataDB.terrain_id(ax2.x, ax2.y)
+			if _water(id2):
+				heights[ax2] = float(HEIGHTS.get(id2, -1.0))
+			else:
+				var center := HexGrid.axial_to_pixel(ax2.x, ax2.y)
+				heights[ax2] = _world_height(center)
 	var land := _land_mesh(heights, colors, shore)
 	var water := _water_mesh()
 	var rivers := _ribbon_mesh(true, heights, colors)
@@ -66,6 +74,10 @@ static func build() -> Dictionary:
 		"broad_leaf": _broad_leaf(),
 		"pines": woods.pines,
 		"broads": woods.broads,
+		"tufts": woods.tufts,
+		"rocks": woods.rocks,
+		"tuft_mesh": _tuft_mesh(),
+		"rock_mesh": _rock_mesh(),
 	}
 
 
@@ -199,49 +211,135 @@ static func _corner_sample(ax: Vector2i, i: int, heights: Dictionary, colors: Di
 	return {"p": pos, "c": col}
 
 
+static func _hash2(ix: int, iz: int) -> float:
+	var s := sin(float(ix) * 127.1 + float(iz) * 311.7) * 43758.5453
+	return s - floor(s)
+
+
+static func _vnoise(x: float, z: float) -> float:
+	var x0 := int(floor(x))
+	var z0 := int(floor(z))
+	var fx := x - float(x0)
+	var fz := z - float(z0)
+	fx = fx * fx * (3.0 - 2.0 * fx)
+	fz = fz * fz * (3.0 - 2.0 * fz)
+	var a := lerpf(_hash2(x0, z0), _hash2(x0 + 1, z0), fx)
+	var b := lerpf(_hash2(x0, z0 + 1), _hash2(x0 + 1, z0 + 1), fx)
+	return lerpf(a, b, fz)
+
+
+static func _fbm(x: float, z: float) -> float:
+	var a := 0.0
+	var f := 1.0
+	var w := 0.55
+	var s := 0.0
+	for _i in 3:
+		a += _vnoise(x * f, z * f) * w
+		s += w
+		f *= 2.05
+		w *= 0.5
+	return a / s
+
+
+static func _ridged(x: float, z: float) -> float:
+	return 1.0 - absf(_fbm(x, z) * 2.0 - 1.0)
+
+
+static func _relief(id: String, p: Vector2) -> float:
+	var x := p.x
+	var z := p.y
+	var n := _fbm(x * 0.045, z * 0.045)
+	if id == "alpine" or id == "mountain":
+		# North-south ridges so a chain of mountain hexes reads as one range.
+		var ridge := pow(_ridged(x * 0.11, z * 0.028), 1.35)
+		var amp := 15.5 if id == "alpine" else 11.0
+		return 1.6 + ridge * amp + _fbm(x * 0.18, z * 0.18) * 1.2
+	if id == "hill":
+		return 1.1 + _fbm(x * 0.09, z * 0.09) * 2.6
+	if id == "loess":
+		var field := _fbm(x * 0.05, z * 0.035)
+		var terraced: float = floor(field * 5.0) / 5.0
+		var gully := pow(1.0 - _ridged(x * 0.14, z * 0.04), 2.4)
+		return 0.7 + terraced * 3.2 - gully * 1.15
+	if id == "erg":
+		var dune := sin(x * 0.28 + z * 0.04) * cos(z * 0.16)
+		return 0.55 + dune * 0.9 + n * 0.15
+	if id == "desert":
+		return 0.4 + sin(x * 0.35 + z * 0.08) * 0.16 + n * 0.12
+	if id == "forest":
+		return 0.5 + n * 0.28
+	if id == "marsh":
+		return 0.12 + n * 0.05
+	if id == "rice":
+		return 0.22 + n * 0.04
+	if id == "grass":
+		return 0.42 + n * 0.22
+	return 0.36 + n * 0.12
+
+
+static func _world_height(p: Vector2) -> float:
+	var ax := HexGrid.pixel_to_axial(p)
+	var h := 0.0
+	var wsum := 0.0
+	var reach := HexGrid.SIZE * 1.15
+	for dz in range(-1, 2):
+		for dq in range(-1, 2):
+			var c := Vector2i(ax.x + dq, ax.y + dz)
+			if not DataDB.in_bounds(c.x, c.y):
+				continue
+			var center := HexGrid.axial_to_pixel(c.x, c.y)
+			var dist := p.distance_to(center)
+			var w := maxf(0.0, reach - dist)
+			if w <= 0.0:
+				continue
+			w *= w
+			var id := DataDB.terrain_id(c.x, c.y)
+			var hh := 0.02 if _water(id) else _relief(id, p)
+			h += hh * w
+			wsum += w
+	if wsum <= 0.001:
+		return 0.3
+	return h / wsum
+
+
 static func _land_mesh(heights: Dictionary, colors: Dictionary, shore: Dictionary) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n_div := 4
 	for row in DataDB.height:
 		for col in DataDB.width:
 			var ax := HexGrid.axial_from_offset(col, row)
 			if _water(DataDB.terrain_id(ax.x, ax.y)):
 				continue
-			var id := DataDB.terrain_id(ax.x, ax.y)
-			var center_px := HexGrid.axial_to_pixel(ax.x, ax.y)
-			var prof := _profile(id)
-			var peak := Vector3(center_px.x, float(heights[ax]), center_px.y)
+			var center := HexGrid.axial_to_pixel(ax.x, ax.y)
 			var cc: Color = colors[ax]
 			var shore_v := 1.0 if bool(shore[ax]) else 0.0
-			var corners: Array = []
-			for i in 6:
-				corners.append(_corner_sample(ax, i, heights, colors))
-			var shoulders: Array = []
-			for i in 6:
-				var ap: Vector3 = corners[i].p
-				var ac: Color = corners[i].c
-				var lift := lerpf(0.26, 0.9, prof.z)
-				var sp := Vector3(lerpf(peak.x, ap.x, prof.y), lerpf(ap.y, peak.y, lift), lerpf(peak.z, ap.z, prof.y))
-				shoulders.append({"p": sp, "c": cc.lerp(ac, prof.y)})
-			for i in 6:
-				var a: Dictionary = corners[i]
-				var b: Dictionary = corners[(i + 1) % 6]
-				var sa: Dictionary = shoulders[i]
-				var sb: Dictionary = shoulders[(i + 1) % 6]
-				var ap: Vector3 = a.p
-				var bp: Vector3 = b.p
-				var sap: Vector3 = sa.p
-				var sbp: Vector3 = sb.p
-				var ac: Color = a.c
-				var bc: Color = b.c
-				var sac: Color = sa.c
-				var sbc: Color = sb.c
-				var m_ab := (ap + bp) * 0.5
-				var c_ab := ac.lerp(bc, 0.5)
-				_tri(st, peak, sap, sbp, cc, sac, sbc, 0.0, 0.42, 0.42, shore_v)
-				_tri(st, sap, ap, m_ab, sac, ac, c_ab, 0.42, 1.0, 1.0, shore_v)
-				_tri(st, sbp, m_ab, bp, sbc, c_ab, bc, 0.42, 1.0, 1.0, shore_v)
-				_tri(st, sap, m_ab, sbp, sac, c_ab, sbc, 0.42, 1.0, 0.42, shore_v)
+			for edge in 6:
+				var a0 := deg_to_rad(60.0 * float(edge) - 30.0)
+				var a1 := deg_to_rad(60.0 * float(edge + 1) - 30.0)
+				var off_a := Vector2(cos(a0), sin(a0)) * HexGrid.SIZE
+				var off_b := Vector2(cos(a1), sin(a1)) * HexGrid.SIZE
+				var pts: Array = []
+				for s in n_div + 1:
+					var row_pts: Array = []
+					var u := float(s) / float(n_div)
+					for k in s + 1:
+						var v := 0.0 if s == 0 else float(k) / float(s)
+						var p2: Vector2 = center + off_a.lerp(off_b, v) * u
+						var sample_h := _world_height(p2)
+						row_pts.append(Vector3(p2.x, sample_h, p2.y))
+					pts.append(row_pts)
+				for s in n_div:
+					for k in s + 1:
+						var p00: Vector3 = pts[s][k]
+						var p10: Vector3 = pts[s + 1][k]
+						var p11: Vector3 = pts[s + 1][k + 1]
+						var e0 := float(s) / float(n_div)
+						var e1 := float(s + 1) / float(n_div)
+						_tri(st, p00, p10, p11, cc, cc, cc, e0, e1, e1, shore_v)
+						if k < s:
+							var p01: Vector3 = pts[s][k + 1]
+							_tri(st, p00, p11, p01, cc, cc, cc, e0, e1, e0, shore_v)
 	st.generate_normals()
 	return st.commit()
 
@@ -306,9 +404,9 @@ static func _ribbon_mesh(rivers: bool, heights: Dictionary, colors: Dictionary) 
 				if not great and not minor:
 					continue
 				var nb: Vector2i = key + HexGrid.DIRS[i]
-				var silt: float = 0.42 if great else 0.12
-				var width: float = 3.6 if great else 1.45
-				_add_ribbon(st, key, nb, width, Color(0.25, 0.55, silt, 1.0), 0.1, heights, colors)
+				var silt: float = 0.72 if great else 0.28
+				var width: float = 6.4 if great else 2.35
+				_add_ribbon(st, key, nb, width, Color(0.62, 0.48, 0.22, silt), 0.08, heights, colors)
 	else:
 		for row in DataDB.height:
 			for col in DataDB.width:
@@ -343,21 +441,13 @@ static func _edge_key(a: Vector2i, b: Vector2i) -> String:
 	return "%d,%d:%d,%d" % [b.x, b.y, a.x, a.y]
 
 
-static func _edge_y(a: Vector2i, b: Vector2i, heights: Dictionary, colors: Dictionary) -> float:
-	var dir := b - a
-	var idx := -1
-	for i in HexGrid.DIRS.size():
-		if HexGrid.DIRS[i] == dir:
-			idx = i
-			break
-	if idx < 0 or not heights.has(a):
-		return float(heights.get(a, 0.4))
-	var c0: Dictionary = _corner_sample(a, idx, heights, colors)
-	var c1: Dictionary = _corner_sample(a, (idx + 1) % 6, heights, colors)
-	return (c0.p.y + c1.p.y) * 0.5
+static func _edge_y(a: Vector2i, b: Vector2i, _heights: Dictionary, _colors: Dictionary) -> float:
+	var pa := HexGrid.axial_to_pixel(a.x, a.y)
+	var pb := HexGrid.axial_to_pixel(b.x, b.y)
+	return _world_height((pa + pb) * 0.5)
 
 
-static func _add_ribbon(st: SurfaceTool, a: Vector2i, b: Vector2i, width: float, color: Color, lift: float, heights: Dictionary, colors: Dictionary) -> void:
+static func _add_ribbon(st: SurfaceTool, a: Vector2i, b: Vector2i, width: float, color: Color, lift: float, _heights: Dictionary, _colors: Dictionary) -> void:
 	var pa := HexGrid.axial_to_pixel(a.x, a.y)
 	var pb := HexGrid.axial_to_pixel(b.x, b.y)
 	var dir := pb - pa
@@ -366,16 +456,15 @@ static func _add_ribbon(st: SurfaceTool, a: Vector2i, b: Vector2i, width: float,
 	dir = dir.normalized()
 	var mid := pa + dir * (HexGrid.SIZE * sqrt(3.0) / 2.0)
 	var tang := Vector2(-dir.y, dir.x) * HexGrid.SIZE * 0.5
-	var y := _edge_y(a, b, heights, colors) + lift
-	var p0 := Vector3(mid.x - tang.x, y, mid.y - tang.y)
-	var p1 := Vector3(mid.x + tang.x, y, mid.y + tang.y)
-	var side := Vector3(-dir.y, 0, dir.x).normalized() * width
-	var a0 := p0 - side
-	var a1 := p0 + side
-	var b0 := p1 - side
-	var b1 := p1 + side
-	_tri_uv(st, a0, b0, b1, color, Vector2(0, 0), Vector2(1, 0), Vector2(1, 1))
-	_tri_uv(st, a0, b1, a1, color, Vector2(0, 0), Vector2(1, 1), Vector2(0, 1))
+	var side2 := Vector2(-dir.y, dir.x).normalized() * width
+	var q0 := mid - tang
+	var q1 := mid + tang
+	var corners := [q0 - side2, q1 - side2, q1 + side2, q0 + side2]
+	var pts: Array[Vector3] = []
+	for q in corners:
+		pts.append(Vector3(q.x, _world_height(q) + lift, q.y))
+	_tri_uv(st, pts[0], pts[1], pts[2], color, Vector2(0, 0), Vector2(1, 0), Vector2(1, 1))
+	_tri_uv(st, pts[0], pts[2], pts[3], color, Vector2(0, 0), Vector2(1, 1), Vector2(0, 1))
 
 
 static func _tri_uv(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, color: Color, ua: Vector2, ub: Vector2, uc: Vector2) -> void:
@@ -404,34 +493,92 @@ static func _near_peak(ax: Vector2i) -> bool:
 static func _tree_lists(heights: Dictionary) -> Dictionary:
 	var pines: Array = []
 	var broads: Array = []
+	var tufts: Array = []
+	var rocks: Array = []
 	for row in DataDB.height:
 		for col in DataDB.width:
 			var ax := HexGrid.axial_from_offset(col, row)
 			var id := DataDB.terrain_id(ax.x, ax.y)
-			if id != "forest" and id != "marsh":
-				continue
-			var count: int = 6 if id == "forest" else 3
-			var pine := ax.y < 30 or _near_peak(ax)
 			var center := HexGrid.axial_to_pixel(ax.x, ax.y)
-			var y := float(heights[ax])
-			for k in count:
-				var ang := float(k) * 2.17 + float(ax.x) * 0.71 + float(ax.y) * 0.19
-				var rad := 2.4 + float(k) * 1.15
-				var p := Vector3(center.x + cos(ang) * rad, y, center.y + sin(ang) * rad)
-				var s := (0.9 + 0.45 * absf(sin(float(ax.x * 3 + k) * 1.3))) * 1.25
-				var tall: float = 1.15 if pine else 0.9
-				var basis := Basis(Vector3.UP, ang).scaled(Vector3(s, s * tall, s))
-				var leaf := Color("1e5c34")
-				if pine:
-					leaf = Color("163e28").lerp(Color("2a6a40"), 0.5 + 0.5 * sin(ang))
-				else:
-					leaf = Color("2f7a32").lerp(Color("6a9a38"), 0.5 + 0.5 * sin(ang * 1.4))
-				var item := {"t": Transform3D(basis, p), "trunk": Color("6a4630").lerp(Color("4a3020"), 0.5 + 0.5 * sin(ang)), "leaf": leaf}
-				if pine:
-					pines.append(item)
-				else:
-					broads.append(item)
-	return {"pines": pines, "broads": broads}
+			var y := float(heights.get(ax, 0.4))
+			if id == "forest" or id == "marsh":
+				var count: int = 8 if id == "forest" else 4
+				var pine := ax.y < 30 or _near_peak(ax)
+				for k in count:
+					var ang := float(k) * 2.17 + float(ax.x) * 0.71 + float(ax.y) * 0.19
+					var rad := 3.1 + float(k) * 1.35
+					var p := Vector3(center.x + cos(ang) * rad, y, center.y + sin(ang) * rad)
+					var s := (0.95 + 0.4 * absf(sin(float(ax.x * 3 + k) * 1.3))) * 2.5
+					var tall: float = 1.2 if pine else 0.95
+					var basis := Basis(Vector3.UP, ang).scaled(Vector3(s, s * tall, s))
+					var leaf := Color("2a6a40")
+					if pine:
+						leaf = Color("163e28").lerp(Color("2a6a40"), 0.5 + 0.5 * sin(ang))
+					else:
+						leaf = Color("2f7a32").lerp(Color("6a9a38"), 0.5 + 0.5 * sin(ang * 1.4))
+					var item := {"t": Transform3D(basis, p), "trunk": Color("6a4630").lerp(Color("4a3020"), 0.5 + 0.5 * sin(ang)), "leaf": leaf}
+					if pine:
+						pines.append(item)
+					else:
+						broads.append(item)
+			var tuft_n := 0
+			if id == "grass" or id == "plain" or id == "forest":
+				tuft_n = 3
+			elif id == "loess" or id == "rice" or id == "hill" or id == "desert":
+				tuft_n = 2
+			for k2 in tuft_n:
+				var ang2 := float(k2) * 2.4 + float(ax.x) * 0.37
+				var rad2 := 4.0 + float(k2) * 3.2
+				var p2 := Vector3(center.x + cos(ang2) * rad2, y, center.y + sin(ang2) * rad2)
+				var s2 := 1.8 + absf(sin(ang2)) * 1.1
+				var tint := Color("3c8a34")
+				if id == "loess":
+					tint = Color("c4a05a")
+				elif id == "desert":
+					tint = Color("d2b070")
+				elif id == "rice":
+					tint = Color("4aaa58")
+				tufts.append({"t": Transform3D(Basis(Vector3.UP, ang2).scaled(Vector3(s2, s2, s2)), p2), "color": tint})
+			var rock_n := 0
+			if id == "mountain" or id == "alpine":
+				rock_n = 3
+			elif id == "hill" or id == "erg":
+				rock_n = 2
+			for k3 in rock_n:
+				var ang3 := float(k3) * 1.9 + float(ax.y) * 0.41
+				var rad3 := 5.0 + float(k3) * 2.8
+				var p3 := Vector3(center.x + cos(ang3) * rad3, y, center.y + sin(ang3) * rad3)
+				var s3 := 1.6 + absf(sin(ang3 * 1.3)) * 1.4
+				if id == "alpine" or id == "mountain":
+					s3 *= 1.45
+				var rock_col := Color("6e675e")
+				if id == "erg":
+					rock_col = Color("c4a06a")
+				rocks.append({"t": Transform3D(Basis(Vector3.UP, ang3).scaled(Vector3(s3, s3 * 0.8, s3)), p3), "color": rock_col})
+	return {"pines": pines, "broads": broads, "tufts": tufts, "rocks": rocks}
+
+
+static func _tuft_mesh() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in 3:
+		var ang := float(i) * 2.15
+		var dir := Vector3(cos(ang), 0.0, sin(ang))
+		var base := dir * 0.12
+		var tip := base + Vector3(dir.x * 0.18, 0.9, dir.z * 0.18)
+		var side := Vector3(-dir.z, 0.0, dir.x) * 0.07
+		_tri(st, base - side, base + side, tip, Color.WHITE, Color.WHITE, Color.WHITE, 0, 0, 0, 0)
+	st.generate_normals()
+	return st.commit()
+
+
+static func _rock_mesh() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	_box(st, Vector3(0, 0.32, 0), Vector3(0.55, 0.32, 0.4), Color.WHITE)
+	_box(st, Vector3(0.42, 0.2, 0.12), Vector3(0.28, 0.2, 0.24), Color.WHITE)
+	st.generate_normals()
+	return st.commit()
 
 
 static func _trunk_mesh() -> ArrayMesh:
@@ -525,11 +672,11 @@ static func house_mesh() -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	_box(st, Vector3(0, 0.45, 0), Vector3(0.7, 0.45, 0.55), Color("f3e6c4"))
-	# Two slopes of a tiled roof.
-	_tri(st, Vector3(-0.85, 0.9, -0.7), Vector3(0.85, 0.9, -0.7), Vector3(0, 1.45, 0), Color("a34732"), Color("a34732"), Color("c45a3a"), 0, 0, 0, 0)
-	_tri(st, Vector3(0.85, 0.9, 0.7), Vector3(-0.85, 0.9, 0.7), Vector3(0, 1.45, 0), Color("a34732"), Color("a34732"), Color("c45a3a"), 0, 0, 0, 0)
-	_tri(st, Vector3(-0.85, 0.9, 0.7), Vector3(-0.85, 0.9, -0.7), Vector3(0, 1.45, 0), Color("8c3a28"), Color("8c3a28"), Color("a34732"), 0, 0, 0, 0)
-	_tri(st, Vector3(0.85, 0.9, -0.7), Vector3(0.85, 0.9, 0.7), Vector3(0, 1.45, 0), Color("8c3a28"), Color("8c3a28"), Color("a34732"), 0, 0, 0, 0)
+	_box(st, Vector3(-0.55, 0.5, 0), Vector3(0.08, 0.5, 0.55), Color("8a5a3a"))
+	_tri(st, Vector3(-0.85, 0.9, -0.7), Vector3(0.85, 0.9, -0.7), Vector3(0, 1.45, 0), Color("6a6e74"), Color("6a6e74"), Color("8a9098"), 0, 0, 0, 0)
+	_tri(st, Vector3(0.85, 0.9, 0.7), Vector3(-0.85, 0.9, 0.7), Vector3(0, 1.45, 0), Color("6a6e74"), Color("6a6e74"), Color("8a9098"), 0, 0, 0, 0)
+	_tri(st, Vector3(-0.85, 0.9, 0.7), Vector3(-0.85, 0.9, -0.7), Vector3(0, 1.45, 0), Color("5c6168"), Color("5c6168"), Color("6a6e74"), 0, 0, 0, 0)
+	_tri(st, Vector3(0.85, 0.9, -0.7), Vector3(0.85, 0.9, 0.7), Vector3(0, 1.45, 0), Color("5c6168"), Color("5c6168"), Color("6a6e74"), 0, 0, 0, 0)
 	st.generate_normals()
 	return st.commit()
 
@@ -543,9 +690,9 @@ static func pagoda_mesh() -> ArrayMesh:
 		_box(st, Vector3(0, y, 0), Vector3(w * 0.45, 0.35, w * 0.45), Color("f4ead2"))
 		var rw := w
 		var ry := y + 0.45
-		_tri(st, Vector3(-rw, ry, -rw), Vector3(rw, ry, -rw), Vector3(0, ry + 0.55, 0), Color("9c3b2c"), Color("9c3b2c"), Color("d06040"), 0, 0, 0, 0)
-		_tri(st, Vector3(rw, ry, rw), Vector3(-rw, ry, rw), Vector3(0, ry + 0.55, 0), Color("9c3b2c"), Color("9c3b2c"), Color("d06040"), 0, 0, 0, 0)
-		_tri(st, Vector3(-rw, ry, rw), Vector3(-rw, ry, -rw), Vector3(0, ry + 0.55, 0), Color("7d3024"), Color("7d3024"), Color("9c3b2c"), 0, 0, 0, 0)
-		_tri(st, Vector3(rw, ry, -rw), Vector3(rw, ry, rw), Vector3(0, ry + 0.55, 0), Color("7d3024"), Color("7d3024"), Color("9c3b2c"), 0, 0, 0, 0)
+		_tri(st, Vector3(-rw, ry, -rw), Vector3(rw, ry, -rw), Vector3(0, ry + 0.55, 0), Color("6e7580"), Color("6e7580"), Color("9aa3ad"), 0, 0, 0, 0)
+		_tri(st, Vector3(rw, ry, rw), Vector3(-rw, ry, rw), Vector3(0, ry + 0.55, 0), Color("6e7580"), Color("6e7580"), Color("9aa3ad"), 0, 0, 0, 0)
+		_tri(st, Vector3(-rw, ry, rw), Vector3(-rw, ry, -rw), Vector3(0, ry + 0.55, 0), Color("5a6168"), Color("5a6168"), Color("6e7580"), 0, 0, 0, 0)
+		_tri(st, Vector3(rw, ry, -rw), Vector3(rw, ry, rw), Vector3(0, ry + 0.55, 0), Color("5a6168"), Color("5a6168"), Color("6e7580"), 0, 0, 0, 0)
 	st.generate_normals()
 	return st.commit()

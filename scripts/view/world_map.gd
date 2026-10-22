@@ -1,9 +1,9 @@
 class_name WorldMap
 extends Node3D
 
-const DIST := [96.0, 54.0, 30.0]
-const PITCH := [58.0, 44.0, 30.0]
-const VIEW_ANCHOR := Vector2(244, 163)
+const DIST := [780.0, 280.0, 115.0]
+const PITCH := [50.0, 52.0, 40.0]
+const VIEW_ANCHOR := Vector2(488, 326)
 
 var camera: Camera3D
 var zoom_index := 1
@@ -28,6 +28,8 @@ var _focus_applied := ""
 var _unit_kinds := {}
 var _house: ArrayMesh
 var _pagoda: ArrayMesh
+var _perf_frames := 0
+var _tris := 0
 
 func _ready() -> void:
 	var built: Dictionary = TerrainFactory.build()
@@ -37,6 +39,8 @@ func _ready() -> void:
 	_add_mesh("Rivers", built.rivers, _river_mat(), false)
 	_add_mesh("Borders", built.borders, _glow_mat(), false)
 	_add_trees(built)
+	_tris = _count_tris(built.land) + _count_tris(built.water) + _count_tris(built.rivers)
+	print("TRIS land %d water %d rivers %d" % [_count_tris(built.land), _count_tris(built.water), _count_tris(built.rivers)])
 	_house = TerrainFactory.house_mesh()
 	_pagoda = TerrainFactory.pagoda_mesh()
 	_build_cities()
@@ -52,9 +56,9 @@ func _ready() -> void:
 	}
 	camera = Camera3D.new()
 	camera.name = "Camera3D"
-	camera.fov = 42.0
-	camera.near = 0.2
-	camera.far = 480.0
+	camera.fov = 50.0
+	camera.near = 0.5
+	camera.far = 4200.0
 	add_child(camera)
 	camera.current = true
 	_lighting()
@@ -80,7 +84,7 @@ func _add_mesh(node_name: String, mesh: ArrayMesh, mat: Material, shadows: bool)
 func _land_mat() -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/land.gdshader")
-	mat.set_shader_parameter("grain_tex", load("res://art/terrain/grain.png"))
+	mat.set_shader_parameter("atlas", load("res://art/terrain/atlas.png"))
 	return mat
 
 
@@ -103,11 +107,26 @@ func _river_mat() -> ShaderMaterial:
 
 
 func _add_trees(built: Dictionary) -> void:
-	_scatter("Pines", built.pines, built.pine_trunk, built.pine_leaf)
-	_scatter("Broads", built.broads, built.broad_trunk, built.broad_leaf)
+	_scatter("Pines", built.pines, built.pine_trunk, built.pine_leaf, true)
+	_scatter("Broads", built.broads, built.broad_trunk, built.broad_leaf, true)
+	_scatter_one("Tufts", built.tufts, built.tuft_mesh, false)
+	_scatter_one("Rocks", built.rocks, built.rock_mesh, true)
 
 
-func _scatter(node_name: String, items: Array, trunk: Mesh, leaf: Mesh) -> void:
+func _count_tris(mesh: Mesh) -> int:
+	var n := 0
+	for s in mesh.get_surface_count():
+		var arrays: Array = mesh.surface_get_arrays(s)
+		var idx = arrays[Mesh.ARRAY_INDEX]
+		if idx != null:
+			n += int(idx.size() / 3)
+		else:
+			var verts = arrays[Mesh.ARRAY_VERTEX]
+			n += int(verts.size() / 3)
+	return n
+
+
+func _scatter(node_name: String, items: Array, trunk: Mesh, leaf: Mesh, shadows: bool) -> void:
 	if items.is_empty():
 		return
 	for part in [["Trunk", trunk, "trunk"], ["Leaf", leaf, "leaf"]]:
@@ -124,8 +143,28 @@ func _scatter(node_name: String, items: Array, trunk: Mesh, leaf: Mesh) -> void:
 		inst.name = node_name + str(part[0])
 		inst.multimesh = mm
 		inst.material_override = _toon(Color.WHITE)
-		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(inst)
+
+
+func _scatter_one(node_name: String, items: Array, mesh: Mesh, shadows: bool) -> void:
+	if items.is_empty():
+		return
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = mesh
+	mm.instance_count = items.size()
+	for i in items.size():
+		var item: Dictionary = items[i]
+		mm.set_instance_transform(i, item.t)
+		mm.set_instance_color(i, item.color)
+	var inst := MultiMeshInstance3D.new()
+	inst.name = node_name
+	inst.multimesh = mm
+	inst.material_override = _toon(Color.WHITE)
+	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(inst)
 
 
 func _toon(color: Color) -> ShaderMaterial:
@@ -143,7 +182,7 @@ func _lighting() -> void:
 	sun.light_energy = 1.02
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
-	sun.directional_shadow_max_distance = 220.0
+	sun.directional_shadow_max_distance = 1400.0
 	sun.shadow_bias = 0.05
 	sun.shadow_normal_bias = 0.85
 	add_child(sun)
@@ -160,12 +199,8 @@ func _lighting() -> void:
 	env.ambient_light_color = Color("d7e4f0")
 	env.ambient_light_energy = 0.28
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 0.9
-	env.fog_enabled = true
-	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
-	env.fog_density = 0.0014
-	env.fog_light_color = Color("b7cfe2")
-	env.fog_aerial_perspective = 0.12
+	env.tonemap_exposure = 1.0
+	env.fog_enabled = false
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -192,47 +227,91 @@ func _build_cities() -> void:
 		root.name = str(city.get("id", "city"))
 		root.position = Vector3(px.x, _height_of(ax), px.y)
 		var pop := int(city.get("pop", 1))
-		var count := clampi(1 + pop / 3, 1, 4)
+		var major := bool(city.get("major", false)) or bool(city.get("capital", false))
+		var pad := MeshInstance3D.new()
+		var disc := CylinderMesh.new()
+		disc.top_radius = 7.4 if major else 5.6
+		disc.bottom_radius = disc.top_radius
+		disc.height = 0.16
+		pad.mesh = disc
+		pad.position = Vector3(0, 0.08, 0)
+		pad.material_override = _toon(Color("c2b48a"))
+		pad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(pad)
+		var count := clampi(4 + pop / 2, 4, 7)
+		if major:
+			count = mini(count + 2, 8)
 		for i in count:
 			var house := MeshInstance3D.new()
 			house.mesh = _house
 			house.material_override = _toon(Color.WHITE)
-			var ang := float(i) * 1.7
-			house.position = Vector3(cos(ang) * 2.4, 0, sin(ang) * 2.4)
+			var ang := float(i) * 2.15 + 0.4
+			var rad := 3.2 + float(i % 3) * 1.7
+			house.position = Vector3(cos(ang) * rad, 0, sin(ang) * rad)
 			house.rotation.y = ang
-			var s := 0.85 + float(pop) * 0.04
+			var s := 2.05 + float(pop) * 0.03
 			house.scale = Vector3(s, s, s)
 			root.add_child(house)
-		if bool(city.get("major", false)) or bool(city.get("capital", false)):
+		if major:
 			var pagoda := MeshInstance3D.new()
 			pagoda.mesh = _pagoda
 			pagoda.material_override = _toon(Color.WHITE)
-			pagoda.position = Vector3(0, 0, 0)
+			pagoda.scale = Vector3(1.55, 1.55, 1.55)
 			root.add_child(pagoda)
+		var walls := int(city.get("walls", 0))
+		if walls > 0 or major:
+			for i in 8:
+				var ang2 := TAU * float(i) / 8.0
+				var seg := MeshInstance3D.new()
+				var box := BoxMesh.new()
+				box.size = Vector3(2.4, 0.85, 0.32)
+				seg.mesh = box
+				seg.material_override = _toon(Color("d9cbb0"))
+				var wr := 6.6 if major else 5.2
+				seg.position = Vector3(cos(ang2) * wr, 0.5, sin(ang2) * wr)
+				seg.rotation.y = -ang2
+				root.add_child(seg)
 		var fc := DataDB.color_of(str(DataDB.faction(str(city.get("faction", ""))).get("color", "ffffff")))
+		var by := 10.2 if major else 8.4
 		var quad := MeshInstance3D.new()
 		var qm := QuadMesh.new()
-		qm.size = Vector2(6.4, 1.5)
+		qm.size = Vector2(8.2, 1.85)
 		quad.mesh = qm
 		var qmat := StandardMaterial3D.new()
 		qmat.albedo_color = fc
 		qmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		qmat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 		quad.material_override = qmat
-		quad.position = Vector3(0, 4.2, 0)
+		quad.position = Vector3(0.4, by, 0)
+		quad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		root.add_child(quad)
-		var lab := Label3D.new()
-		lab.text = "%s  %d" % [str(city.get("short", city.get("name", ""))), pop]
-		lab.font = Settings.font
-		lab.font_size = 28
-		lab.pixel_size = 0.038
-		lab.position = Vector3(0, 4.25, 0.05)
-		lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		lab.modulate = Color("f7f1e4")
-		lab.outline_modulate = Color(0.05, 0.08, 0.1)
-		lab.outline_size = 6
-		lab.no_depth_test = true
+		var ball := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.72
+		sm.height = 1.44
+		ball.mesh = sm
+		var bmat := StandardMaterial3D.new()
+		bmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		bmat.albedo_color = fc.lightened(0.28)
+		bmat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		ball.material_override = bmat
+		ball.position = Vector3(-3.15, by, 0.02)
+		ball.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(ball)
+		var short_name := str(city.get("short", city.get("name", "")))
+		var shadow := _city_label(short_name, Vector3(0.72, by - 0.08, -0.04), Color(0, 0, 0, 0.45))
+		root.add_child(shadow)
+		var lab := _city_label(short_name, Vector3(0.65, by + 0.02, 0.06), Color("f7f1e4"))
 		root.add_child(lab)
+		var pop_lab := _city_label(str(pop), Vector3(-3.15, by + 0.02, 0.08), Color("1a2428"))
+		pop_lab.font_size = 36
+		pop_lab.pixel_size = 0.032
+		root.add_child(pop_lab)
+		if walls > 0:
+			var wall_lab := _city_label("防%d" % walls, Vector3(0.7, by - 1.15, 0.05), Color("f4ead2"))
+			wall_lab.font_size = 28
+			wall_lab.pixel_size = 0.028
+			root.add_child(wall_lab)
 		var pri := 1
 		if bool(city.get("major", false)):
 			pri = 2
@@ -242,6 +321,21 @@ func _build_cities() -> void:
 		root.set_meta("banner", true)
 		add_child(root)
 		banners.append(root)
+
+
+func _city_label(text: String, pos: Vector3, color: Color) -> Label3D:
+	var lab := Label3D.new()
+	lab.text = text
+	lab.font = Settings.banner_font
+	lab.font_size = 48
+	lab.pixel_size = 0.036
+	lab.position = pos
+	lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	lab.modulate = color
+	lab.outline_size = 0
+	lab.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	lab.no_depth_test = true
+	return lab
 
 
 func _on_state() -> void:
@@ -322,6 +416,7 @@ func _rebuild_units() -> void:
 		root.add_child(flag)
 		var ax := Vector2i(int(u.q), int(u.r))
 		root.position = _unit_pos(ax)
+		root.scale = Vector3(2.5, 2.5, 2.5)
 		add_child(root)
 		sprites[int(u.uid)] = root
 
@@ -368,6 +463,19 @@ func animate_strike(uid: int, target: Vector2i) -> void:
 	await tw.finished
 
 
+func visible_hex_span() -> float:
+	var vp := get_viewport_rect().size
+	if camera == null or vp.x < 2.0:
+		return 0.0
+	var ax := HexGrid.pixel_to_axial(look_xz)
+	var s0 := world_to_screen(HexGrid.axial_to_pixel(ax.x, ax.y))
+	var s1 := world_to_screen(HexGrid.axial_to_pixel(ax.x + 1, ax.y))
+	var dx := absf(s1.x - s0.x)
+	if dx < 0.5:
+		return 0.0
+	return vp.x / dx
+
+
 func focus_city(id: String) -> void:
 	var city := DataDB.city_by_id(id)
 	if city.is_empty():
@@ -406,7 +514,10 @@ func _seat_anchor(world: Vector2) -> void:
 			return
 		right = right.normalized()
 		fwd = fwd.normalized()
-		var scale: float = DIST[zoom_index] / 320.0
+		var view_w: float = get_viewport_rect().size.x
+		if view_w < 2.0:
+			view_w = 1280.0
+		var scale: float = DIST[zoom_index] / (view_w * 0.5)
 		look_xz += Vector2(right.x, right.z) * (-err.x) * scale
 		look_xz += Vector2(fwd.x, fwd.z) * err.y * scale
 	_place_camera()
@@ -459,6 +570,14 @@ func _modal() -> bool:
 
 
 func _process(delta: float) -> void:
+	if _perf_frames < 3:
+		_perf_frames += 1
+		if _perf_frames == 2:
+			var draws := Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+			var prims := Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
+			set_meta("draw_calls", draws)
+			set_meta("prims", prims)
+			print("PERF draws %.0f prims %.0f tris %d span %.1f" % [draws, prims, _tris, visible_hex_span()])
 	_poll_focus()
 	if Engine.get_process_frames() % 12 == 0:
 		_cull_banners()
@@ -516,13 +635,13 @@ func _note_click(mb: InputEventMouseButton) -> void:
 
 
 func _blocked(screen: Vector2) -> bool:
-	if screen.y < 28.0:
+	if screen.y < 56.0:
 		return true
-	if screen.x < 220.0 and screen.y < 112.0:
+	if screen.x < 430.0 and screen.y < 250.0:
 		return true
-	if screen.y > 286.0 and screen.x < 520.0:
+	if screen.y > 608.0 and screen.x < 900.0:
 		return true
-	if screen.x > 536.0 and screen.y > 236.0:
+	if screen.x > 1064.0 and screen.y > 440.0:
 		return true
 	return false
 
@@ -845,14 +964,14 @@ func _cull_banners() -> void:
 	for node in banners:
 		if not is_instance_valid(node):
 			continue
-		var sp := camera.unproject_position(node.global_position + Vector3(0, 4.2, 0))
+		var sp := camera.unproject_position(node.global_position + Vector3(0, 10.0, 0))
 		ranked.append({"n": node, "s": sp, "p": int(node.get_meta("pri", 1))})
 	ranked.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a.p) > int(b.p))
-	var gap := 78.0
+	var gap := 150.0
 	if zoom_index == 1:
-		gap = 52.0
+		gap = 100.0
 	elif zoom_index >= 2:
-		gap = 34.0
+		gap = 68.0
 	var kept: Array[Vector2] = []
 	for item in ranked:
 		var pri := int(item.p)
@@ -894,6 +1013,7 @@ func minimap_image() -> Image:
 		elif str(u.faction) == "liao":
 			dot = Color("e6d080")
 		img.set_pixel(off.x, off.y, dot)
+	img.resize(DataDB.width * 4, DataDB.height * 4, Image.INTERPOLATE_BILINEAR)
 	return img
 
 

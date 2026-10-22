@@ -22,7 +22,7 @@ python3 tools/serve.py
 
 ## 在 Godot 里运行
 
-用 Godot 4.3+ 打开本目录，运行主场景 `scenes/main.tscn`。窗口逻辑分辨率 640×360，默认拉到 1280×720。三维场景画在这块逻辑分辨率上，再整数放大。渲染器必须是 GL Compatibility，网页导出才能跑。
+用 Godot 4.3+ 打开本目录，运行主场景 `scenes/main.tscn`。界面按 1280×720 绘制，并用分数缩放跟着窗口走，打开 HiDPI，这样中文不会先画小再被放大。渲染器必须是 GL Compatibility，网页导出才能跑。
 
 规则自测（无界面断言）：
 

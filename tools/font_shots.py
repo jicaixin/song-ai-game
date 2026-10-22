@@ -31,15 +31,15 @@ def wait_song(page, pred, timeout=40):
 
 def click_vp(page, x, y, button="left"):
     box = page.locator("canvas").bounding_box()
-    px = box["x"] + (x + 0.5) / 640.0 * box["width"]
-    py = box["y"] + (y + 0.5) / 360.0 * box["height"]
+    px = box["x"] + (x + 0.5) / 1280.0 * box["width"]
+    py = box["y"] + (y + 0.5) / 720.0 * box["height"]
     page.mouse.click(px, py, button=button)
 
 
 def wheel_vp(page, x, y, delta):
     box = page.locator("canvas").bounding_box()
-    px = box["x"] + (x + 0.5) / 640.0 * box["width"]
-    py = box["y"] + (y + 0.5) / 360.0 * box["height"]
+    px = box["x"] + (x + 0.5) / 1280.0 * box["width"]
+    py = box["y"] + (y + 0.5) / 720.0 * box["height"]
     page.mouse.move(px, py)
     page.mouse.wheel(0, delta)
 
@@ -126,8 +126,8 @@ def main() -> int:
         # Hover a city-ish spot: 延州守军 is at the focus.
         garrison = next(u for u in song(page)["units"] if u["name"] == "延州守军")
         box = page.locator("canvas").bounding_box()
-        hx = box["x"] + (garrison["sx"] + 0.5) / 640.0 * box["width"]
-        hy = box["y"] + (garrison["sy"] + 0.5) / 360.0 * box["height"]
+        hx = box["x"] + (garrison["sx"] + 0.5) / 1280.0 * box["width"]
+        hy = box["y"] + (garrison["sy"] + 0.5) / 720.0 * box["height"]
         page.mouse.move(hx, hy)
         page.wait_for_timeout(300)
         snap(page, "font_02_map_zoom1")
