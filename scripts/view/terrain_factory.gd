@@ -1102,15 +1102,14 @@ static func _nearest_water(p: Vector2, rad: int) -> Dictionary:
 	return {"ok": found, "p": best, "d": best_d}
 
 
-static func _half_width(upstream: float) -> float:
-	# Flat-to-flat is SIZE·√3. The old ribbon was about a third of a hex on the
-	# Yellow River; this keeps that taper but caps the water at 0.2 of a hex
-	# and holds true tributaries at 0.08.
+static func _half_width(upstream: float, great_course: bool) -> float:
+	# Flat-to-flat is SIZE·√3. A great course (黄河 and the other named rivers)
+	# stays near 0.2 of a hex. A minor tributary stays near 0.08.
 	var hex_w := HexGrid.SIZE * sqrt(3.0)
 	var t := sqrt(clampf(upstream / 78.0, 0.0, 1.0))
-	var prev := (0.55 + 11.0 * t * t) * 2.0
-	var full := clampf(prev * 0.6, hex_w * 0.08, hex_w * 0.20)
-	return full * 0.5
+	if great_course:
+		return hex_w * lerpf(0.08, 0.10, t)
+	return hex_w * lerpf(0.035, 0.04, t)
 
 
 static func _prepare_rivers() -> void:
@@ -1146,9 +1145,29 @@ static func _prepare_rivers() -> void:
 		kept += comp.size()
 		_flow_component(comp, adj, pos, great)
 	var pts := 0
+	var great_n := 0
+	var minor_n := 0
+	var great_lo := 99.0
+	var great_hi := 0.0
+	var minor_lo := 99.0
+	var minor_hi := 0.0
 	for course_v in _river_courses:
-		pts += (course_v as Array).size()
-	print("RIVERS courses %d pts %d nodes %d" % [_river_courses.size(), pts, kept])
+		var course: Array = course_v
+		pts += course.size()
+		if course.is_empty():
+			continue
+		var half := float(course[0].w)
+		if half > 1.6:
+			great_n += 1
+			great_lo = minf(great_lo, half)
+			great_hi = maxf(great_hi, half)
+		else:
+			minor_n += 1
+			minor_lo = minf(minor_lo, half)
+			minor_hi = maxf(minor_hi, half)
+	print("RIVERS courses %d pts %d nodes %d great %d (%.2f..%.2f) minor %d (%.2f..%.2f)" % [
+		_river_courses.size(), pts, kept, great_n, great_lo, great_hi, minor_n, minor_lo, minor_hi,
+	])
 
 
 static func _flow_component(comp: Array, adj: Dictionary, pos: Dictionary, great: Dictionary) -> void:
@@ -1252,18 +1271,26 @@ static func _flow_component(comp: Array, adj: Dictionary, pos: Dictionary, great
 			if int(inflow.get(nxt, 0)) >= 2 or not down.has(nxt):
 				break
 			walk = nxt
-		_emit_chain(chain, pos, up, water_mouth)
+		_emit_chain(chain, pos, up, water_mouth, great)
 
 
-static func _emit_chain(chain: Array, pos: Dictionary, up: Dictionary, water_mouth: Dictionary) -> void:
+static func _emit_chain(chain: Array, pos: Dictionary, up: Dictionary, water_mouth: Dictionary, great: Dictionary) -> void:
 	if chain.size() < 2:
 		return
+	var great_course := false
+	var last_i := chain.size() - 1
+	for gi in last_i:
+		var ga: Vector2i = chain[gi]
+		var gb: Vector2i = chain[gi + 1]
+		if bool(great.get(_pair_key(ga, gb), false)):
+			great_course = true
+			break
 	var raw: Array = []
 	for node_v in chain:
 		var node: Vector2i = node_v
 		raw.append({
 			"p": pos[node],
-			"w": _half_width(float(up.get(node, 1.0))),
+			"w": _half_width(float(up.get(node, 1.0)), great_course),
 			"mouth": 0.0,
 		})
 	var last: Vector2i = chain[chain.size() - 1]
