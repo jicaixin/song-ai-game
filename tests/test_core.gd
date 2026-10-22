@@ -11,6 +11,7 @@ func run_tests() -> int:
 	check_path()
 	check_save_roundtrip()
 	check_camera()
+	check_font()
 	if failed > 0:
 		push_error("失败 %d 项" % failed)
 	else:
@@ -29,6 +30,16 @@ func check_camera() -> void:
 	var dx := absf(screen.x - 244.0)
 	var dy := absf(screen.y - 163.0)
 	check("camera", dx < 30.0 and dy < 30.0, "screen %s cam %s vp %s" % [screen, map.camera.position, map.get_viewport_rect().size])
+
+
+func check_font() -> void:
+	var face := Settings.font
+	check("font_wo", face != null and face.has_char("我".unicode_at(0)))
+	check("font_song", face != null and face.has_char("宋".unicode_at(0)))
+	if face is FontFile:
+		check("font_no_sys", not (face as FontFile).allow_system_fallback)
+	else:
+		check("font_file", false, "not a FontFile")
 
 
 func check(name: String, ok: bool, detail: String = "") -> void:

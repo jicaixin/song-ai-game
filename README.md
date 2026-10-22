@@ -8,7 +8,7 @@
 
 - Godot **4.3 或更新**（本仓库用 4.7.2 导出）。渲染器为 GL Compatibility。
 - 网页导出模板用 **Web（无线程）**：`web_nothreads_release`。
-- 中文使用 [Fusion Pixel 12px 简体](https://github.com/TakWolf/fusion-pixel-font)，SIL OFL 1.1，许可证在 `art/fonts/OFL.txt`。字体未改名、未改形。
+- 中文使用 [Fusion Pixel 12px 简体](https://github.com/TakWolf/fusion-pixel-font)，SIL OFL 1.1，许可证在 `art/fonts/OFL.txt`。网页版没有系统字体，所以 `tools/build_ui_font.py` 把它收成游戏里实际用到的字，转成 TrueType，并以 `art/fonts/ui_zh.bytes` 打进包。浏览器里不会去借操作系统的中文字体。
 
 ## 直接玩网页版
 

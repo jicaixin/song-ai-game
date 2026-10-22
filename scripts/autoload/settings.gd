@@ -15,26 +15,28 @@ func _ready() -> void:
 	font = _load_font()
 	theme = _build_theme()
 	get_tree().root.theme = theme
+	# Web builds cannot see OS fonts. The engine default only covers Latin,
+	# so any control that misses the theme still needs this face.
+	ThemeDB.fallback_font = font
+	ThemeDB.fallback_font_size = 12
 	DisplayServer.window_set_title("我带着AI穿越大宋")
 
 
 func _load_font() -> Font:
-	var loaded = load("res://art/fonts/FusionPixel12-zh_hans.otf")
-	if loaded is FontFile:
-		var ff := loaded as FontFile
-		ff.antialiasing = TextServer.FONT_ANTIALIASING_NONE
-		ff.hinting = TextServer.HINTING_NONE
-		ff.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_DISABLED
-		return ff
+	# Raw bytes, not the imported CFF face. The importer's .fontdata loaded in
+	# the editor (where system fallback hides missing glyphs) and still drew
+	# hex boxes in the browser.
 	var ff := FontFile.new()
-	var bytes := FileAccess.get_file_as_bytes("res://art/fonts/FusionPixel12-zh_hans.otf")
-	if bytes.is_empty():
-		push_error("中文字体缺失")
-		return ThemeDB.fallback_font
-	ff.data = bytes
 	ff.antialiasing = TextServer.FONT_ANTIALIASING_NONE
 	ff.hinting = TextServer.HINTING_NONE
 	ff.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_DISABLED
+	ff.oversampling = 1.0
+	ff.allow_system_fallback = false
+	var bytes := FileAccess.get_file_as_bytes("res://art/fonts/ui_zh.bytes")
+	ff.data = bytes
+	if bytes.is_empty() or not ff.has_char("我".unicode_at(0)):
+		push_error("中文字体缺失或没有汉字")
+		return ThemeDB.fallback_font
 	return ff
 
 

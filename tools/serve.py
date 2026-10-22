@@ -18,6 +18,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def end_headers(self) -> None:
         # No COOP/COEP. The nothreads build must run without SharedArrayBuffer.
+        self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
 
