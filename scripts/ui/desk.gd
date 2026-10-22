@@ -419,19 +419,27 @@ func _firmware_card(fw: Dictionary) -> PanelContainer:
 	var text := VBoxContainer.new()
 	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(text)
-	text.add_child(Kit.label("%s  %s" % [id, str(fw.get("name", ""))], "H3Label"))
-	text.add_child(Kit.label(str(fw.get("effect", "")), "CaptionLabel"))
+	var title := Kit.label("%s  %s" % [id, str(fw.get("name", ""))], "H3Label")
+	var effect := Kit.label(str(fw.get("effect", "")), "CaptionLabel")
 	var need := "耗电 %d" % int(fw.get("power", 0))
 	if pre != "":
 		need += " · 需要 " + pre
-	text.add_child(Kit.label(need, "SmallLabel"))
+	var cost := Kit.label(need, "SmallLabel")
+	# Firmware cards are ink-dark. The theme ink is brown and disappears on them.
+	for lab in [title, effect, cost]:
+		lab.add_theme_color_override("font_color", Color("fbf5e6"))
+	text.add_child(title)
+	text.add_child(effect)
+	text.add_child(cost)
 	if kind == "FirmwareAvailable":
 		var act := Kit.button("写入", "PrimaryButton")
 		act.custom_minimum_size = Vector2(88, 36)
 		act.pressed.connect(GameState.write_firmware.bind(id))
 		row.add_child(act)
 	elif kind == "FirmwareDone":
-		row.add_child(Kit.label("已写入", "SmallLabel"))
+		var done := Kit.label("已写入", "SmallLabel")
+		done.add_theme_color_override("font_color", Color("fbf5e6"))
+		row.add_child(done)
 	return card
 
 
