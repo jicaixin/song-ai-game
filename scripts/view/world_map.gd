@@ -35,6 +35,9 @@ var _bake_mode := ""
 var _env: Environment
 var _land_shader: ShaderMaterial
 var _water_shader: ShaderMaterial
+var _border_shader: ShaderMaterial
+var _wash_node: MeshInstance3D
+var _fill_node: MeshInstance3D
 var _debug_dist := 0.0
 var overview := false
 var _overview_dist := 1400.0
@@ -47,8 +50,8 @@ var _mini_base: Image
 var _mini_size := Vector2.ZERO
 var feature_points: Array = []
 
-const MINI_HEX_W := 8.0
-const MINI_PAD := 8.0
+const MINI_HEX_W := 10.0
+const MINI_PAD := 10.0
 const REALM_NAMES := {
 	"song": "大宋",
 	"liao": "大辽",
@@ -68,8 +71,13 @@ const DETAIL_RANGE := 560.0
 func _ready() -> void:
 	var built: Dictionary = TerrainFactory.build()
 	heights = built.heights
-	_add_mesh("Land", built.land, _land_mat(built.river_mask, built.border_mask), true)
-	_add_mesh("Water", built.water, _water_mat(built.border_mask), false)
+	_add_mesh("Land", built.land, _land_mat(built.river_mask), true)
+	_add_mesh("Water", built.water, _water_mat(), false)
+	_border_shader = _stroke_mat()
+	_add_mesh("RealmStroke", built.border_stroke, _border_shader, false)
+	_wash_node = _add_mesh("RealmWash", built.border_wash, _wash_mat(0.45), false)
+	_fill_node = _add_mesh("RealmFill", built.realm_fill, _wash_mat(0.2), false)
+	_fill_node.visible = false
 	feature_points = built.features
 	_add_trees(built)
 	_spawn_terrain_kit()
@@ -107,39 +115,46 @@ func get_viewport_rect() -> Rect2:
 	return get_viewport().get_visible_rect()
 
 
-func _add_mesh(node_name: String, mesh: ArrayMesh, mat: Material, shadows: bool) -> void:
+func _add_mesh(node_name: String, mesh: ArrayMesh, mat: Material, shadows: bool) -> MeshInstance3D:
 	var inst := MeshInstance3D.new()
 	inst.name = node_name
 	inst.mesh = mesh
 	inst.material_override = mat
 	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(inst)
+	return inst
 
 
-func _land_mat(mask: Dictionary, border: Dictionary) -> ShaderMaterial:
+func _land_mat(mask: Dictionary) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/land.gdshader")
 	mat.set_shader_parameter("grid_fade", 0.04)
 	mat.set_shader_parameter("river_map", mask.tex)
 	mat.set_shader_parameter("river_origin", mask.origin)
 	mat.set_shader_parameter("river_scale", mask.scale)
-	mat.set_shader_parameter("border_map", border.tex)
-	mat.set_shader_parameter("border_origin", border.origin)
-	mat.set_shader_parameter("border_scale", border.scale)
-	mat.set_shader_parameter("border_px", 7.0)
-	mat.set_shader_parameter("border_fill", 0.0)
 	_land_shader = mat
 	return mat
 
 
-func _water_mat(border: Dictionary) -> ShaderMaterial:
+func _water_mat() -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/water.gdshader")
-	mat.set_shader_parameter("border_map", border.tex)
-	mat.set_shader_parameter("border_origin", border.origin)
-	mat.set_shader_parameter("border_scale", border.scale)
-	mat.set_shader_parameter("border_px", 7.0)
 	_water_shader = mat
+	return mat
+
+
+func _stroke_mat() -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/border_stroke.gdshader")
+	mat.set_shader_parameter("border_half_m", 3.0)
+	mat.set_shader_parameter("border_ref_m", 0.5)
+	return mat
+
+
+func _wash_mat(bias: float) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/border_wash.gdshader")
+	mat.set_shader_parameter("cam_bias", bias)
 	return mat
 
 
@@ -304,33 +319,29 @@ func _measure() -> void:
 
 
 func _sync_grade() -> void:
-	# border_px is the screen width drawn on each side of the frontier.
+	# border_px is the full on-screen width of the realm stroke.
 	var fade := 0.04
 	var density := 0.00005
 	var border_px := 7.0
-	var border_fill := 0.0
 	if overview:
 		fade = 0.0
 		density = 0.000008
-		border_px = 5.5
-		border_fill = 0.45
+		border_px = 4.0
 	elif zoom_index == 0:
 		fade = 0.015
 		density = 0.00012
-		border_px = 4.5
+		border_px = 5.0
 	elif zoom_index >= 2:
 		fade = 0.07
 		density = 0.00002
-		border_px = 6.0
+		border_px = 8.0
 	if _debug_dist > 900.0 and not overview:
 		density = 0.00007
 		border_px = 5.0
 	if _land_shader:
 		_land_shader.set_shader_parameter("grid_fade", fade)
-		_land_shader.set_shader_parameter("border_px", border_px)
-		_land_shader.set_shader_parameter("border_fill", border_fill)
-	if _water_shader:
-		_water_shader.set_shader_parameter("border_px", border_px)
+	if _border_shader:
+		_border_shader.set_shader_parameter("border_half_m", _border_half_metres(border_px))
 	if _env:
 		_env.fog_density = density
 		_env.fog_aerial_perspective = 0.0 if overview else 0.08
@@ -896,11 +907,12 @@ func _enter_overview() -> void:
 	overview = true
 	if map_rect.size.x < 10.0:
 		_measure()
+	var frame := _political_rect()
 	var pitch := deg_to_rad(68.0)
-	var dist_h := map_rect.size.x * 1.1 / 1.658
-	var dist_v := map_rect.size.y * 1.12 * sin(pitch) / 0.932
+	var dist_h := frame.size.x * 1.08 / 1.658
+	var dist_v := frame.size.y * 1.12 * sin(pitch) / 0.932
 	_overview_dist = clampf(maxf(dist_h, dist_v), 900.0, 3000.0)
-	var center := map_rect.get_center()
+	var center := frame.get_center()
 	look_xz = center
 	_sync_grade()
 	_seat_toward(center, Vector2(600, 300))
@@ -925,7 +937,46 @@ func _apply_overview_actors() -> void:
 		var node: Node = sprites[id]
 		if is_instance_valid(node):
 			node.visible = not overview
+	if _fill_node:
+		_fill_node.visible = overview
+	if _wash_node:
+		_wash_node.visible = not overview
 	_cull_banners()
+
+
+func _political_rect() -> Rect2:
+	var min_p := Vector2(1.0e9, 1.0e9)
+	var max_p := Vector2(-1.0e9, -1.0e9)
+	var any := false
+	for row in DataDB.height:
+		for col in DataDB.width:
+			var ax := HexGrid.axial_from_offset(col, row)
+			if DataDB.owner_id(ax.x, ax.y) == "":
+				continue
+			var tid := DataDB.terrain_id(ax.x, ax.y)
+			if tid == "sea" or tid == "lake":
+				continue
+			var p := HexGrid.axial_to_pixel(ax.x, ax.y)
+			min_p = min_p.min(p)
+			max_p = max_p.max(p)
+			any = true
+	if not any:
+		return map_rect
+	return Rect2(min_p - Vector2(150, 120), (max_p - min_p) + Vector2(300, 240))
+
+
+func _border_half_metres(px: float) -> float:
+	var vh := get_viewport_rect().size.y
+	if vh < 2.0:
+		vh = 720.0
+	var pitch_deg := float(PITCH[zoom_index])
+	if overview:
+		pitch_deg = 68.0
+	elif _debug_dist > 1.0:
+		pitch_deg = 48.0
+	var mpp := _cam_dist() * tan(deg_to_rad(25.0)) / (vh * 0.5)
+	mpp = mpp / maxf(sin(deg_to_rad(pitch_deg)), 0.4)
+	return maxf(px * mpp * 0.5, 0.45)
 
 
 func _build_realm_labels() -> void:
@@ -1140,7 +1191,7 @@ func _blocked(screen: Vector2) -> bool:
 		return true
 	if screen.y > 608.0 and screen.x < 900.0:
 		return true
-	if screen.x > 1036.0 and screen.y > 500.0:
+	if screen.x > 960.0 and screen.y > 350.0:
 		return true
 	return false
 
@@ -1654,25 +1705,30 @@ func _paint_minimap_base() -> Image:
 		for col in DataDB.width:
 			var ax := HexGrid.axial_from_offset(col, row)
 			var tid := DataDB.terrain_id(ax.x, ax.y)
-			var color := TerrainFactory.swatch(tid)
+			var color := Color(0.09, 0.15, 0.21)
 			var owner := DataDB.owner_id(ax.x, ax.y)
-			if owner != "" and tid != "sea" and tid != "lake":
-				color = color.lerp(DataDB.color_of(str(DataDB.faction(owner).get("color", "ffffff"))), 0.62)
+			if tid == "lake":
+				color = Color(0.16, 0.32, 0.36)
+			elif owner != "" and tid != "sea":
+				var faction := DataDB.color_of(str(DataDB.faction(owner).get("color", "ffffff")))
+				color = Color(0.94, 0.91, 0.84).lerp(faction, 0.9)
+			elif tid != "sea":
+				color = TerrainFactory.swatch(tid).lerp(Color(0.55, 0.5, 0.4), 0.35)
 			var center := _mini_point(HexGrid.axial_to_pixel(ax.x, ax.y))
-			_mini_fill_hex(img, center, hex_r * 0.98, color)
+			_mini_fill_hex(img, center, hex_r * 1.06, color)
 	var chords: Array = TerrainFactory._border_chords()
 	for chord_v in chords:
 		var chord: Dictionary = chord_v
 		var tint: Color = chord["color"]
 		var a := _mini_point(chord["a"])
 		var b := _mini_point(chord["b"])
-		_mini_stroke(img, a, b, tint.darkened(0.55), 5.2)
+		_mini_stroke(img, a, b, tint.darkened(0.42), 7.4)
 	for chord_v2 in chords:
 		var chord2: Dictionary = chord_v2
 		var tint2: Color = chord2["color"]
 		var a2 := _mini_point(chord2["a"])
 		var b2 := _mini_point(chord2["b"])
-		_mini_stroke(img, a2, b2, tint2.lightened(0.28), 2.4)
+		_mini_stroke(img, a2, b2, tint2.lightened(0.42), 3.2)
 	return img
 
 

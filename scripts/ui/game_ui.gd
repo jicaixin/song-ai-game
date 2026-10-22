@@ -108,7 +108,7 @@ func _build_side() -> void:
 	move_child(minimap, get_child_count() - 1)
 	move_child(mini_caption, get_child_count() - 1)
 	end_button = Settings.cinnabar_button("结束回合", 8)
-	end_button.position = Vector2(1090, 468)
+	end_button.position = Vector2(1048, 360)
 	end_button.size = Vector2(180, 52)
 	end_button.pressed.connect(func() -> void: TurnManager.request_end())
 	add_child(end_button)
@@ -465,7 +465,7 @@ func _fit_minimap(map: WorldMap) -> void:
 	var src := map.minimap_pixel_size()
 	if src.x < 2.0 or src.y < 2.0:
 		return
-	var fit := Vector2(220, 186)
+	var fit := Vector2(300, 268)
 	var s := minf(fit.x / src.x, fit.y / src.y)
 	minimap.size = src * s
 	minimap.position = Vector2(1268.0 - minimap.size.x, 708.0 - minimap.size.y)

@@ -66,13 +66,15 @@ static func build() -> Dictionary:
 	var land := _land_mesh(heights, colors)
 	var water := _water_mesh()
 	var river_mask := _river_mask()
-	var border_mask := _border_mask()
+	var realm := _realm_meshes()
 	var woods := _tree_lists(heights)
 	return {
 		"land": land,
 		"water": water,
 		"river_mask": river_mask,
-		"border_mask": border_mask,
+		"border_stroke": realm.stroke,
+		"border_wash": realm.wash,
+		"realm_fill": realm.fill,
 		"heights": heights,
 		"pine_trunk": _trunk_mesh(),
 		"pine_leaf": _pine_leaf(),
@@ -1079,6 +1081,124 @@ static func _border_chords() -> Array:
 					"cb": int(edge_rec["cb"]),
 				})
 	return chords
+
+
+static func _realm_meshes() -> Dictionary:
+	# One ribbon on the shared midpoint chords, opened to a screen-pixel width
+	# in the stroke shader. A disc at each join rounds the corner. The wash is
+	# a 0.5-hex band on the owner's side. The fill is the overview tint.
+	var ref_m := 0.5
+	var wash_m := HexGrid.SIZE * 0.8660254
+	var stroke := SurfaceTool.new()
+	stroke.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var wash := SurfaceTool.new()
+	wash.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var fill := SurfaceTool.new()
+	fill.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var seen := {}
+	var discs := {}
+	var seg_n := 0
+	var chords := _border_chords()
+	for chord_v in chords:
+		var chord: Dictionary = chord_v
+		var a: Vector2 = chord["a"]
+		var b: Vector2 = chord["b"]
+		var ab := b - a
+		if ab.length_squared() < 1.0:
+			continue
+		var ka := Vector2i(int(round(a.x)), int(round(a.y)))
+		var kb := Vector2i(int(round(b.x)), int(round(b.y)))
+		var sa := "%d,%d" % [ka.x, ka.y]
+		var sb := "%d,%d" % [kb.x, kb.y]
+		var key := sa + "|" + sb
+		if sb < sa:
+			key = sb + "|" + sa
+		if seen.has(key):
+			continue
+		seen[key] = true
+		seg_n += 1
+		var nrm := Vector2(-ab.y, ab.x).normalized()
+		var col: Color = chord["color"]
+		var pa := Vector3(a.x, _surface_height(a) + 0.3, a.y)
+		var pb := Vector3(b.x, _surface_height(b) + 0.3, b.y)
+		_stroke_half(stroke, pa, pb, nrm, -1.0, 0.0, col, ref_m)
+		_stroke_half(stroke, pa, pb, nrm, 0.0, 1.0, col, ref_m)
+		if not discs.has(sa):
+			discs[sa] = true
+			_stroke_disc(stroke, pa, col, ref_m)
+		if not discs.has(sb):
+			discs[sb] = true
+			_stroke_disc(stroke, pb, col, ref_m)
+		var inward: Vector2 = chord["inward"]
+		var wash_col := Color(col.r, col.g, col.b, 0.30)
+		var clear := Color(col.r, col.g, col.b, 0.0)
+		var a2: Vector2 = a + inward * wash_m
+		var b2: Vector2 = b + inward * wash_m
+		var wa := Vector3(a.x, _surface_height(a) + 0.16, a.y)
+		var wb := Vector3(b.x, _surface_height(b) + 0.16, b.y)
+		var wa2 := Vector3(a2.x, _surface_height(a2) + 0.16, a2.y)
+		var wb2 := Vector3(b2.x, _surface_height(b2) + 0.16, b2.y)
+		_flat_tri(wash, wa, wb, wa2, wash_col, wash_col, clear)
+		_flat_tri(wash, wb, wb2, wa2, wash_col, clear, clear)
+	for row in DataDB.height:
+		for col in DataDB.width:
+			var ax := HexGrid.axial_from_offset(col, row)
+			var owner := DataDB.owner_id(ax.x, ax.y)
+			if owner == "":
+				continue
+			var tid := DataDB.terrain_id(ax.x, ax.y)
+			if tid == "sea" or tid == "lake":
+				continue
+			var tint := DataDB.color_of(str(DataDB.faction(owner).get("color", "ffffff")))
+			var fc := Color(tint.r, tint.g, tint.b, 0.45)
+			var center := HexGrid.axial_to_pixel(ax.x, ax.y)
+			var cp := Vector3(center.x, _surface_height(center) + 0.1, center.y)
+			for i in 6:
+				var ang0 := deg_to_rad(60.0 * float(i) - 30.0)
+				var ang1 := deg_to_rad(60.0 * float(i + 1) - 30.0)
+				var p0 := center + Vector2(cos(ang0), sin(ang0)) * HexGrid.SIZE
+				var p1 := center + Vector2(cos(ang1), sin(ang1)) * HexGrid.SIZE
+				var v0 := Vector3(p0.x, _surface_height(p0) + 0.1, p0.y)
+				var v1 := Vector3(p1.x, _surface_height(p1) + 0.1, p1.y)
+				_flat_tri(fill, cp, v0, v1, fc, fc, fc)
+	print("BORDER RIBBON segs %d" % seg_n)
+	return {"stroke": stroke.commit(), "wash": wash.commit(), "fill": fill.commit()}
+
+
+static func _stroke_vert(st: SurfaceTool, center: Vector3, normal: Vector2, side: float, col: Color, ref_m: float) -> void:
+	var dir := normal * side
+	st.set_color(col)
+	st.set_uv(Vector2(side, 0.0))
+	st.set_uv2(dir)
+	st.add_vertex(center + Vector3(dir.x * ref_m, 0.0, dir.y * ref_m))
+
+
+static func _stroke_half(st: SurfaceTool, a: Vector3, b: Vector3, normal: Vector2, side0: float, side1: float, col: Color, ref_m: float) -> void:
+	_stroke_vert(st, a, normal, side0, col, ref_m)
+	_stroke_vert(st, a, normal, side1, col, ref_m)
+	_stroke_vert(st, b, normal, side0, col, ref_m)
+	_stroke_vert(st, a, normal, side1, col, ref_m)
+	_stroke_vert(st, b, normal, side1, col, ref_m)
+	_stroke_vert(st, b, normal, side0, col, ref_m)
+
+
+static func _stroke_disc(st: SurfaceTool, center: Vector3, col: Color, ref_m: float) -> void:
+	var steps := 8
+	for i in steps:
+		var a0 := TAU * float(i) / float(steps)
+		var a1 := TAU * float(i + 1) / float(steps)
+		_stroke_vert(st, center, Vector2.ZERO, 0.0, col, ref_m)
+		_stroke_vert(st, center, Vector2(cos(a0), sin(a0)), 1.0, col, ref_m)
+		_stroke_vert(st, center, Vector2(cos(a1), sin(a1)), 1.0, col, ref_m)
+
+
+static func _flat_tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, ca: Color, cb: Color, cc: Color) -> void:
+	st.set_color(ca)
+	st.add_vertex(a)
+	st.set_color(cb)
+	st.add_vertex(b)
+	st.set_color(cc)
+	st.add_vertex(c)
 
 
 static func _border_mask() -> Dictionary:

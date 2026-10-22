@@ -1,11 +1,6 @@
 shader_type spatial;
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 
-uniform sampler2D border_map : source_color, filter_linear, repeat_disable;
-uniform vec2 border_origin = vec2(0.0);
-uniform vec2 border_scale = vec2(1.0);
-uniform float border_px = 7.0;
-
 varying float v_coast;
 varying float v_lake;
 varying vec3 v_wpos;
@@ -41,25 +36,7 @@ void fragment() {
 	// Thin foam just seaward of the waterline. Not a glow.
 	float foam = smoothstep(0.30, 0.38, coast) * (1.0 - smoothstep(0.40, 0.50, coast));
 	col = mix(col, vec3(0.70, 0.73, 0.68), foam * 0.32);
-	vec3 border_emit = vec3(0.0);
-	vec2 border_uv = (v_wpos.xz - border_origin) * border_scale;
-	border_uv.y = 1.0 - border_uv.y;
-	if (border_uv.x > 0.0 && border_uv.y > 0.0 && border_uv.x < 1.0 && border_uv.y < 1.0) {
-		vec4 brim = texture(border_map, border_uv);
-		float chroma = max(brim.r, max(brim.g, brim.b));
-		float dist = brim.a * 24.0;
-		float dpx = dist / max(fwidth(dist), 0.08);
-		float edge_px = max(border_px, 4.0);
-		float line = (1.0 - smoothstep(edge_px * 0.58, edge_px, dpx)) * step(0.04, chroma);
-		float along = clamp(dpx / edge_px, 0.0, 1.0);
-		vec3 edge_col = brim.rgb * vec3(0.28, 0.20, 0.16);
-		vec3 core_col = mix(brim.rgb, vec3(1.0, 0.95, 0.86), 0.52);
-		vec3 stroke = mix(core_col, edge_col, smoothstep(0.08, 0.88, along));
-		col = mix(col, stroke, line);
-		border_emit = core_col * (1.0 - smoothstep(0.0, 0.5, along)) * line * 0.4;
-	}
 	ALBEDO = col;
-	EMISSION = border_emit;
 	ROUGHNESS = mix(0.55, 0.22, depth);
 	METALLIC = 0.0;
 	SPECULAR = 0.05;
