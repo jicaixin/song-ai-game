@@ -131,6 +131,36 @@ func check_geo_and_cities() -> void:
 	check("dist_kf_yzhou", _dist("kaifeng", "youzhou") == 12, str(_dist("kaifeng", "youzhou")))
 	check("dist_kf_hz", _dist("kaifeng", "hangzhou") == 14, str(_dist("kaifeng", "hangzhou")))
 	check("dist_kf_cd", _dist("kaifeng", "chengdu") == 21, str(_dist("kaifeng", "chengdu")))
+	check("owner_yan", _owner("yanzhou") == "song")
+	check("owner_xiong", _owner("xiongzhou") == "song")
+	check("owner_you", _owner("youzhou") == "liao")
+	check("owner_shuo", _owner("shuozhou") == "liao")
+	check("owner_dai", _owner("daizhou") == "song")
+	check("owner_yin", _owner("yinzhou") == "xia")
+	check("owner_sha", _owner("shazhou") == "xia")
+	check("owner_xi", _owner("xizhou") == "uyghur")
+	check("owner_tang", _owner("thanglong") == "jiaozhi")
+	check("touch_xiong", _within("xiongzhou", "liao", 1))
+	check("touch_yan", _within("yanzhou", "xia", 2))
+	check("touch_zhuo", _within("zhuozhou", "song", 1))
+
+
+func _owner(id: String) -> String:
+	var city: Dictionary = DataDB.city_by_id(id)
+	return DataDB.owner_id(int(city.q), int(city.r))
+
+
+func _within(id: String, faction: String, rad: int) -> bool:
+	var city: Dictionary = DataDB.city_by_id(id)
+	var origin := Vector2i(int(city.q), int(city.r))
+	for dq in range(-rad, rad + 1):
+		for dr in range(-rad, rad + 1):
+			var nb := origin + Vector2i(dq, dr)
+			if HexGrid.distance(origin, nb) > rad:
+				continue
+			if DataDB.owner_id(nb.x, nb.y) == faction:
+				return true
+	return false
 
 
 func _dist(a: String, b: String) -> int:

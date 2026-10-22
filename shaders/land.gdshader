@@ -5,6 +5,11 @@ uniform float grid_fade = 0.04;
 uniform sampler2D river_map : filter_linear, repeat_disable;
 uniform vec2 river_origin = vec2(0.0);
 uniform vec2 river_scale = vec2(1.0);
+// Faction colour in RGB, distance from the owning side of a frontier in A.
+uniform sampler2D border_map : source_color, filter_linear, repeat_disable;
+uniform vec2 border_origin = vec2(0.0);
+uniform vec2 border_scale = vec2(1.0);
+uniform float border_px = 2.6;
 
 varying vec3 v_color;
 varying float v_h;
@@ -75,10 +80,27 @@ void fragment() {
 		float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 3.0);
 		water_col += vec3(0.025, 0.03, 0.03) * fres * 0.35;
 	}
+	// Territory wash sits under the river. The line is a few pixels wide at every zoom.
+	vec3 border_rgb = col;
+	float border_dist = 30.0;
+	vec2 border_uv = (v_wpos.xz - border_origin) * border_scale;
+	border_uv.y = 1.0 - border_uv.y;
+	if (border_uv.x > 0.0 && border_uv.y > 0.0 && border_uv.x < 1.0 && border_uv.y < 1.0) {
+		vec4 brim = texture(border_map, border_uv);
+		border_rgb = brim.rgb;
+		border_dist = brim.a * 18.0;
+	}
+	float tint = 1.0 - smoothstep(1.5, 9.4, border_dist);
+	tint *= 1.0 - water;
+	col = mix(col, border_rgb, tint * 0.36);
 	col = mix(col, col * vec3(0.76, 0.72, 0.64), bank * 0.65);
 	col = mix(col, water_col, water);
+	float core = max(fwidth(border_dist) * border_px, 0.55);
+	float line = (1.0 - smoothstep(core * 0.45, core, border_dist)) * (1.0 - water);
+	col = mix(col, border_rgb, line * 0.9);
 
 	ALBEDO = col;
+	EMISSION = border_rgb * line * 0.28;
 	ROUGHNESS = mix(mix(0.92, 0.74, snow), 0.58, water);
 	METALLIC = 0.0;
 	SPECULAR = mix(0.03, 0.045, water);

@@ -1975,6 +1975,32 @@
         "money": 3,
         "craft": 1
       }
+    },
+    {
+      "id": "xizhou",
+      "name": "西州高昌",
+      "short": "高昌",
+      "faction": "uyghur",
+      "level": "zhou",
+      "capital": true,
+      "major": false,
+      "circuit": "",
+      "lon": 89.19,
+      "lat": 42.95,
+      "hex_lon": 89.0,
+      "hex_lat": 42.95,
+      "q": -3,
+      "r": 8,
+      "col": 1,
+      "row": 8,
+      "pop": 4,
+      "morale": 60,
+      "walls": 8,
+      "output": {
+        "food": 3,
+        "money": 3,
+        "craft": 1
+      }
     }
   ]
 }

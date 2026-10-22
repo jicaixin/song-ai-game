@@ -50,6 +50,7 @@ OWNER_CHAR = {
     "dali": "D",
     "goryeo": "K",
     "jiaozhi": "J",
+    "uyghur": "U",
 }
 
 # id, name, short, faction, level, capital, major, lon, lat, circuit
@@ -130,6 +131,8 @@ CITIES = [
     ("kaegyeong", "开京", "开京", "goryeo", "jing", True, True, 126.56, 37.97, ""),
     ("pyongyang", "西京平壤", "平壤", "goryeo", "fu", False, False, 125.75, 39.03, ""),
     ("thanglong", "升龙", "升龙", "jiaozhi", "zhou", True, True, 105.85, 21.03, ""),
+    # West of Xia's Shazhou. Turpan is on the board; the hex is filled by tools/retouch_1040.py.
+    ("xizhou", "西州高昌", "高昌", "uyghur", "zhou", True, False, 89.19, 42.95, ""),
 ]
 
 OUTPUT = {
@@ -238,9 +241,10 @@ YELLOW = [
     (110.40, 40.55), (110.90, 40.20), (111.15, 39.65), (111.05, 39.05), (110.85, 38.40),
     (110.60, 37.70), (110.45, 37.00), (110.38, 36.30), (110.32, 35.50), (110.28, 34.62),
     (110.80, 34.68), (111.50, 34.80), (112.30, 34.84), (113.10, 34.92), (113.70, 34.96),
-    (114.25, 35.02), (114.65, 35.25), (115.00, 35.68), (115.25, 36.15), (115.55, 36.60),
-    (115.95, 36.95), (116.35, 37.30), (116.70, 37.65), (117.05, 37.95), (117.50, 38.25),
-    (118.00, 38.50),
+    # 1048 商胡决口之前的京东故道：过澶、大名，于滨州入渤海西南，不入海河。
+    (114.25, 35.02), (114.65, 35.25), (115.00, 35.68), (115.25, 36.15), (115.40, 36.35),
+    (115.90, 36.72), (116.45, 37.05), (117.05, 37.38), (117.55, 37.62), (118.05, 37.92),
+    (118.40, 38.45),
 ]
 YANGTZE = [
     (101.6, 26.6), (102.5, 27.2), (103.4, 28.2), (104.6, 28.77), (105.4, 28.90),
@@ -566,71 +570,130 @@ def classify(lon: float, lat: float) -> str:
     return "plain"
 
 
+def _hengshan_lat(lon: float) -> float:
+    # Song–Xia frontier along the Hengshan, north of 延州 / 庆州 / 环州.
+    # Xia is north of the line. 麟州 and 府州 stay south and east of it.
+    return interp(lon, [
+        (106.3, 36.30),
+        (107.3, 37.20),
+        (108.3, 37.42),
+        (109.3, 37.48),
+        (110.15, 37.62),
+    ])
+
+
+def _song_liao_lat(lon: float) -> float:
+    # Liao is north of this line: 白沟 / 拒马河 to the Yanmen notch.
+    # 朔州 (112.6°E) shares a hex row with 代州, so the line dips there.
+    return interp(lon, [
+        (111.15, 39.42),
+        (111.85, 39.28),
+        (112.40, 38.92),
+        (112.95, 38.96),
+        (113.20, 39.32),
+        (114.4, 39.55),
+        (115.25, 39.32),
+        (116.00, 39.22),
+        (116.8, 39.16),
+        (117.7, 39.02),
+        (119.9, 39.28),
+    ])
+
+
+def is_uyghur(lon: float, lat: float) -> bool:
+    # 西州回鹘, Gaochang / Turpan. Meets Xia west of Shazhou; Shazhou itself stays Xia.
+    if 87.0 <= lon <= 94.3 and 41.05 <= lat <= 45.2:
+        return True
+    if 92.2 <= lon <= 94.3 and 40.15 <= lat < 41.05:
+        return True
+    return False
+
+
+def _song_sichuan_rim(lon: float, lat: float) -> bool:
+    # 雅州、黎州 stay in 川峡. The high plateau west of this box is Tibetan.
+    return 102.5 <= lon <= 104.6 and 28.7 <= lat <= 32.4
+
+
 def is_xia(lon: float, lat: float) -> bool:
-    if 94.0 <= lon <= 104.3 and 37.55 <= lat <= 41.7:
+    # Hexi corridor (沙州 through 凉州), the Ordos, and the land north of Hengshan.
+    if 94.2 <= lon <= 104.15 and 37.50 <= lat <= 41.55:
         return True
-    if 104.3 < lon <= 107.05 and 36.85 <= lat <= 41.3:
+    if 104.15 < lon <= 107.15 and 36.95 <= lat <= 41.15:
         return True
-    if 107.05 < lon <= 110.05 and 37.45 <= lat <= 40.55:
-        return True
-    if 110.05 < lon <= 110.40 and 37.6 <= lat <= 38.45:
+    if 107.15 < lon <= 110.15 and _hengshan_lat(lon) <= lat <= 40.35:
         return True
     return False
 
 
 def is_liao(lon: float, lat: float) -> bool:
-    if is_xia(lon, lat) or in_korea(lon, lat):
+    if is_xia(lon, lat) or in_korea(lon, lat) or is_uyghur(lon, lat):
         return False
-    if lat >= 41.25 and lon >= 111.0:
+    # Mongolian plateau on this board, and the steppe north of the Ordos.
+    if lat >= 41.15 and lon >= 87.0:
         return True
-    if lat >= 42.3 and lon >= 104.0:
+    if lat >= 40.20 and 104.5 <= lon <= 111.20:
         return True
-    if 111.2 <= lon <= 114.65 and lat >= 39.28:
+    if 111.15 <= lon <= 119.9 and lat >= _song_liao_lat(lon):
         return True
-    # 朔州 sits on the same hex-row as 代州; keep only the western hex in Liao.
-    if 112.15 <= lon <= 112.95 and 39.02 <= lat < 39.28:
-        return True
-    if 114.65 <= lon <= 119.9 and lat >= 39.32:
-        return True
-    if 119.0 <= lon <= 125.0 and lat >= 40.05 and not in_korea(lon, lat):
+    if lon >= 119.3 and lat >= 39.6 and not in_korea(lon, lat):
         return True
     return False
 
 
 def is_jiaozhi(lon: float, lat: float) -> bool:
-    return lat < 21.55 and 104.8 <= lon <= 108.0 and not is_sea(lon, lat)
+    # The Red River delta. Specks farther south are the gulf, not Lý territory.
+    return 20.3 <= lat < 21.85 and 104.6 <= lon <= 108.25 and not is_sea(lon, lat)
 
 
 def is_dali(lon: float, lat: float) -> bool:
     if is_sea(lon, lat):
         return False
-    if lon <= 104.3 and 21.6 <= lat <= 28.0:
+    return lon <= 104.2 and 21.55 <= lat <= 27.7
+
+
+def is_gusiluo(lon: float, lat: float) -> bool:
+    # 唃厮啰 at 青唐, plus the Tibetan tribes west of 秦州 and the Sichuan rim.
+    if is_xia(lon, lat) or is_dali(lon, lat):
+        return False
+    if _song_sichuan_rim(lon, lat):
+        return False
+    if 98.6 <= lon <= 104.55 and 33.9 <= lat <= 37.55:
         return True
-    if lon <= 102.8 and 21.6 <= lat <= 26.8:
+    # Meets Dali along ~27.7°N. East edge stops so 雅州 stays Song.
+    if 97.2 <= lon <= 103.45 and 27.7 <= lat < 33.9 and not in_sichuan(lon, lat):
         return True
     return False
 
 
-def is_gusiluo(lon: float, lat: float) -> bool:
-    return 99.3 <= lon <= 103.15 and 34.7 <= lat <= 37.45 and not is_xia(lon, lat)
-
-
 def faction_of(lon: float, lat: float, terrain: str) -> str:
-    if terrain in ("sea", "lake", "alpine"):
+    # Alpine crests stay inside the realm. Only open water is unowned, so the
+    # territory outline is the state frontier and the coastline, not every ridge.
+    if terrain in ("sea", "lake"):
+        return ""
+    if in_taiwan(lon, lat):
         return ""
     if in_korea(lon, lat):
         return "goryeo"
     if is_jiaozhi(lon, lat):
         return "jiaozhi"
+    if is_uyghur(lon, lat):
+        return "uyghur"
     if is_dali(lon, lat):
         return "dali"
+    if _song_sichuan_rim(lon, lat) or in_sichuan(lon, lat):
+        return "song"
     if is_gusiluo(lon, lat):
         return "gusiluo"
     if is_xia(lon, lat):
         return "xia"
     if is_liao(lon, lat):
         return "liao"
-    if lon >= 100.0 and lat >= 21.0:
+    if 108.4 <= lon <= 111.2 and 18.0 <= lat <= 20.3:
+        return "song"
+    if lon >= 103.4 and 20.2 <= lat <= 41.05:
+        return "song"
+    # 麟府 salient on the east bank of the great bend.
+    if 110.15 <= lon <= 111.5 and 37.55 <= lat <= 39.4:
         return "song"
     return ""
 

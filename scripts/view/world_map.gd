@@ -34,6 +34,7 @@ var _city_material: StandardMaterial3D
 var _bake_mode := ""
 var _env: Environment
 var _land_shader: ShaderMaterial
+var _debug_dist := 0.0
 var feature_points: Array = []
 
 const CITY_SCALE := 1.8
@@ -44,9 +45,8 @@ const DETAIL_RANGE := 560.0
 func _ready() -> void:
 	var built: Dictionary = TerrainFactory.build()
 	heights = built.heights
-	_add_mesh("Land", built.land, _land_mat(built.river_mask), true)
+	_add_mesh("Land", built.land, _land_mat(built.river_mask, built.border_mask), true)
 	_add_mesh("Water", built.water, _water_mat(), false)
-	_add_mesh("Borders", built.borders, _glow_mat(), false)
 	feature_points = built.features
 	_add_trees(built)
 	_spawn_terrain_kit()
@@ -92,13 +92,17 @@ func _add_mesh(node_name: String, mesh: ArrayMesh, mat: Material, shadows: bool)
 	add_child(inst)
 
 
-func _land_mat(mask: Dictionary) -> ShaderMaterial:
+func _land_mat(mask: Dictionary, border: Dictionary) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/land.gdshader")
 	mat.set_shader_parameter("grid_fade", 0.04)
 	mat.set_shader_parameter("river_map", mask.tex)
 	mat.set_shader_parameter("river_origin", mask.origin)
 	mat.set_shader_parameter("river_scale", mask.scale)
+	mat.set_shader_parameter("border_map", border.tex)
+	mat.set_shader_parameter("border_origin", border.origin)
+	mat.set_shader_parameter("border_scale", border.scale)
+	mat.set_shader_parameter("border_px", 2.6)
 	_land_shader = mat
 	return mat
 
@@ -272,14 +276,21 @@ func _measure() -> void:
 func _sync_grade() -> void:
 	var fade := 0.04
 	var density := 0.00005
+	var border_px := 2.6
 	if zoom_index == 0:
 		fade = 0.015
 		density = 0.00012
+		border_px = 3.6
 	elif zoom_index >= 2:
 		fade = 0.07
 		density = 0.00002
+		border_px = 2.2
+	if _debug_dist > 900.0:
+		density = 0.00007
+		border_px = 4.0
 	if _land_shader:
 		_land_shader.set_shader_parameter("grid_fade", fade)
+		_land_shader.set_shader_parameter("border_px", border_px)
 	if _env:
 		_env.fog_density = density
 
@@ -653,9 +664,9 @@ func _kind_for(sprite_id: String) -> String:
 
 func _cloth(faction: String) -> Color:
 	if faction == "xia":
-		return Color("a3483c")
+		return Color("7a4e78")
 	if faction == "liao":
-		return Color("d2b15c")
+		return Color("2c4a86")
 	return Color("efe2c0")
 
 
@@ -769,9 +780,18 @@ func focus_world(world: Vector2) -> void:
 	_seat_anchor(world)
 
 
+func _cam_dist() -> float:
+	if _debug_dist > 1.0:
+		return _debug_dist
+	return DIST[zoom_index]
+
+
 func _place_camera() -> void:
-	var dist: float = DIST[zoom_index]
-	var pitch: float = deg_to_rad(PITCH[zoom_index])
+	var dist := _cam_dist()
+	var pitch_deg: float = float(PITCH[zoom_index])
+	if _debug_dist > 1.0:
+		pitch_deg = 48.0
+	var pitch := deg_to_rad(pitch_deg)
 	var yaw := deg_to_rad(12.0)
 	var offset := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch)) * dist
 	var focus := Vector3(look_xz.x, 0.6, look_xz.y)
@@ -797,7 +817,7 @@ func _seat_anchor(world: Vector2) -> void:
 		var view_w: float = get_viewport_rect().size.x
 		if view_w < 2.0:
 			view_w = 1280.0
-		var scale: float = DIST[zoom_index] / (view_w * 0.5)
+		var scale: float = _cam_dist() / (view_w * 0.5)
 		look_xz += Vector2(right.x, right.z) * (-err.x) * scale
 		look_xz += Vector2(fwd.x, fwd.z) * err.y * scale
 	_place_camera()
@@ -880,7 +900,7 @@ func _process(delta: float) -> void:
 		var fwd := -camera.global_transform.basis.z
 		right.y = 0.0
 		fwd.y = 0.0
-		var step: Vector2 = dir.normalized() * (42.0 * delta * float(DIST[zoom_index]) / 54.0)
+		var step: Vector2 = dir.normalized() * (42.0 * delta * _cam_dist() / 54.0)
 		look_xz += Vector2(right.x, right.z) * step.x + Vector2(fwd.x, fwd.z) * step.y
 		_clamp_look()
 		_place_camera()
@@ -897,9 +917,12 @@ func _poll_focus() -> void:
 		return
 	_focus_applied = text
 	var bits := text.split(",")
+	_debug_dist = 0.0
 	if bits.size() > 1:
 		zoom_index = clampi(int(bits[1]), 0, DIST.size() - 1)
-		_sync_grade()
+	if bits.size() > 3:
+		_debug_dist = maxf(float(bits[3]), 0.0)
+	_sync_grade()
 	if bits[0].contains(":"):
 		var qr := bits[0].split(":")
 		focus_world(HexGrid.axial_to_pixel(int(qr[0]), int(qr[1])))
@@ -1037,6 +1060,7 @@ func _cycle_unit() -> void:
 
 func _zoom_at(screen: Vector2, step: int) -> void:
 	var before := screen_to_world(screen)
+	_debug_dist = 0.0
 	zoom_index = clampi(zoom_index + step, 0, DIST.size() - 1)
 	_sync_grade()
 	_place_camera()
@@ -1360,7 +1384,9 @@ func _tint_baked(col: Color, albedo: Color, v: Vector3, mname: String) -> Dictio
 
 
 func minimap_image() -> Image:
-	var img := Image.create(DataDB.width, DataDB.height, false, Image.FORMAT_RGBA8)
+	var scale := 4
+	var img := Image.create(DataDB.width * scale, DataDB.height * scale, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0.10, 0.13, 0.16, 1.0))
 	for row in DataDB.height:
 		for col in DataDB.width:
 			var ax := HexGrid.axial_from_offset(col, row)
@@ -1368,8 +1394,28 @@ func minimap_image() -> Image:
 			var color := TerrainFactory.swatch(tid)
 			var owner := DataDB.owner_id(ax.x, ax.y)
 			if owner != "" and tid != "sea" and tid != "lake":
-				color = color.lerp(DataDB.color_of(str(DataDB.faction(owner).get("color", "ffffff"))), 0.12)
-			img.set_pixel(col, row, color)
+				color = color.lerp(DataDB.color_of(str(DataDB.faction(owner).get("color", "ffffff"))), 0.48)
+			for py in scale:
+				for px in scale:
+					img.set_pixel(col * scale + px, row * scale + py, color)
+	for row2 in DataDB.height:
+		for col2 in DataDB.width:
+			var ax2 := HexGrid.axial_from_offset(col2, row2)
+			var owner2 := DataDB.owner_id(ax2.x, ax2.y)
+			var tid2 := DataDB.terrain_id(ax2.x, ax2.y)
+			if owner2 == "" or tid2 == "sea" or tid2 == "lake":
+				continue
+			var pure := DataDB.color_of(str(DataDB.faction(owner2).get("color", "ffffff")))
+			for dir_i in 6:
+				var nb: Vector2i = ax2 + HexGrid.DIRS[dir_i]
+				var draw := true
+				if DataDB.in_bounds(nb.x, nb.y):
+					if DataDB.terrain_id(nb.x, nb.y) == "lake":
+						draw = false
+					elif DataDB.owner_id(nb.x, nb.y) == owner2:
+						draw = false
+				if draw:
+					_minimap_edge(img, col2, row2, scale, dir_i, pure)
 	for u_v in GameState.units:
 		var u: Dictionary = u_v
 		var off := HexGrid.offset_from_axial(int(u.q), int(u.r))
@@ -1377,12 +1423,37 @@ func minimap_image() -> Image:
 			continue
 		var dot := Color("f4ead2")
 		if str(u.faction) == "xia":
-			dot = Color("e07068")
+			dot = Color("d7a8cc")
 		elif str(u.faction) == "liao":
-			dot = Color("e6d080")
-		img.set_pixel(off.x, off.y, dot)
-	img.resize(DataDB.width * 4, DataDB.height * 4, Image.INTERPOLATE_BILINEAR)
+			dot = Color("9ec0ea")
+		for py2 in 2:
+			for px2 in 2:
+				img.set_pixel(off.x * scale + 1 + px2, off.y * scale + 1 + py2, dot)
 	return img
+
+
+func _minimap_edge(img: Image, col: int, row: int, scale: int, dir_i: int, color: Color) -> void:
+	# Pointy neighbours folded onto the square cell: east/west columns, the two
+	# northern neighbours share the top edge, the two southern ones the bottom.
+	var x0 := col * scale
+	var y0 := row * scale
+	var thick := 2
+	if dir_i == 0:
+		for py in scale:
+			for t in thick:
+				img.set_pixel(x0 + scale - 1 - t, y0 + py, color)
+	elif dir_i == 3:
+		for py2 in scale:
+			for t2 in thick:
+				img.set_pixel(x0 + t2, y0 + py2, color)
+	elif dir_i == 1 or dir_i == 2:
+		for px in scale:
+			for t3 in thick:
+				img.set_pixel(x0 + px, y0 + t3, color)
+	else:
+		for px2 in scale:
+			for t4 in thick:
+				img.set_pixel(x0 + px2, y0 + scale - 1 - t4, color)
 
 
 func debug_units() -> Array:

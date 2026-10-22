@@ -65,14 +65,14 @@ static func build() -> Dictionary:
 				heights[ax2] = _surface_height(center)
 	var land := _land_mesh(heights, colors)
 	var water := _water_mesh()
-	var borders := _ribbon_mesh(false, heights, colors)
 	var river_mask := _river_mask()
+	var border_mask := _border_mask()
 	var woods := _tree_lists(heights)
 	return {
 		"land": land,
 		"water": water,
-		"borders": borders,
 		"river_mask": river_mask,
+		"border_mask": border_mask,
 		"heights": heights,
 		"pine_trunk": _trunk_mesh(),
 		"pine_leaf": _pine_leaf(),
@@ -580,6 +580,8 @@ static func _farm_targets() -> Dictionary:
 		var city: Dictionary = city_v
 		if int(city.r) > 34:
 			continue
+		if str(city.get("faction", "")) == "uyghur":
+			continue
 		var there := Vector2i(int(city.q), int(city.r))
 		var cands: Array = []
 		for dir_i in 6:
@@ -962,6 +964,99 @@ static func _river_mask() -> Dictionary:
 	var img := Image.create_from_data(tw, th, false, Image.FORMAT_RGBA8, bytes)
 	var tex := ImageTexture.create_from_image(img)
 	print("RIVER MASK %d x %d" % [tw, th])
+	return {
+		"tex": tex,
+		"origin": min_p,
+		"scale": Vector2(1.0 / (float(tw) * texel), 1.0 / (float(th) * texel)),
+	}
+
+
+static func _border_mask() -> Dictionary:
+	# Alpha is metres from the owning side of a frontier edge. Each realm keeps its colour.
+	var texel := 2.0
+	var margin := 48.0
+	var min_p := Vector2(1.0e9, 1.0e9)
+	var max_p := Vector2(-1.0e9, -1.0e9)
+	for row in DataDB.height:
+		for col in DataDB.width:
+			var ax := HexGrid.axial_from_offset(col, row)
+			var p := HexGrid.axial_to_pixel(ax.x, ax.y)
+			min_p = min_p.min(p)
+			max_p = max_p.max(p)
+	min_p -= Vector2(margin, margin)
+	max_p += Vector2(margin, margin)
+	var span := max_p - min_p
+	var tw := int(ceil(span.x / texel))
+	var th := int(ceil(span.y / texel))
+	var bytes := PackedByteArray()
+	bytes.resize(tw * th * 4)
+	bytes.fill(0)
+	var cell := 0
+	while cell < tw * th:
+		bytes[cell * 4 + 3] = 255
+		cell += 1
+	var hex_w := HexGrid.SIZE * sqrt(3.0)
+	var reach := hex_w * 0.48
+	var edges := 0
+	for row2 in DataDB.height:
+		for col2 in DataDB.width:
+			var ax2 := HexGrid.axial_from_offset(col2, row2)
+			var owner := DataDB.owner_id(ax2.x, ax2.y)
+			if owner == "":
+				continue
+			var tid := DataDB.terrain_id(ax2.x, ax2.y)
+			if tid == "sea" or tid == "lake":
+				continue
+			var fc := DataDB.color_of(str(DataDB.faction(owner).get("color", "ffffff")))
+			var cr := int(clampf(fc.r * 255.0, 0.0, 255.0))
+			var cg := int(clampf(fc.g * 255.0, 0.0, 255.0))
+			var cb := int(clampf(fc.b * 255.0, 0.0, 255.0))
+			var center := HexGrid.axial_to_pixel(ax2.x, ax2.y)
+			for dir_i in 6:
+				var nb: Vector2i = ax2 + HexGrid.DIRS[dir_i]
+				if DataDB.in_bounds(nb.x, nb.y):
+					if DataDB.terrain_id(nb.x, nb.y) == "lake":
+						continue
+					if DataDB.owner_id(nb.x, nb.y) == owner:
+						continue
+				var edge := int(RIVER_DIR_EDGE[dir_i])
+				var c0 := _corner_at(center, edge)
+				var c1 := _corner_at(center, edge + 1)
+				var mid := (c0 + c1) * 0.5
+				var inward := center - mid
+				if inward.length_squared() < 0.01:
+					continue
+				var inward_n := inward.normalized()
+				var ab := c1 - c0
+				var len2 := ab.length_squared()
+				if len2 < 0.01:
+					continue
+				edges += 1
+				var ix0 := clampi(int(floor((minf(c0.x, c1.x) - reach - min_p.x) / texel)), 0, tw - 1)
+				var ix1 := clampi(int(ceil((maxf(c0.x, c1.x) + reach - min_p.x) / texel)), 0, tw - 1)
+				var iy0 := clampi(int(floor((minf(c0.y, c1.y) - reach - min_p.y) / texel)), 0, th - 1)
+				var iy1 := clampi(int(ceil((maxf(c0.y, c1.y) + reach - min_p.y) / texel)), 0, th - 1)
+				for iy in range(iy0, iy1 + 1):
+					var wz := min_p.y + (float(iy) + 0.5) * texel
+					for ix in range(ix0, ix1 + 1):
+						var wx := min_p.x + (float(ix) + 0.5) * texel
+						var p2 := Vector2(wx, wz)
+						if (p2 - mid).dot(inward_n) < -0.4:
+							continue
+						var along := clampf((p2 - c0).dot(ab) / len2, 0.0, 1.0)
+						var dist := p2.distance_to(c0 + ab * along)
+						if dist > reach:
+							continue
+						var na := int(clampf(dist / 18.0, 0.0, 1.0) * 255.0)
+						var idx := (iy * tw + ix) * 4
+						if na < int(bytes[idx + 3]):
+							bytes[idx] = cr
+							bytes[idx + 1] = cg
+							bytes[idx + 2] = cb
+							bytes[idx + 3] = na
+	var img := Image.create_from_data(tw, th, false, Image.FORMAT_RGBA8, bytes)
+	var tex := ImageTexture.create_from_image(img)
+	print("BORDER MASK %d x %d edges %d" % [tw, th, edges])
 	return {
 		"tex": tex,
 		"origin": min_p,
