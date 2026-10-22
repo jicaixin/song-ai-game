@@ -482,11 +482,14 @@ func _bake_mesh(mi: MeshInstance3D, xf: Transform3D, st: SurfaceTool) -> Vector3
 		if index_data is PackedInt32Array:
 			indices = index_data
 		var albedo := Color.WHITE
+		var mname := ""
 		var mat := mesh.surface_get_material(s)
 		if mat == null:
 			mat = mi.get_surface_override_material(s)
 		if mat is StandardMaterial3D:
-			albedo = (mat as StandardMaterial3D).albedo_color
+			var sm := mat as StandardMaterial3D
+			albedo = sm.albedo_color
+			mname = sm.resource_name
 		var order: Array = []
 		if indices.is_empty():
 			for i in verts.size():
@@ -501,7 +504,7 @@ func _bake_mesh(mi: MeshInstance3D, xf: Transform3D, st: SurfaceTool) -> Vector3
 				col = cols[i]
 			col = Color(col.r * albedo.r, col.g * albedo.g, col.b * albedo.b, 1.0)
 			var v := verts[i]
-			var tinted := _tint_baked(col, albedo, v)
+			var tinted := _tint_baked(col, albedo, v, mname)
 			col = tinted.color
 			v = tinted.vertex
 			var lum := col.r * 0.3 + col.g * 0.5 + col.b * 0.2
@@ -1305,33 +1308,30 @@ func _retint(col: Color, albedo: Color, target: Color) -> Color:
 	return Color(target.r * gray, target.g * gray, target.b * gray, 1.0)
 
 
-func _tint_baked(col: Color, albedo: Color, v: Vector3) -> Dictionary:
-	if _bake_mode == "mountain":
-		var meadow := albedo.g > 0.30 and albedo.g > albedo.r * 1.12 and albedo.b < 0.22
-		if meadow:
-			# The kit's grassy ring is a hex-shaped plate. Sink it and fade it
-			# toward soil so the peak meets the ground without a green pad.
-			var oy := v.y
-			if oy < 1.05:
-				var sink_t := 1.0 - smoothstep(0.2, 1.05, oy)
-				v.y = lerpf(oy, -0.32, sink_t * 0.95)
-			if oy < 1.7:
-				var t := 1.0 - smoothstep(0.0, 1.55, maxf(oy, 0.0))
-				col = col.lerp(Color(0.40, 0.35, 0.28), clampf(0.4 + t * 0.56, 0.0, 0.96))
+func _tint_baked(col: Color, albedo: Color, v: Vector3, mname: String) -> Dictionary:
+	# Imported albedos are the display colours, not the glTF factors. Match the
+	# material name so a green hex skirt cannot slip through a colour test.
+	if _bake_mode == "mountain" and (mname == "M_meadow" or mname == "M_alpine"):
+		var oy := v.y
+		if mname == "M_meadow" and oy < 1.4:
+			var sink_t := 1.0 - smoothstep(0.85, 1.4, oy)
+			v.y = lerpf(oy, -0.38, sink_t * 0.98)
+		if oy < 1.8:
+			var t := 1.0 - smoothstep(0.3, 1.7, maxf(oy, 0.0))
+			col = col.lerp(Color(0.42, 0.36, 0.30), clampf(0.78 + t * 0.2, 0.0, 0.98))
 	elif _bake_mode == "loess":
-		var green := albedo.g > 0.30 and albedo.g > albedo.r * 1.12 and albedo.b < 0.22
-		if green:
+		if mname == "M_meadow" or mname == "M_loess_crop":
 			col = _retint(col, albedo, Color("b08a62"))
-		elif albedo.r > 0.34 and albedo.r < 0.48 and albedo.g < 0.32 and albedo.b < 0.2:
-			col = col.lerp(_retint(col, albedo, Color(0.58, 0.46, 0.28)), 0.78)
+		elif mname == "M_loess_wall":
+			col = col.lerp(_retint(col, albedo, Color(0.78, 0.67, 0.50)), 0.74)
 	elif _bake_mode == "loess_hill":
-		if albedo.g > albedo.r and albedo.g > albedo.b:
-			col = col.lerp(_retint(col, albedo, Color(0.64, 0.50, 0.30)), 0.84)
+		if mname.begins_with("M_t_grass") or mname == "M_bush_g":
+			col = col.lerp(_retint(col, albedo, Color(0.72, 0.56, 0.34)), 0.88)
 	elif _bake_mode == "farm":
-		if albedo.b > 0.28 and albedo.g > 0.28 and albedo.r < 0.28:
+		if mname == "M_canal":
 			col = _retint(col, albedo, Color(0.10, 0.15, 0.17))
-		elif albedo.r > 0.48 or (albedo.g > 0.30 and albedo.g > albedo.r):
-			col = col.lerp(_retint(col, albedo, Color(0.44, 0.42, 0.26)), 0.74)
+		elif mname == "M_wheat" or mname == "M_millet" or mname == "M_veg" or mname == "M_leaf_a" or mname == "M_leaf_b" or mname == "M_bund":
+			col = col.lerp(_retint(col, albedo, Color(0.46, 0.43, 0.27)), 0.72)
 	return {"color": col, "vertex": v}
 
 
