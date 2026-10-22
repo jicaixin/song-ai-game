@@ -76,7 +76,7 @@ func _ready() -> void:
 	_border_shader = _stroke_mat()
 	_add_mesh("RealmStroke", built.border_stroke, _border_shader, false)
 	_wash_node = _add_mesh("RealmWash", built.border_wash, _wash_mat(0.45), false)
-	_fill_node = _add_mesh("RealmFill", built.realm_fill, _wash_mat(0.2), false)
+	_fill_node = _add_mesh("RealmFill", built.realm_fill, _fill_mat(), false)
 	_fill_node.visible = false
 	feature_points = built.features
 	_add_trees(built)
@@ -155,6 +155,13 @@ func _wash_mat(bias: float) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/border_wash.gdshader")
 	mat.set_shader_parameter("cam_bias", bias)
+	return mat
+
+
+func _fill_mat() -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/border_fill.gdshader")
+	mat.set_shader_parameter("cam_bias", 0.2)
 	return mat
 
 
