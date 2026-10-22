@@ -895,7 +895,7 @@ static func _raised_terrain(id: String) -> bool:
 
 static func _river_mask() -> Dictionary:
 	# Distance to the smoothed centreline, in a texture the terrain shader samples.
-	# R = (distance / half-width) / 2.4. GB = flow direction. Outside the brush, R = 1.
+	# R is 0 in the water, 128 on the wet bank, 255 outside. GB is the flow direction.
 	var texel := 1.25
 	var margin := 48.0
 	var min_p := Vector2(1.0e9, 1.0e9)
@@ -929,7 +929,7 @@ static func _river_mask() -> Dictionary:
 			if len2 < 0.01:
 				continue
 			var dir := ab / sqrt(len2)
-			var reach := maxf(wa, wb) * 2.45 + texel
+			var reach := maxf(wa, wb) * 1.55 + texel
 			var ix0 := clampi(int(floor((minf(a.x, b.x) - reach - min_p.x) / texel)), 0, tw - 1)
 			var ix1 := clampi(int(ceil((maxf(a.x, b.x) + reach - min_p.x) / texel)), 0, tw - 1)
 			var iy0 := clampi(int(floor((minf(a.y, b.y) - reach - min_p.y) / texel)), 0, th - 1)
@@ -948,9 +948,11 @@ static func _river_mask() -> Dictionary:
 					if half < 0.05:
 						continue
 					var nd := dist / half
-					if nd > 2.4:
+					# 0 = water, 128 = wet bank, leave 255 outside. A hard step keeps its
+					# width when the GPU samples the texture through an sRGB curve.
+					if nd > 1.42:
 						continue
-					var nr := int(clampf(nd / 2.4, 0.0, 1.0) * 255.0)
+					var nr := 0 if nd <= 1.0 else 128
 					var idx := (iy * tw + ix) * 4
 					if nr < int(bytes[idx]):
 						bytes[idx] = nr

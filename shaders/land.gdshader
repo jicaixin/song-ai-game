@@ -57,23 +57,19 @@ void fragment() {
 	vec3 water_col = col;
 	if (river_uv.x > 0.0 && river_uv.y > 0.0 && river_uv.x < 1.0 && river_uv.y < 1.0) {
 		vec4 riv = texture(river_map, river_uv);
-		// Compatibility samples this data texture through an sRGB curve. Mid greys
-		// get lifted, so the water edge (about 0.4) reads as ~0.7 and the channel
-		// collapses to a thread. Put the texel back in linear before use.
-		riv.rgb = mix(riv.rgb / 12.92, pow((riv.rgb + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), riv.rgb));
-		float nd = riv.r * 2.4;
-		float fw = max(fwidth(nd), 0.02);
-		water = 1.0 - smoothstep(1.0 - fw, 1.0 + fw, nd);
-		bank = smoothstep(0.95, 1.15, nd) * (1.0 - smoothstep(1.2, 1.42, nd));
+		// R is a gamma-stable step: 0 in the water, 0.5 on the wet bank, 1 outside.
+		// 0 and 1 survive an sRGB sample, so the channel cannot collapse to a thread.
+		float fw = max(fwidth(riv.r), 0.02);
+		water = 1.0 - smoothstep(0.18 - fw, 0.18 + fw, riv.r);
+		bank = smoothstep(0.22, 0.40, riv.r) * (1.0 - smoothstep(0.72, 0.90, riv.r));
 		bank *= 1.0 - water;
-		// Same family as the lake and coastal-shallow shader, centre a little deeper.
 		vec3 centre = vec3(0.11, 0.28, 0.34);
 		vec3 shallows = vec3(0.22, 0.35, 0.34);
-		water_col = mix(centre, shallows, clamp(nd, 0.0, 1.0));
+		water_col = mix(centre, shallows, smoothstep(0.0, 0.18, riv.r));
 		vec2 flow = riv.gb * 2.0 - 1.0;
 		float fl = length(flow);
 		flow = fl > 0.2 ? flow / fl : vec2(1.0, 0.0);
-		float detail = 1.0 - smoothstep(0.2, 0.7, fw);
+		float detail = 1.0 - smoothstep(0.15, 0.55, fw);
 		float wave = sin(dot(v_wpos.xz, flow) * 0.18 - TIME * 0.35);
 		water_col *= 1.0 + wave * 0.028 * detail;
 		float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 3.0);
