@@ -1103,12 +1103,14 @@ static func _nearest_water(p: Vector2, rad: int) -> Dictionary:
 
 
 static func _half_width(upstream: float) -> float:
-	# Flat-to-flat hex is SIZE·√3. Great courses cap at 0.2 of that, tributaries at 0.08.
+	# Flat-to-flat is SIZE·√3. The old ribbon was about a third of a hex on the
+	# Yellow River; this keeps that taper but caps the water at 0.2 of a hex
+	# and holds true tributaries at 0.08.
 	var hex_w := HexGrid.SIZE * sqrt(3.0)
-	var minor := hex_w * 0.04
-	var major := hex_w * 0.10
 	var t := sqrt(clampf(upstream / 78.0, 0.0, 1.0))
-	return lerpf(minor, major, t * t)
+	var prev := (0.55 + 11.0 * t * t) * 2.0
+	var full := clampf(prev * 0.6, hex_w * 0.08, hex_w * 0.20)
+	return full * 0.5
 
 
 static func _prepare_rivers() -> void:

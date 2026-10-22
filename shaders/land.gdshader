@@ -60,7 +60,7 @@ void fragment() {
 		float nd = riv.r * 2.4;
 		float fw = max(fwidth(nd), 0.02);
 		water = 1.0 - smoothstep(1.0 - fw, 1.0 + fw, nd);
-		bank = smoothstep(0.9, 1.2, nd) * (1.0 - smoothstep(1.25, 1.65, nd));
+		bank = smoothstep(0.95, 1.15, nd) * (1.0 - smoothstep(1.2, 1.42, nd));
 		bank *= 1.0 - water;
 		// Same family as the lake and coastal-shallow shader, centre a little deeper.
 		vec3 centre = vec3(0.11, 0.28, 0.34);
