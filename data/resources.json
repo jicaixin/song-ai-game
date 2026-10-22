@@ -1,13 +1,48 @@
 {
   "resources": [
-    {"id": "food", "name": "粮"},
-    {"id": "money", "name": "钱"},
-    {"id": "craft", "name": "匠"},
-    {"id": "iron", "name": "铁"},
-    {"id": "coal", "name": "煤"},
-    {"id": "wood", "name": "木"},
-    {"id": "horse", "name": "马"},
-    {"id": "copper", "name": "铜"},
-    {"id": "saltpeter", "name": "硝"}
+    {
+      "id": "food",
+      "name": "粮"
+    },
+    {
+      "id": "money",
+      "name": "钱"
+    },
+    {
+      "id": "craft",
+      "name": "匠"
+    },
+    {
+      "id": "iron",
+      "name": "铁"
+    },
+    {
+      "id": "coal",
+      "name": "煤"
+    },
+    {
+      "id": "wood",
+      "name": "木"
+    },
+    {
+      "id": "horse",
+      "name": "马"
+    },
+    {
+      "id": "copper",
+      "name": "铜"
+    },
+    {
+      "id": "saltpeter",
+      "name": "硝"
+    },
+    {
+      "id": "sulfur",
+      "name": "硫"
+    },
+    {
+      "id": "steel",
+      "name": "钢"
+    }
   ]
 }

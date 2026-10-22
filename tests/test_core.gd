@@ -115,7 +115,12 @@ func check_combat_range() -> void:
 
 func check_geo_and_cities() -> void:
 	check("cities", DataDB.cities.size() >= 70, str(DataDB.cities.size()))
-	check("techs", DataDB.techs.size() == 42, str(DataDB.techs.size()))
+	check("techs", DataDB.techs.size() == 43, str(DataDB.techs.size()))
+	var e06: Dictionary = DataDB.tech_by_id.get("E06", {})
+	var e06_mats: Dictionary = e06.get("materials", {})
+	check("e06", int(e06_mats.get("copper", 0)) == 10 and int(e06_mats.get("sulfur", 0)) == 10 and not e06_mats.has("lead"), str(e06_mats))
+	check("firmware", DataDB.firmware.size() == 4 and DataDB.edicts.size() == 8, "%d %d" % [DataDB.firmware.size(), DataDB.edicts.size()])
+	check("events", DataDB.events.size() >= 4, str(DataDB.events.size()))
 	var worst := 0.0
 	for c_v in DataDB.cities:
 		var city: Dictionary = c_v
@@ -198,3 +203,8 @@ func check_save_roundtrip() -> void:
 	GameState.year = 999
 	check("load", GameState.from_save(data) and GameState.year == year and GameState.turn == turn)
 	check("advisor", GameState.advisor_text.find("豆沙包") >= 0, GameState.advisor_text)
+	check("design", GameState.start_design("A01") and GameState.tech_designing == "A01")
+	var packed_design: String = SaveManager.pack(GameState.to_save())
+	GameState.tech_designing = ""
+	var design_data: Dictionary = SaveManager.unpack(packed_design)
+	check("design_load", GameState.from_save(design_data) and GameState.tech_designing == "A01", GameState.tech_designing)

@@ -1,381 +1,449 @@
 class_name GameUI
 extends Control
 
-const MAT_NAME := {
-	"wood": "木",
-	"iron": "铁",
-	"money": "钱",
-	"copper": "铜",
-	"saltpeter": "硝",
-	"sulfur": "硫",
-	"coal": "煤",
-	"lead": "铅",
-	"steel": "钢",
-	"craft": "匠",
+const Kit = preload("res://scripts/ui/kit.gd")
+const Desk = preload("res://scripts/ui/desk.gd")
+
+const RES_BAR := [
+	["food", "res_food", "HudNumberLabel", Color("6db394")],
+	["money", "res_gold", "GoldLabel", Color("e8cb7c")],
+	["craft", "res_craft", "HudNumberLabel", Color("d9a35e")],
+	["iron", "res_iron", "HudNumberLabel", Color("f3e9d2")],
+	["coal", "res_coal", "HudNumberLabel", Color("f3e9d2")],
+	["wood", "res_wood", "HudNumberLabel", Color("f3e9d2")],
+	["copper", "res_copper", "HudNumberLabel", Color("f3e9d2")],
+	["sulfur", "res_sulfur", "HudNumberLabel", Color("f3e9d2")],
+	["saltpeter", "res_saltpeter", "HudNumberLabel", Color("f3e9d2")],
+]
+const WX_ICON := {
+	"clear": "wx_sunny",
+	"cloudy": "wx_partly",
+	"overcast": "wx_overcast",
+	"rain": "wx_rain",
+	"snow": "wx_snow",
+	"dust": "wx_dust",
 }
 
-var top_label: Label
-var tile_label: Label
+var top_bar: PanelContainer
+var date_label: Label
+var year_label: Label
+var res_labels := {}
+var power_label: Label
+var weather_icon: TextureRect
+var weather_label: Label
+var research_card: PanelContainer
+var research_title: Label
+var research_body: Label
+var research_bar: ProgressBar
+var unit_card: PanelContainer
 var unit_label: Label
-var event_label: Label
+var hover_chip: Label
+var advisor_root: Control
 var advisor_label: Label
 var portrait: TextureRect
-var minimap: TextureRect
-var mini_frame: Panel
-var mini_caption: Label
+var dock: Control
 var end_button: Button
-var save_button: Button
-var load_button: Button
-var tech_button: Button
-var combat_panel: Panel
+var minimap: TextureRect
+var toast: PanelContainer
+var toast_label: Label
+var toast_left := 0.0
+var return_chip: Button
+var combat_panel: PanelContainer
 var combat_label: Label
 var fight_button: Button
 var cancel_button: Button
-var tech_panel: Panel
-var save_panel: Panel
-var pending_atk := -1
-var pending_def := -1
+var desk: Desk
 var btn_map := {}
+var _notice_seen := ""
+
 
 func _ready() -> void:
 	add_to_group("game_ui")
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	_build_top()
-	_build_side()
+	_build_research()
+	_build_unit()
+	_build_hover()
 	_build_advisor()
-	_build_event()
+	_build_dock()
+	_build_toast()
+	_build_return()
 	_build_combat()
-	_build_tech()
-	_build_save()
+	desk = Desk.new()
+	desk.name = "Desk"
+	add_child(desk)
 	EventBus.state_changed.connect(_refresh)
 	EventBus.advisor_changed.connect(_refresh_advisor)
 
 
 func _build_top() -> void:
-	var panel := Panel.new()
-	panel.position = Vector2(0, 0)
-	panel.size = Vector2(1280, 52)
-	panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(panel)
-	top_label = Label.new()
-	top_label.position = Vector2(16, 8)
-	top_label.size = Vector2(900, 36)
-	top_label.clip_text = true
-	top_label.add_theme_font_size_override("font_size", 20)
-	top_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(top_label)
-	tech_button = _small_button(panel, "科技", Vector2(960, 6), Vector2(96, 40))
-	tech_button.pressed.connect(func() -> void: tech_panel.visible = true)
-	save_button = _small_button(panel, "存档", Vector2(1064, 6), Vector2(96, 40))
-	save_button.pressed.connect(func() -> void: _open_save(true))
-	load_button = _small_button(panel, "读档", Vector2(1168, 6), Vector2(96, 40))
-	load_button.pressed.connect(func() -> void: _open_save(false))
+	top_bar = Kit.panel("TopBar")
+	top_bar.position = Vector2.ZERO
+	top_bar.size = Vector2(1280, 52)
+	top_bar.custom_minimum_size = Vector2(1280, 52)
+	add_child(top_bar)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	top_bar.add_child(row)
+	var cartouche := Kit.panel("DateCartouche")
+	row.add_child(cartouche)
+	var date_box := VBoxContainer.new()
+	cartouche.add_child(date_box)
+	date_label = Kit.label("", "BrushLabel")
+	date_label.add_theme_font_size_override("font_size", 20)
+	date_box.add_child(date_label)
+	year_label = Kit.label("", "SmallLabel")
+	date_box.add_child(year_label)
+	for spec_v in RES_BAR:
+		var spec: Array = spec_v
+		var pair := HBoxContainer.new()
+		pair.add_theme_constant_override("separation", 2)
+		row.add_child(pair)
+		pair.add_child(Kit.icon_rect(str(spec[1]), 18))
+		var num := Kit.label("0", str(spec[2]))
+		num.add_theme_color_override("font_color", spec[3])
+		pair.add_child(num)
+		res_labels[str(spec[0])] = num
+	var power := HBoxContainer.new()
+	power.add_theme_constant_override("separation", 2)
+	row.add_child(power)
+	power.add_child(Kit.icon_rect("res_power", 18))
+	power_label = Kit.label("0", "PowerLabel")
+	power.add_child(power_label)
+	weather_icon = Kit.icon_rect("wx_sunny", 18)
+	row.add_child(weather_icon)
+	weather_label = Kit.label("", "HudMutedLabel")
+	row.add_child(weather_label)
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(spacer)
+	_icon_button(row, "tech", "ui_tech", "格物图", "tech")
+	_icon_button(row, "console", "ui_console", "控制台", "console")
+	_icon_button(row, "workshop", "bld_workshop", "匠作院", "workshop")
+	_icon_button(row, "industry", "bld_watermill", "百工图", "industry")
+	_icon_button(row, "talent", "ui_info", "贤才录", "talent")
+	_icon_button(row, "court", "ui_court", "朝堂", "court")
+	_icon_button(row, "codex", "ui_book", "史册", "codex")
+	_icon_button(row, "diplomacy", "ui_diplomacy", "外交", "diplomacy")
+	_icon_button(row, "events", "ui_report", "时事", "events")
+	_icon_button(row, "save", "ui_save", "存档", "save")
+	_icon_button(row, "load", "ui_load", "读档", "load")
 
 
-func _build_side() -> void:
-	var panel := Panel.new()
-	panel.position = Vector2(16, 64)
-	panel.size = Vector2(400, 176)
-	panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(panel)
-	tile_label = _wrap_label(panel, Vector2(12, 8), Vector2(376, 52))
-	unit_label = _wrap_label(panel, Vector2(12, 62), Vector2(376, 48))
-	event_label = _wrap_label(panel, Vector2(12, 114), Vector2(376, 52))
-	event_label.add_theme_color_override("font_color", Color("f4ead2"))
-	event_label.add_theme_font_size_override("font_size", 16)
-	minimap = TextureRect.new()
-	minimap.position = Vector2(1064, 522)
-	minimap.size = Vector2(204, 186)
-	minimap.stretch_mode = TextureRect.STRETCH_SCALE
-	minimap.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	minimap.mouse_filter = Control.MOUSE_FILTER_STOP
-	minimap.gui_input.connect(_on_mini)
-	add_child(minimap)
-	mini_frame = Panel.new()
-	mini_frame.position = Vector2(1058, 516)
-	mini_frame.size = Vector2(216, 198)
-	mini_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(mini_frame)
-	mini_caption = Label.new()
-	mini_caption.text = "全图"
-	mini_caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	mini_caption.add_theme_font_size_override("font_size", 15)
-	mini_caption.add_theme_color_override("font_color", Color("f4efe4"))
-	mini_caption.add_theme_color_override("font_outline_color", Color(0.05, 0.04, 0.03, 0.9))
-	mini_caption.add_theme_constant_override("outline_size", 6)
-	add_child(mini_caption)
-	move_child(minimap, get_child_count() - 1)
-	move_child(mini_caption, get_child_count() - 1)
-	end_button = Settings.cinnabar_button("结束回合", 8)
-	end_button.position = Vector2(1048, 360)
-	end_button.size = Vector2(180, 52)
-	end_button.pressed.connect(func() -> void: TurnManager.request_end())
-	add_child(end_button)
-	btn_map = {
-		"end_turn": end_button,
-		"save": save_button,
-		"load": load_button,
-		"tech": tech_button,
-	}
+func _icon_button(parent: Node, key: String, icon_name: String, tip: String, screen: String) -> void:
+	var b := Kit.button("", "RoundButton")
+	b.icon = Kit.icon(icon_name)
+	b.expand_icon = true
+	b.tooltip_text = tip
+	b.custom_minimum_size = Vector2(36, 36)
+	if screen == "save":
+		b.pressed.connect(open_save.bind(true))
+	elif screen == "load":
+		b.pressed.connect(open_save.bind(false))
+	else:
+		b.pressed.connect(open_desk.bind(screen))
+	parent.add_child(b)
+	btn_map[key] = b
+
+
+func _build_research() -> void:
+	research_card = Kit.panel("InkPanel")
+	research_card.position = Vector2(16, 68)
+	research_card.size = Vector2(300, 112)
+	research_card.custom_minimum_size = Vector2(300, 112)
+	add_child(research_card)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	research_card.add_child(box)
+	research_title = Kit.label("格物", "HudLabel")
+	box.add_child(research_title)
+	research_body = Kit.label("", "HudMutedLabel")
+	research_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(research_body)
+	research_bar = ProgressBar.new()
+	research_bar.theme_type_variation = "NodeBarDesign"
+	research_bar.show_percentage = false
+	research_bar.custom_minimum_size = Vector2(0, 8)
+	box.add_child(research_bar)
+
+
+func _build_unit() -> void:
+	unit_card = Kit.panel("InkPanel")
+	unit_card.position = Vector2(16, 188)
+	unit_card.size = Vector2(300, 132)
+	unit_card.custom_minimum_size = Vector2(300, 132)
+	unit_card.visible = false
+	add_child(unit_card)
+	unit_label = Kit.label("", "HudLabel")
+	unit_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	unit_card.add_child(unit_label)
+
+
+func _build_hover() -> void:
+	hover_chip = Kit.label("", "HudMutedLabel")
+	hover_chip.position = Vector2(16, 548)
+	hover_chip.size = Vector2(520, 28)
+	hover_chip.clip_text = true
+	add_child(hover_chip)
 
 
 func _build_advisor() -> void:
-	var panel := Panel.new()
-	panel.position = Vector2(16, 624)
-	panel.size = Vector2(860, 84)
-	panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(panel)
+	advisor_root = Control.new()
+	advisor_root.position = Vector2(8, 584)
+	advisor_root.size = Vector2(900, 132)
+	advisor_root.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(advisor_root)
 	portrait = TextureRect.new()
-	portrait.position = Vector2(8, 10)
-	portrait.size = Vector2(64, 64)
+	portrait.position = Vector2(0, 0)
+	portrait.size = Vector2(128, 128)
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	portrait.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	portrait.texture = ArtBank.face_tex("serious")
-	panel.add_child(portrait)
-	var scroll := ScrollContainer.new()
-	scroll.position = Vector2(84, 8)
-	scroll.size = Vector2(760, 68)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.mouse_filter = Control.MOUSE_FILTER_STOP
-	panel.add_child(scroll)
-	advisor_label = Label.new()
+	portrait.texture = Kit.doushabao_frame("serious")
+	advisor_root.add_child(portrait)
+	var scroll := Kit.panel("ScrollPanel")
+	scroll.position = Vector2(108, 16)
+	scroll.size = Vector2(760, 104)
+	scroll.custom_minimum_size = Vector2(760, 104)
+	advisor_root.add_child(scroll)
+	advisor_label = Kit.label("", "BodyLabel")
 	advisor_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	advisor_label.custom_minimum_size = Vector2(760, 0)
-	advisor_label.size = Vector2(760, 68)
-	advisor_label.add_theme_font_size_override("font_size", 18)
-	advisor_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	advisor_label.custom_minimum_size = Vector2(680, 0)
+	advisor_label.add_theme_color_override("font_color", Color("2b2620"))
 	scroll.add_child(advisor_label)
 
 
-func _build_event() -> void:
-	pass
+func _build_dock() -> void:
+	dock = Control.new()
+	dock.position = Vector2(1016, 448)
+	dock.size = Vector2(256, 268)
+	dock.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(dock)
+	var backing := ColorRect.new()
+	backing.color = Color("14211ff2")
+	backing.position = Vector2.ZERO
+	backing.size = dock.size
+	backing.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dock.add_child(backing)
+	end_button = Kit.button("结束回合", "EndTurnButton")
+	end_button.position = Vector2(8, 14)
+	end_button.size = Vector2(240, 72)
+	end_button.custom_minimum_size = Vector2(240, 72)
+	end_button.pressed.connect(func() -> void: TurnManager.request_end())
+	dock.add_child(end_button)
+	btn_map["end_turn"] = end_button
+	var frame := Kit.panel("MinimapFrame")
+	frame.position = Vector2(12, 94)
+	frame.size = Vector2(232, 168)
+	frame.custom_minimum_size = Vector2(232, 168)
+	dock.add_child(frame)
+	minimap = TextureRect.new()
+	minimap.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	minimap.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	minimap.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	minimap.mouse_filter = Control.MOUSE_FILTER_STOP
+	minimap.gui_input.connect(_on_mini)
+	frame.add_child(minimap)
+
+
+func _build_toast() -> void:
+	toast = Kit.panel("ToastBlueprint")
+	toast.position = Vector2(390, 80)
+	toast.size = Vector2(500, 64)
+	toast.custom_minimum_size = Vector2(500, 64)
+	toast.visible = false
+	toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(toast)
+	toast_label = Kit.label("", "H3Label")
+	toast.add_child(toast_label)
+
+
+func _build_return() -> void:
+	return_chip = Kit.button("按 M 返回", "Button")
+	return_chip.position = Vector2(16, 16)
+	return_chip.size = Vector2(160, 40)
+	return_chip.visible = false
+	return_chip.pressed.connect(func() -> void:
+		var map := get_tree().get_first_node_in_group("world_map")
+		if map:
+			map.call("_leave_overview", true)
+	)
+	add_child(return_chip)
 
 
 func _build_combat() -> void:
-	combat_panel = Panel.new()
-	combat_panel.position = Vector2(360, 160)
-	combat_panel.size = Vector2(560, 280)
+	combat_panel = Kit.panel("InkPanel")
+	combat_panel.position = Vector2(280, 160)
+	combat_panel.size = Vector2(720, 340)
+	combat_panel.custom_minimum_size = Vector2(720, 340)
 	combat_panel.visible = false
-	combat_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(combat_panel)
-	combat_label = _wrap_label(combat_panel, Vector2(16, 12), Vector2(528, 196))
-	fight_button = Settings.cinnabar_button("开战")
-	fight_button.position = Vector2(16, 220)
-	fight_button.size = Vector2(160, 44)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	combat_panel.add_child(box)
+	var title := Kit.label("接战", "H2Label")
+	title.add_theme_color_override("font_color", Color("f3e9d2"))
+	box.add_child(title)
+	combat_label = Kit.label("", "HudLabel")
+	combat_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	combat_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(combat_label)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	box.add_child(row)
+	fight_button = Kit.button("开战", "PrimaryButton")
+	fight_button.custom_minimum_size = Vector2(160, 44)
 	fight_button.pressed.connect(_confirm_fight)
-	combat_panel.add_child(fight_button)
-	cancel_button = Button.new()
-	cancel_button.text = "罢手"
-	cancel_button.position = Vector2(192, 220)
-	cancel_button.size = Vector2(160, 44)
-	cancel_button.focus_mode = Control.FOCUS_NONE
+	row.add_child(fight_button)
+	cancel_button = Kit.button("罢手", "Button")
+	cancel_button.custom_minimum_size = Vector2(160, 44)
 	cancel_button.pressed.connect(hide_combat)
-	combat_panel.add_child(cancel_button)
+	row.add_child(cancel_button)
 	btn_map["fight"] = fight_button
 	btn_map["cancel"] = cancel_button
 
 
-func _build_tech() -> void:
-	tech_panel = Panel.new()
-	tech_panel.position = Vector2(80, 80)
-	tech_panel.size = Vector2(760, 520)
-	tech_panel.visible = false
-	tech_panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(tech_panel)
-	var title := Label.new()
-	title.text = "科技树 · 下回可研究"
-	title.position = Vector2(16, 10)
-	title.size = Vector2(560, 28)
-	title.add_theme_font_size_override("font_size", 20)
-	tech_panel.add_child(title)
-	var close := Button.new()
-	close.text = "关闭"
-	close.position = Vector2(640, 8)
-	close.size = Vector2(100, 36)
-	close.focus_mode = Control.FOCUS_NONE
-	close.pressed.connect(func() -> void: tech_panel.visible = false)
-	tech_panel.add_child(close)
-	btn_map["tech_close"] = close
-	var scroll := ScrollContainer.new()
-	scroll.position = Vector2(16, 52)
-	scroll.size = Vector2(728, 452)
-	tech_panel.add_child(scroll)
-	var box := VBoxContainer.new()
-	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	box.custom_minimum_size = Vector2(700, 0)
-	scroll.add_child(box)
-	var era_names := {}
-	for era_v in DataDB.eras:
-		era_names[int(era_v.get("id", 0))] = str(era_v.get("name", ""))
-	var branch_names := {}
-	for b_v in DataDB.branches:
-		branch_names[str(b_v.get("id", ""))] = str(b_v.get("name", ""))
-	for tech_v in DataDB.techs:
-		var tech: Dictionary = tech_v
-		var line := Label.new()
-		line.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
-		line.custom_minimum_size = Vector2(700, 0)
-		line.text = _tech_line(tech, era_names, branch_names)
-		box.add_child(line)
+func open_desk(which: String) -> void:
+	hide_combat()
+	if desk.mode == which:
+		desk.shut()
+		return
+	desk.open(which)
 
 
-func _tech_line(tech: Dictionary, era_names: Dictionary, branch_names: Dictionary) -> String:
-	var pre: Array = tech.get("prereq", [])
-	var any: Array = tech.get("prereq_any", [])
-	var pre_s := "无"
-	if not pre.is_empty():
-		pre_s = "、".join(pre)
-	if not any.is_empty():
-		pre_s = "或 ".join(any) if pre.is_empty() else pre_s + "，另需 " + "或".join(any)
-	var cost: Dictionary = tech.get("cost", {})
-	var mats := ""
-	var mat_dict: Dictionary = tech.get("materials", {})
-	if not mat_dict.is_empty():
-		var bits: PackedStringArray = []
-		for k in mat_dict.keys():
-			bits.append("%s%d" % [MAT_NAME.get(str(k), str(k)), int(mat_dict[k])])
-		mats = " 材料" + "、".join(bits)
-	return "[%s·%s] %s %s 前置%s 电%d 匠%d%s。%s %s" % [
-		str(era_names.get(int(tech.get("era", 0)), "")),
-		str(branch_names.get(str(tech.get("branch", "")), "")),
-		str(tech.get("id", "")),
-		str(tech.get("name", "")),
-		pre_s,
-		int(cost.get("power", 0)),
-		int(cost.get("craft", 0)),
-		mats,
-		str(tech.get("effect", "")),
-		str(tech.get("advisor_line", "")),
-	]
+func open_save(writing: bool) -> void:
+	hide_combat()
+	desk.open_save(writing)
 
 
-func _build_save() -> void:
-	save_panel = Panel.new()
-	save_panel.position = Vector2(420, 160)
-	save_panel.size = Vector2(420, 320)
-	save_panel.visible = false
-	save_panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(save_panel)
-	var title := Label.new()
-	title.name = "SaveTitle"
-	title.position = Vector2(16, 10)
-	title.size = Vector2(240, 28)
-	title.text = "存档"
-	save_panel.add_child(title)
-	var close := Button.new()
-	close.text = "关闭"
-	close.position = Vector2(300, 8)
-	close.size = Vector2(100, 36)
-	close.focus_mode = Control.FOCUS_NONE
-	close.pressed.connect(func() -> void: save_panel.visible = false)
-	save_panel.add_child(close)
-	btn_map["save_close"] = close
+func open_city(id: String) -> void:
+	hide_combat()
+	desk.open_city(id)
 
 
-func _open_save(writing: bool) -> void:
-	for c in save_panel.get_children():
-		if str(c.name).begins_with("Slot"):
-			c.queue_free()
-	var title := save_panel.get_node("SaveTitle") as Label
-	title.text = "存档" if writing else "读档"
-	var labels := ["自动", "槽一", "槽二", "槽三"]
-	for i in 4:
-		var b := Button.new()
-		b.name = "Slot%d" % i
-		var has := SaveManager.has_slot(i)
-		if writing and i == 0:
-			b.text = "自动（回合结束写入）"
-			b.disabled = true
-		elif writing:
-			b.text = "写入%s" % labels[i]
-		else:
-			b.text = "读取%s%s" % [labels[i], "" if has else "（空）"]
-			b.disabled = not has
-		b.position = Vector2(20, 64 + i * 56)
-		b.size = Vector2(380, 44)
-		b.focus_mode = Control.FOCUS_NONE
-		var slot := i
-		if writing:
-			b.pressed.connect(func() -> void:
-				SaveManager.save_slot(slot)
-				save_panel.visible = false
-			)
-		else:
-			b.pressed.connect(func() -> void:
-				if SaveManager.load_slot(slot):
-					save_panel.visible = false
-					var map := get_tree().get_first_node_in_group("world_map")
-					if map:
-						map.call("focus_after_load")
-			)
-		save_panel.add_child(b)
-	save_panel.visible = true
+func close_city() -> void:
+	if desk.mode == "city":
+		desk.shut()
 
 
-func _small_button(parent: Node, text: String, pos: Vector2, sz: Vector2) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.position = pos
-	b.size = sz
-	b.focus_mode = Control.FOCUS_NONE
-	parent.add_child(b)
-	return b
-
-
-func _wrap_label(parent: Node, pos: Vector2, sz: Vector2) -> Label:
-	var label := Label.new()
-	label.position = pos
-	label.size = sz
-	label.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	label.add_theme_constant_override("line_spacing", 0)
-	parent.add_child(label)
-	return label
-
-
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if not visible:
 		return
+	if toast_left > 0.0:
+		toast_left -= delta
+		if toast_left <= 0.0:
+			toast.visible = false
 	_refresh()
 
 
 func _refresh() -> void:
-	var weather_name := str(DataDB.balance.get("weather", {}).get(GameState.weather_id, {}).get("name", ""))
-	var cap := int(DataDB.balance.get("power", {}).get("battery_max", 80))
-	top_label.text = "%s  粮%d 钱%d 匠%d  %s 电%d/%d  第%d回合" % [
-		Calendar.format_date(GameState.year, GameState.month),
-		int(GameState.resources.get("food", 0)),
-		int(GameState.resources.get("money", 0)),
-		int(GameState.resources.get("craft", 0)),
-		weather_name,
-		GameState.battery,
-		cap,
-		GameState.turn,
-	]
-	tile_label.text = _tile_text()
-	unit_label.text = _unit_text()
-	event_label.text = GameState.last_event
-	_refresh_advisor()
-	end_button.disabled = GameState.input_locked or combat_panel.visible or not GameState.playing
-	end_button.text = "西夏行动中" if GameState.input_locked else "结束回合"
-	if minimap.texture == null or Engine.get_process_frames() % 20 == 0:
-		var map := get_tree().get_first_node_in_group("world_map") as WorldMap
-		if map:
-			_fit_minimap(map)
-			minimap.texture = ImageTexture.create_from_image(map.minimap_image())
-
-
-func _refresh_advisor() -> void:
-	advisor_label.text = GameState.advisor_text
-	portrait.texture = ArtBank.face_tex(GameState.advisor_mood)
-
-
-func _tile_text() -> String:
 	var map := get_tree().get_first_node_in_group("world_map") as WorldMap
+	var over := map != null and map.overview
+	_set_play_visible(not over)
+	return_chip.visible = over
+	if over:
+		return
+	var era := Calendar.era_name(GameState.year, GameState.month)
+	var month := Calendar.month_name(GameState.month)
+	date_label.text = "%s %s" % [era, month]
+	if era.contains("祐"):
+		date_label.theme_type_variation = "H2Label"
+		date_label.add_theme_color_override("font_color", Color("8e2a1e"))
+	else:
+		date_label.theme_type_variation = "BrushLabel"
+		date_label.add_theme_font_size_override("font_size", 20)
+	year_label.text = str(GameState.year)
+	for key_v in res_labels.keys():
+		var key := str(key_v)
+		var num: Label = res_labels[key]
+		num.text = str(int(GameState.resources.get(key, 0)))
+	var cap := GameState.battery_cap()
+	power_label.text = "%d/%d" % [GameState.battery, cap]
+	var wx := str(WX_ICON.get(GameState.weather_id, "wx_sunny"))
+	weather_icon.texture = Kit.icon(wx)
+	weather_label.text = str(DataDB.balance.get("weather", {}).get(GameState.weather_id, {}).get("name", ""))
+	_refresh_research()
+	_refresh_unit()
+	_refresh_hover(map)
+	_refresh_advisor()
+	_refresh_toast()
+	var waiting := _song_waiting()
+	end_button.disabled = GameState.input_locked or modal_open() or not GameState.playing
+	if GameState.input_locked:
+		end_button.text = "西夏行动中"
+		end_button.theme_type_variation = "EndTurnButton"
+	else:
+		end_button.text = "结束回合"
+		end_button.theme_type_variation = "EndTurnAlertButton" if waiting else "EndTurnButton"
+	if map and (minimap.texture == null or Engine.get_process_frames() % 20 == 0):
+		minimap.texture = ImageTexture.create_from_image(map.minimap_image())
+
+
+func _set_play_visible(show_hud: bool) -> void:
+	top_bar.visible = show_hud
+	research_card.visible = show_hud
+	advisor_root.visible = show_hud
+	dock.visible = show_hud
+	if not show_hud:
+		unit_card.visible = false
+		hover_chip.visible = false
+		toast.visible = false
+
+
+func _refresh_research() -> void:
+	if GameState.tech_designing != "":
+		var tech: Dictionary = DataDB.tech_by_id.get(GameState.tech_designing, {})
+		var state := GameState.tech_state(GameState.tech_designing)
+		research_title.text = "停电" if state == "nopower" else "设计中"
+		research_body.text = str(tech.get("name", GameState.tech_designing))
+		research_bar.visible = true
+		research_bar.theme_type_variation = "NodeBarNoPower" if state == "nopower" else "NodeBarDesign"
+		research_bar.max_value = float(GameState.design_need(GameState.tech_designing))
+		research_bar.value = float(GameState.tech_design_prog)
+	elif not GameState.tech_trials.is_empty():
+		var trial: Dictionary = GameState.tech_trials[0]
+		var tech: Dictionary = DataDB.tech_by_id.get(str(trial.get("id", "")), {})
+		research_title.text = "试制中"
+		research_body.text = "%s  %d/%d" % [str(tech.get("name", "")), int(trial.get("prog", 0)), int(trial.get("need", 1))]
+		research_bar.visible = true
+		research_bar.theme_type_variation = "NodeBarTrial"
+		research_bar.max_value = float(maxi(1, int(trial.get("need", 1))))
+		research_bar.value = float(int(trial.get("prog", 0)))
+	elif not GameState.tech_queue.is_empty():
+		var tech: Dictionary = DataDB.tech_by_id.get(str(GameState.tech_queue[0]), {})
+		research_title.text = "队列"
+		research_body.text = str(tech.get("name", ""))
+		research_bar.visible = false
+	else:
+		research_title.text = "格物"
+		research_body.text = "还没开题。按 T。"
+		research_bar.visible = false
+
+
+func _refresh_unit() -> void:
+	var uid := GameState.inspected_uid if GameState.inspected_uid != -1 else GameState.selected_uid
+	var u := GameState.unit_by_id(uid)
+	unit_card.visible = not u.is_empty()
+	if u.is_empty():
+		return
+	var spec := DataDB.unit_type(str(u.def_id))
+	var faction := str(DataDB.faction(str(u.faction)).get("name", ""))
+	var text := "%s\n%s · %s\n生命 %d    移动 %d/%d" % [
+		str(u.name), str(spec.get("name", "")), faction, int(u.hp), int(u.mp), int(u.max_mp),
+	]
+	if str(u.general) != "":
+		text += "\n将领 %s" % str(u.general)
+	unit_label.text = text
+
+
+func _refresh_hover(map: WorldMap) -> void:
 	if map == null or not map.hover_ok:
-		return "把指针移到格子上。\n左键选人，右键移动或攻击。"
+		hover_chip.visible = false
+		return
+	hover_chip.visible = true
 	var h := map.hover
 	var tid := DataDB.terrain_id(h.x, h.y)
 	var terr := DataDB.terrain(tid)
@@ -383,44 +451,42 @@ func _tile_text() -> String:
 	var owner_name := "无主"
 	if owner != "":
 		owner_name = str(DataDB.faction(owner).get("name", owner))
-	var ll := Geo.lonlat(h.x, h.y)
-	var lines := "%s · %s\n东经 %.1f 北纬 %.1f" % [str(terr.get("name", tid)), owner_name, ll.x, ll.y]
+	var line := "%s · %s" % [str(terr.get("name", tid)), owner_name]
 	var city := DataDB.city_at_hex(h.x, h.y)
 	if not city.is_empty():
-		lines += "\n%s 城墙%d" % [str(city.get("name", "")), int(city.get("walls", 0))]
-	var feat := DataDB.feature_at(h.x, h.y)
-	if not feat.is_empty():
-		lines += "\n%s" % str(feat.get("name", ""))
-	var masks: Array = DataDB.river_masks.get(h, [0, 0])
-	if int(masks[1]) != 0:
-		lines += "\n大河"
-	elif int(masks[0]) != 0:
-		lines += "\n河流"
-	return lines
+		line += " · %s" % str(city.get("name", ""))
+	hover_chip.text = line
 
 
-func _unit_text() -> String:
-	var uid := GameState.inspected_uid if GameState.inspected_uid != -1 else GameState.selected_uid
-	var u := GameState.unit_by_id(uid)
-	if u.is_empty():
-		return "未选择单位"
-	var spec := DataDB.unit_type(str(u.def_id))
-	var faction := str(DataDB.faction(str(u.faction)).get("name", ""))
-	var text := "%s\n%s · %s\n生命 %d  移动 %d/%d" % [
-		str(u.name), str(spec.get("name", "")), faction, int(u.hp), int(u.mp), int(u.max_mp),
-	]
-	if str(u.general) != "":
-		text += "\n将领 %s" % str(u.general)
-	return text
+func _refresh_advisor() -> void:
+	advisor_label.text = GameState.advisor_text
+	portrait.texture = Kit.doushabao_frame(GameState.advisor_mood)
+
+
+func _refresh_toast() -> void:
+	if GameState.notice == "" or GameState.notice == _notice_seen:
+		return
+	_notice_seen = GameState.notice
+	toast_label.text = GameState.notice
+	toast.visible = true
+	toast_left = 4.0
+
+
+func _song_waiting() -> bool:
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		if str(u.get("faction", "")) == "song" and int(u.get("hp", 0)) > 0 and int(u.get("mp", 0)) > 0:
+			return true
+	return false
 
 
 func show_combat(preview: Dictionary, atk_uid: int, def_uid: int) -> void:
-	pending_atk = atk_uid
-	pending_def = def_uid
+	set_meta("atk", atk_uid)
+	set_meta("def", def_uid)
 	var atk := GameState.unit_by_id(atk_uid)
 	var dfd := GameState.unit_by_id(def_uid)
 	var counter := "攻方不受反击" if bool(preview.ranged) else "攻方受伤 %d–%d" % [int(preview.atk_min), int(preview.atk_max)]
-	combat_label.text = "攻 %s 战力 %d\n%s\n守 %s 战力 %d\n%s\n守方受伤 %d–%d\n%s" % [
+	combat_label.text = "攻 %s  战力 %d\n%s\n守 %s  战力 %d\n%s\n守方受伤 %d–%d\n%s" % [
 		str(atk.get("name", "")),
 		int(preview.atk_power),
 		CombatResolver.format_parts(preview.atk_parts),
@@ -431,12 +497,14 @@ func show_combat(preview: Dictionary, atk_uid: int, def_uid: int) -> void:
 		int(preview.def_max),
 		counter,
 	]
+	if desk.is_open():
+		desk.shut()
 	combat_panel.visible = true
 
 
 func _confirm_fight() -> void:
-	var a := pending_atk
-	var d := pending_def
+	var a := int(get_meta("atk", -1))
+	var d := int(get_meta("def", -1))
 	var dfd := GameState.unit_by_id(d)
 	hide_combat()
 	var map := get_tree().get_first_node_in_group("world_map")
@@ -447,33 +515,40 @@ func _confirm_fight() -> void:
 
 func hide_combat() -> void:
 	combat_panel.visible = false
-	pending_atk = -1
-	pending_def = -1
+	set_meta("atk", -1)
+	set_meta("def", -1)
 
 
 func hide_modals() -> void:
 	hide_combat()
-	tech_panel.visible = false
-	save_panel.visible = false
+	if desk:
+		desk.shut()
 
 
 func modal_open() -> bool:
-	return combat_panel.visible or tech_panel.visible or save_panel.visible
+	return combat_panel.visible or (desk != null and desk.is_open())
 
 
-func _fit_minimap(map: WorldMap) -> void:
-	var src := map.minimap_pixel_size()
-	if src.x < 2.0 or src.y < 2.0:
-		return
-	var fit := Vector2(300, 268)
-	var s := minf(fit.x / src.x, fit.y / src.y)
-	minimap.size = src * s
-	minimap.position = Vector2(1268.0 - minimap.size.x, 708.0 - minimap.size.y)
-	if mini_frame:
-		mini_frame.position = minimap.position - Vector2(6, 6)
-		mini_frame.size = minimap.size + Vector2(12, 12)
-	if mini_caption:
-		mini_caption.position = minimap.position + Vector2(8, 4)
+func blocks_pointer(screen: Vector2) -> bool:
+	if modal_open():
+		return true
+	if return_chip.visible and return_chip.get_global_rect().has_point(screen):
+		return true
+	if not top_bar.visible:
+		return false
+	if top_bar.get_global_rect().has_point(screen):
+		return true
+	if advisor_root.get_global_rect().has_point(screen):
+		return true
+	if dock.get_global_rect().has_point(screen):
+		return true
+	if research_card.visible and research_card.get_global_rect().has_point(screen):
+		return true
+	if unit_card.visible and unit_card.get_global_rect().has_point(screen):
+		return true
+	if hover_chip.visible and hover_chip.get_global_rect().has_point(screen):
+		return true
+	return false
 
 
 func _on_mini(event: InputEvent) -> void:
@@ -493,16 +568,21 @@ func _on_mini(event: InputEvent) -> void:
 
 func debug_buttons() -> Dictionary:
 	var out := {}
-	for k in btn_map.keys():
-		var b: Button = btn_map[k]
+	for key_v in btn_map.keys():
+		var key := str(key_v)
+		var b: Button = btn_map[key]
 		if not is_instance_valid(b):
 			continue
-		var r := b.get_global_rect()
-		out[str(k)] = {
-			"x": r.position.x,
-			"y": r.position.y,
-			"w": r.size.x,
-			"h": r.size.y,
-			"visible": b.visible and b.get_parent().visible,
-		}
+		_put_button(out, key, b)
+	if desk:
+		for key_v2 in desk.debug_btns.keys():
+			var key2 := str(key_v2)
+			var extra: Button = desk.debug_btns[key2]
+			if is_instance_valid(extra):
+				_put_button(out, key2, extra)
 	return out
+
+
+func _put_button(out: Dictionary, key: String, b: Button) -> void:
+	var r := b.get_global_rect()
+	out[key] = {"x": r.position.x, "y": r.position.y, "w": r.size.x, "h": r.size.y, "visible": b.is_visible_in_tree()}

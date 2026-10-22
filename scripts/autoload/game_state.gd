@@ -22,6 +22,20 @@ var inspected_uid := -1
 var input_locked := false
 var last_event := ""
 var playing := false
+var tech_done: Array = []
+var tech_queue: Array = []
+var tech_designing := ""
+var tech_design_prog := 0
+var tech_blueprints: Array = []
+var tech_trials: Array = []
+var firmware_done: Array = []
+var edicts_done: Array = []
+var notice := ""
+var relations := {}
+var subsidies: Array = []
+var markets: Array = []
+var envoy_turn := {}
+var event_choice := {}
 
 func _ready() -> void:
 	rng.seed = seed_value
@@ -47,6 +61,8 @@ func new_game() -> void:
 	inspected_uid = -1
 	input_locked = false
 	last_event = "三川口前夜。先看延州。"
+	_reset_research()
+	_reset_politics()
 	battery = int(DataDB.balance.get("power", {}).get("battery_start", 42))
 	_place_scenario_units()
 	roll_weather()
@@ -160,9 +176,11 @@ func apply_power() -> void:
 	var s := float(DataDB.balance.get("season", {}).get(season_name, 1.0))
 	var w := float(DataDB.balance.get("weather", {}).get(weather_id, {}).get("factor", 1.0))
 	var panel := float(power.get("panel", 1.0))
+	if tech_done.has("E01"):
+		panel *= 1.15
 	last_gen = int(round(float(power.get("base", 36)) * s * w * panel))
-	var standby := int(power.get("standby", 4))
-	var cap := int(power.get("battery_max", 80))
+	var standby := standby_cost()
+	var cap := battery_cap()
 	battery = clampi(battery - standby + last_gen, 0, cap)
 
 
@@ -194,8 +212,9 @@ func finish_turn() -> void:
 	roll_weather()
 	apply_power()
 	_economy()
-	restore_movement()
 	turn += 1
+	_research_tick()
+	restore_movement()
 	selected_uid = -1
 	inspected_uid = -1
 
@@ -227,7 +246,14 @@ func _economy() -> void:
 			continue
 		var up: Dictionary = DataDB.unit_type(str(u.def_id)).get("upkeep", {})
 		food -= int(up.get("food", 0))
-		money -= int(up.get("money", 0))
+		var pay := int(up.get("money", 0))
+		if edicts_done.has("jingbing"):
+			pay = int(round(float(pay) * 0.8))
+		money -= pay
+	if edicts_done.has("hegu"):
+		money = int(round(float(money) * 0.95))
+	money -= subsidies.size() * 40
+	money += markets.size() * 6
 	resources["food"] = max(0, int(resources.get("food", 0)) + food)
 	resources["money"] = max(0, int(resources.get("money", 0)) + money)
 	resources["craft"] = max(0, int(resources.get("craft", 0)) + craft)
@@ -311,6 +337,391 @@ func _remove_dead() -> void:
 	units = keep
 
 
+func _reset_politics() -> void:
+	relations = {
+		"xia": -55,
+		"liao": -15,
+		"gusiluo": 15,
+		"dali": 0,
+		"goryeo": 5,
+		"jiaozhi": 0,
+		"uyghur": 0,
+	}
+	subsidies = []
+	markets = []
+	envoy_turn = {}
+	event_choice = {}
+
+
+func send_envoy(fid: String) -> bool:
+	if int(resources.get("money", 0)) < 80:
+		notice = "遣使要 80 钱"
+		EventBus.state_changed.emit()
+		return false
+	if int(envoy_turn.get(fid, -99)) == turn:
+		notice = "这个月已经派过使"
+		EventBus.state_changed.emit()
+		return false
+	resources["money"] = int(resources.get("money", 0)) - 80
+	relations[fid] = int(relations.get(fid, 0)) + 6
+	envoy_turn[fid] = turn
+	notice = "使节已出"
+	last_event = notice
+	EventBus.state_changed.emit()
+	return true
+
+
+func toggle_subsidy(fid: String) -> void:
+	if subsidies.has(fid):
+		subsidies.erase(fid)
+		notice = "岁币停了"
+	else:
+		subsidies.append(fid)
+		relations[fid] = int(relations.get(fid, 0)) + 8
+		notice = "岁币记下了"
+	last_event = notice
+	EventBus.state_changed.emit()
+
+
+func toggle_market(fid: String) -> void:
+	if markets.has(fid):
+		markets.erase(fid)
+		notice = "榷场关了"
+	else:
+		markets.append(fid)
+		notice = "榷场开了"
+	last_event = notice
+	EventBus.state_changed.emit()
+
+
+func choose_event(event_id: String, choice_id: String) -> void:
+	if event_choice.has(event_id):
+		return
+	var ev: Dictionary = DataDB.event_by_id.get(event_id, {})
+	if ev.is_empty() or turn < int(ev.get("turn", 1)):
+		return
+	var choice := {}
+	for choice_v in ev.get("choices", []):
+		var item: Dictionary = choice_v
+		if str(item.get("id", "")) == choice_id:
+			choice = item
+	if choice.is_empty():
+		return
+	event_choice[event_id] = choice_id
+	morale += int(choice.get("morale", 0))
+	var rel: Dictionary = choice.get("relation", {})
+	for key_v in rel.keys():
+		var key := str(key_v)
+		relations[key] = int(relations.get(key, 0)) + int(rel[key_v])
+	notice = str(choice.get("result", "已记下"))
+	last_event = notice
+	EventBus.state_changed.emit()
+
+
+func _reset_research() -> void:
+	tech_done = []
+	tech_queue = []
+	tech_designing = ""
+	tech_design_prog = 0
+	tech_blueprints = []
+	tech_trials = []
+	firmware_done = []
+	edicts_done = []
+	notice = ""
+
+
+func battery_cap() -> int:
+	var cap := int(DataDB.balance.get("power", {}).get("battery_max", 80))
+	if tech_done.has("E04"):
+		cap += 60
+	if tech_done.has("E06"):
+		cap += 150
+	return cap
+
+
+func standby_cost() -> int:
+	var standby := int(DataDB.balance.get("power", {}).get("standby", 4))
+	if firmware_done.has("D01"):
+		standby = 2
+	return standby
+
+
+func design_need(id: String) -> int:
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	var cost: Dictionary = tech.get("cost", {})
+	var need := maxi(1, int(cost.get("power", 1)))
+	if firmware_done.has("D03"):
+		need = maxi(1, int(round(float(need) * 0.9)))
+	return need
+
+
+func era_unlocked(era: int) -> bool:
+	if era <= 1:
+		return true
+	if era == 2:
+		return turn > 30
+	return turn > 75
+
+
+func tech_state(id: String) -> String:
+	if tech_done.has(id):
+		return "done"
+	for trial_v in tech_trials:
+		var trial: Dictionary = trial_v
+		if str(trial.get("id", "")) == id:
+			return "trial"
+	if tech_blueprints.has(id):
+		return "blueprint"
+	if tech_designing == id:
+		if battery <= 0 and tech_design_prog < design_need(id):
+			return "nopower"
+		return "designing"
+	if tech_queue.has(id):
+		return "queued"
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	if not era_unlocked(int(tech.get("era", 1))):
+		return "locked"
+	var pre: Array = tech.get("prereq", [])
+	for pre_v in pre:
+		if not tech_done.has(str(pre_v)):
+			return "noprereq"
+	return "available"
+
+
+func trial_slots() -> int:
+	if edicts_done.has("gewuyuan"):
+		return 2
+	return 1
+
+
+func start_design(id: String) -> bool:
+	var st := tech_state(id)
+	if st != "available" and st != "queued":
+		return false
+	tech_queue.erase(id)
+	if tech_designing == "":
+		tech_designing = id
+		tech_design_prog = 0
+	elif id != tech_designing and not tech_queue.has(id):
+		tech_queue.append(id)
+	EventBus.state_changed.emit()
+	return true
+
+
+func cancel_design() -> void:
+	if tech_designing == "":
+		return
+	tech_designing = ""
+	tech_design_prog = 0
+	_pull_queue()
+	EventBus.state_changed.emit()
+
+
+func remove_queued(id: String) -> void:
+	tech_queue.erase(id)
+	EventBus.state_changed.emit()
+
+
+func start_trial(id: String) -> bool:
+	if tech_state(id) != "blueprint":
+		return false
+	if tech_trials.size() >= trial_slots():
+		notice = "试制槽已满"
+		EventBus.state_changed.emit()
+		return false
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	if not _pay_trial(tech):
+		notice = "匠或材料不够"
+		EventBus.state_changed.emit()
+		return false
+	tech_blueprints.erase(id)
+	var cost: Dictionary = tech.get("cost", {})
+	var craft := int(cost.get("craft", 8))
+	var need := maxi(2, int(ceil(float(craft) / 12.0)))
+	tech_trials.append({"id": id, "prog": 0, "need": need})
+	notice = "开试制 · %s" % str(tech.get("name", id))
+	EventBus.state_changed.emit()
+	return true
+
+
+func _pay_trial(tech: Dictionary) -> bool:
+	var cost: Dictionary = tech.get("cost", {})
+	var craft := int(cost.get("craft", 0))
+	if int(resources.get("craft", 0)) < craft:
+		return false
+	var mats: Dictionary = tech.get("materials", {})
+	for key_v in mats.keys():
+		var key := str(key_v)
+		if int(resources.get(key, 0)) < int(mats[key_v]):
+			return false
+	resources["craft"] = int(resources.get("craft", 0)) - craft
+	for key_v in mats.keys():
+		var key := str(key_v)
+		resources[key] = int(resources.get(key, 0)) - int(mats[key_v])
+	return true
+
+
+func write_firmware(id: String) -> bool:
+	if firmware_done.has(id):
+		return false
+	var fw: Dictionary = DataDB.firmware_by_id.get(id, {})
+	if fw.is_empty():
+		return false
+	var pre := str(fw.get("prereq", ""))
+	if pre != "" and not firmware_done.has(pre):
+		return false
+	var cost := int(fw.get("power", 0))
+	if battery < cost:
+		notice = "电不够，写不进固件"
+		EventBus.state_changed.emit()
+		return false
+	battery -= cost
+	firmware_done.append(id)
+	notice = "固件已写入 · %s" % str(fw.get("name", id))
+	last_event = notice
+	EventBus.state_changed.emit()
+	return true
+
+
+func edict_block(edict: Dictionary) -> String:
+	var id := str(edict.get("id", ""))
+	if edicts_done.has(id):
+		return "已颁布"
+	if id == "jingbing" and morale < 50:
+		return "需要皇威 50"
+	if id == "huangcheng" and not firmware_done.has("D02"):
+		return "需要固件「敌情推演」"
+	if id == "fangtian" and not tech_done.has("C01"):
+		return "需要算学"
+	if id == "baojia" and (not tech_done.has("C01") or not edicts_done.has("jingbing")):
+		return "需要算学，并先颁布精兵简政"
+	if id == "hegu" and not tech_done.has("C01"):
+		return "需要算学"
+	if id == "jiangyi" and not tech_done.has("K04"):
+		return "需要标准件与量规"
+	if id == "gewuyuan" and not tech_done.has("C03"):
+		return "需要活字与交子"
+	if id == "huoqi" and not (tech_done.has("M06") or tech_done.has("M07") or tech_done.has("M08")):
+		return "需要一件火器"
+	var cost: Dictionary = edict.get("cost", {})
+	if morale < int(cost.get("morale", 0)):
+		return "皇威不足"
+	if int(resources.get("money", 0)) < int(cost.get("money", 0)):
+		return "钱不足"
+	return ""
+
+
+func enact_edict(id: String) -> bool:
+	var edict: Dictionary = DataDB.edict_by_id.get(id, {})
+	if edict.is_empty():
+		return false
+	if edict_block(edict) != "":
+		return false
+	var cost: Dictionary = edict.get("cost", {})
+	morale -= int(cost.get("morale", 0))
+	resources["money"] = int(resources.get("money", 0)) - int(cost.get("money", 0))
+	edicts_done.append(id)
+	notice = "颁布 · %s" % str(edict.get("name", id))
+	last_event = notice
+	EventBus.state_changed.emit()
+	return true
+
+
+func _research_tick() -> void:
+	if tech_designing != "":
+		var id := tech_designing
+		var need := design_need(id)
+		var room := need - tech_design_prog
+		var spend := mini(mini(10, room), battery)
+		if spend > 0:
+			battery -= spend
+			tech_design_prog += spend
+		if tech_design_prog >= need:
+			tech_blueprints.append(id)
+			var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+			notice = "图纸已成 · %s" % str(tech.get("name", id))
+			last_event = notice
+			tech_designing = ""
+			tech_design_prog = 0
+			_pull_queue()
+	var finished: Array[String] = []
+	for trial_v in tech_trials:
+		var trial: Dictionary = trial_v
+		trial["prog"] = int(trial.get("prog", 0)) + 1
+		if int(trial["prog"]) >= int(trial.get("need", 1)):
+			finished.append(str(trial.get("id", "")))
+	for fid in finished:
+		_complete_tech(fid)
+		_erase_trial(fid)
+
+
+func _pull_queue() -> void:
+	if tech_designing != "" or tech_queue.is_empty():
+		return
+	var nxt := str(tech_queue.pop_front())
+	if tech_done.has(nxt) or tech_blueprints.has(nxt):
+		_pull_queue()
+		return
+	tech_designing = nxt
+	tech_design_prog = 0
+
+
+func _complete_tech(id: String) -> void:
+	if tech_done.has(id):
+		return
+	tech_done.append(id)
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	notice = "已经推广 · %s" % str(tech.get("name", id))
+	last_event = "%s %s" % [notice, str(tech.get("effect", ""))]
+
+
+func _erase_trial(id: String) -> void:
+	var keep: Array = []
+	for trial_v in tech_trials:
+		var trial: Dictionary = trial_v
+		if str(trial.get("id", "")) != id:
+			keep.append(trial)
+	tech_trials = keep
+
+
+func _int_dict(raw) -> Dictionary:
+	var out := {}
+	if typeof(raw) != TYPE_DICTIONARY:
+		return out
+	var src: Dictionary = raw
+	for key_v in src.keys():
+		out[str(key_v)] = int(src[key_v])
+	return out
+
+
+func _str_dict(raw) -> Dictionary:
+	var out := {}
+	if typeof(raw) != TYPE_DICTIONARY:
+		return out
+	var src: Dictionary = raw
+	for key_v in src.keys():
+		out[str(key_v)] = str(src[key_v])
+	return out
+
+
+func _str_list(raw) -> Array:
+	var out: Array = []
+	if typeof(raw) != TYPE_ARRAY:
+		return out
+	for item_v in raw:
+		out.append(str(item_v))
+	return out
+
+
+func building_unlocked(spec: Dictionary) -> bool:
+	var unlock := str(spec.get("unlock", "start"))
+	if unlock == "" or unlock == "start":
+		return true
+	if unlock.begins_with("edict_"):
+		return edicts_done.has(unlock.trim_prefix("edict_"))
+	return tech_done.has(unlock)
+
+
 func to_save() -> Dictionary:
 	return {
 		"save_version": 1,
@@ -332,12 +743,27 @@ func to_save() -> Dictionary:
 		"advisor_mood": advisor_mood,
 		"seed": seed_value,
 		"last_event": last_event,
+		"tech_done": tech_done.duplicate(),
+		"tech_queue": tech_queue.duplicate(),
+		"tech_designing": tech_designing,
+		"tech_design_prog": tech_design_prog,
+		"tech_blueprints": tech_blueprints.duplicate(),
+		"tech_trials": tech_trials.duplicate(true),
+		"firmware_done": firmware_done.duplicate(),
+		"edicts_done": edicts_done.duplicate(),
+		"relations": relations.duplicate(),
+		"subsidies": subsidies.duplicate(),
+		"markets": markets.duplicate(),
+		"envoy_turn": envoy_turn.duplicate(),
+		"event_choice": event_choice.duplicate(),
 	}
 
 
 func from_save(data: Dictionary) -> bool:
 	if int(data.get("save_version", 0)) != 1:
 		return false
+	_reset_research()
+	_reset_politics()
 	year = int(data.get("year", 1040))
 	month = int(data.get("month", 1))
 	turn = int(data.get("turn", 1))
@@ -377,6 +803,28 @@ func from_save(data: Dictionary) -> bool:
 			"general_bonus": int(src.get("general_bonus", 0)),
 		})
 	rng.state = int(str(data.get("rng_state", "0")))
+	tech_done = _str_list(data.get("tech_done", []))
+	tech_queue = _str_list(data.get("tech_queue", []))
+	tech_designing = str(data.get("tech_designing", ""))
+	tech_design_prog = int(data.get("tech_design_prog", 0))
+	tech_blueprints = _str_list(data.get("tech_blueprints", []))
+	firmware_done = _str_list(data.get("firmware_done", []))
+	edicts_done = _str_list(data.get("edicts_done", []))
+	relations = _int_dict(data.get("relations", relations))
+	subsidies = _str_list(data.get("subsidies", []))
+	markets = _str_list(data.get("markets", []))
+	envoy_turn = _int_dict(data.get("envoy_turn", {}))
+	event_choice = _str_dict(data.get("event_choice", {}))
+	tech_trials = []
+	for trial_v in data.get("tech_trials", []):
+		if typeof(trial_v) != TYPE_DICTIONARY:
+			continue
+		var trial: Dictionary = trial_v
+		tech_trials.append({
+			"id": str(trial.get("id", "")),
+			"prog": int(trial.get("prog", 0)),
+			"need": int(trial.get("need", 1)),
+		})
 	selected_uid = -1
 	inspected_uid = -1
 	input_locked = false

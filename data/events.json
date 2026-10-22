@@ -1,0 +1,88 @@
+{
+  "events": [
+    {
+      "id": "sanchuan",
+      "turn": 1,
+      "title": "三川口",
+      "who": "li_yuanhao",
+      "expr": "angry",
+      "name": "李元昊",
+      "body": "元昊的铁鹞子已经盯上延州。刘平、石元孙要出城。照史实走，这一支援军进了埋伏。",
+      "comment": "豆沙包：伏兵我算得出来。人要不要照算的走，是你的事。",
+      "choices": [
+        {"id": "hold", "label": "固守延州", "morale": 2, "relation": {"xia": -4}, "result": "城门没开。援军留在城里。"},
+        {"id": "march", "label": "照常进军", "morale": -6, "relation": {"xia": -8}, "result": "人已经出去了。这一仗会很难看。"}
+      ]
+    },
+    {
+      "id": "shaanxi",
+      "turn": 1,
+      "title": "经略陕西",
+      "who": "fan_zhongyan",
+      "expr": "serious",
+      "name": "范仲淹",
+      "body": "范仲淹、韩琦赴陕西。种世衡要在青涧筑城。一边是堡寨步步为营，一边是寻战。",
+      "comment": "豆沙包：堡寨不英雄，但英雄名册写得很快。",
+      "choices": [
+        {"id": "forts", "label": "堡寨进筑", "morale": 1, "relation": {}, "result": "进筑。城还没动土，主意先定了。"},
+        {"id": "strike", "label": "寻机出击", "morale": -2, "relation": {"xia": -4}, "result": "边将听得见这句话。"}
+      ]
+    },
+    {
+      "id": "qingjian",
+      "turn": 3,
+      "title": "青涧",
+      "who": "zhong_shiheng",
+      "expr": "serious",
+      "name": "种世衡",
+      "body": "种世衡请筑青涧城，把营寨推到夏人眼前。",
+      "comment": "豆沙包：选址我能算。夯土得靠人。",
+      "choices": [
+        {"id": "build", "label": "准筑", "morale": 2, "relation": {"xia": -6}, "result": "准了。青涧的土还在图上。"},
+        {"id": "wait", "label": "再议", "morale": -1, "relation": {}, "result": "奏疏压下了。"}
+      ]
+    },
+    {
+      "id": "zengbi",
+      "turn": 27,
+      "title": "庆历增币",
+      "who": "liao_xingzong",
+      "expr": "smug",
+      "name": "辽兴宗",
+      "body": "辽使索关南地。史实是每年再加银十万两、绢十万匹。",
+      "comment": "豆沙包：这叫订阅，而且不能退订。",
+      "choices": [
+        {"id": "pay", "label": "加岁币", "morale": -3, "relation": {"liao": 12}, "result": "银绢加了。北边暂时不点兵。"},
+        {"id": "refuse", "label": "拒绝", "morale": 2, "relation": {"liao": -15}, "result": "话硬了。辽军可以集结。"}
+      ]
+    },
+    {
+      "id": "type",
+      "turn": 36,
+      "title": "活字",
+      "who": "bi_sheng",
+      "expr": "happy",
+      "name": "毕昇",
+      "body": "布衣毕昇带着泥活字来。庆历年间，这东西还没人当真。",
+      "comment": "豆沙包：字是他刻的。防伪和交子，是你后面的事。",
+      "choices": [
+        {"id": "keep", "label": "留下", "morale": 1, "relation": {}, "result": "人留下了。活字还要设计。"},
+        {"id": "later", "label": "以后再说", "morale": 0, "relation": {}, "result": "人走了。字还在他箱子里。"}
+      ]
+    },
+    {
+      "id": "censor",
+      "turn": 8,
+      "title": "天象",
+      "who": "taijian",
+      "expr": "normal",
+      "name": "台谏官",
+      "body": "彗星见。台谏说这是失政，请降诏求言。",
+      "comment": "豆沙包：那是冰和尘。你要是当面说破，机密度会掉。",
+      "choices": [
+        {"id": "edict", "label": "下诏求言", "morale": -2, "relation": {}, "result": "诏下去了。奏疏会变多。"},
+        {"id": "quiet", "label": "不提", "morale": 1, "relation": {}, "result": "天象当没看见。"}
+      ]
+    }
+  ]
+}

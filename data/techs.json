@@ -1,120 +1,188 @@
 {
   "branches": [
     {
-      "id": "electric",
-      "name": "电"
+      "id": "nong",
+      "name": "农",
+      "full": "农业水利"
     },
     {
-      "id": "military",
-      "name": "军"
+      "id": "gong",
+      "name": "工",
+      "full": "材料冶金"
     },
     {
-      "id": "industry",
-      "name": "工"
+      "id": "xie",
+      "name": "械",
+      "full": "机械动力"
     },
     {
-      "id": "agriculture",
-      "name": "农"
+      "id": "shang",
+      "name": "商",
+      "full": "交通商贸"
     },
     {
-      "id": "commerce",
-      "name": "商"
+      "id": "jun",
+      "name": "军",
+      "full": "军事"
     },
     {
-      "id": "statecraft",
-      "name": "政"
+      "id": "dian",
+      "name": "电",
+      "full": "电力"
     },
     {
-      "id": "final",
-      "name": "终"
+      "id": "zhong",
+      "name": "终",
+      "full": "终极"
     }
   ],
   "eras": [
     {
       "id": 1,
-      "name": "开机启程"
+      "name": "开机启程",
+      "span": "T1–30"
     },
     {
       "id": 2,
-      "name": "庆历格物"
+      "name": "庆历格物",
+      "span": "T31–75"
     },
     {
       "id": 3,
-      "name": "火器初兴"
+      "name": "火器初兴",
+      "span": "T76–120"
+    }
+  ],
+  "stages": [
+    {
+      "id": 1,
+      "name": "阶一",
+      "subtitle": "农本",
+      "era": 1,
+      "col_from": 1,
+      "col_to": 2,
+      "europe": "宋代已有"
+    },
+    {
+      "id": 2,
+      "name": "阶二",
+      "subtitle": "工商",
+      "era": 1,
+      "col_from": 3,
+      "col_to": 4,
+      "europe": "宋代已有"
+    },
+    {
+      "id": 3,
+      "name": "阶三",
+      "subtitle": "原始工业",
+      "era": 2,
+      "col_from": 5,
+      "col_to": 6,
+      "europe": "欧洲约 18 世纪初"
+    },
+    {
+      "id": 4,
+      "name": "阶四",
+      "subtitle": "水力与动力",
+      "era": 2,
+      "col_from": 7,
+      "col_to": 8,
+      "europe": "欧洲约 18 世纪"
+    },
+    {
+      "id": 5,
+      "name": "阶五",
+      "subtitle": "机械与钢",
+      "era": 3,
+      "col_from": 9,
+      "col_to": 11,
+      "europe": "欧洲约 18 世纪中后期"
+    },
+    {
+      "id": 6,
+      "name": "阶六",
+      "subtitle": "火器与电网",
+      "era": 3,
+      "col_from": 12,
+      "col_to": 13,
+      "europe": "欧洲约 18 世纪后期"
     }
   ],
   "techs": [
     {
-      "id": "E01",
-      "name": "节能调度",
-      "branch": "electric",
+      "id": "A01",
+      "name": "占城稻深推广",
+      "branch": "nong",
       "era": 1,
+      "stage": 1,
       "prereq": [],
-      "prereq_any": [],
       "cost": {
-        "power": 15,
-        "craft": 0
+        "power": 12,
+        "craft": 8
       },
       "materials": {},
-      "effect": "待机耗电 4→2；解锁“休眠”",
-      "advisor_line": "待机从四降到二。电这东西，省下来才有资格乱花。"
+      "practice": "",
+      "glyph": "res_food",
+      "effect": "稻作平原 +1 粮；该城人口增长 +10%",
+      "history": "北宋真宗朝曾从福建调运占城稻种向江淮推广，耐旱早熟",
+      "skip": "各路积温、降水与品种匹配的多年试种（豆沙包直接给出适种区）",
+      "noskip": "种子要逐路育秧扩繁；北方旱地不适用；推广靠地方官与农户",
+      "talent": "",
+      "col": 1,
+      "slot": "u"
     },
     {
-      "id": "E02",
-      "name": "追日支架",
-      "branch": "electric",
+      "id": "A02",
+      "name": "农田水利规划",
+      "branch": "nong",
       "era": 1,
-      "prereq": [
-        "E01"
-      ],
-      "prereq_any": [],
-      "cost": {
-        "power": 25,
-        "craft": 15
-      },
-      "materials": {
-        "wood": 5
-      },
-      "effect": "发电 +15%；可修复面板至 80%",
-      "advisor_line": "给板子装个脖子，让它跟着太阳转。别问脖子是谁的。"
-    },
-    {
-      "id": "P01",
-      "name": "户籍算学",
-      "branch": "statecraft",
-      "era": 1,
+      "stage": 1,
       "prereq": [],
-      "prereq_any": [],
+      "cost": {
+        "power": 15,
+        "craft": 10
+      },
+      "materials": {},
+      "practice": "",
+      "glyph": "imp_canal",
+      "effect": "解锁“水利规划”行动与堰渠改良（粮 +2/格）",
+      "history": "宋代水利兴修频繁，北宋中后期朝廷曾以法令鼓励兴修农田水利",
+      "skip": "测量、水文与渠线计算（豆沙包有地形高程数据）",
+      "noskip": "民夫劳力、冬春农闲施工窗口、豪强争水",
+      "talent": "",
+      "col": 1,
+      "slot": "d"
+    },
+    {
+      "id": "C01",
+      "name": "算学、户籍与簿记",
+      "branch": "shang",
+      "era": 1,
+      "stage": 1,
+      "prereq": [],
       "cost": {
         "power": 15,
         "craft": 5
       },
       "materials": {},
-      "effect": "解锁治理分析；全国钱 +5%",
-      "advisor_line": "户口簿加上加减乘除，豪强就比较难装穷。"
+      "practice": "",
+      "glyph": "g_abacus",
+      "effect": "解锁“治理分析”行动；显示豪强势力值；全国钱 +5%；解锁政令“方田均税”",
+      "history": "宋代户籍分主户、客户；官府已用“四柱”结算法记账（旧收、新收、开除、实在）",
+      "skip": "统计口径、复式表格与审计方法",
+      "noskip": "胥吏要培训；隐田查实最终靠政令执行并承受豪强反弹",
+      "talent": "",
+      "col": 1,
+      "slot": "u"
     },
     {
-      "id": "P02",
-      "name": "敌情推演模型",
-      "branch": "statecraft",
-      "era": 1,
-      "prereq": [],
-      "prereq_any": [],
-      "cost": {
-        "power": 20,
-        "craft": 0
-      },
-      "materials": {},
-      "effect": "战前推演耗电降低；可揭示敌军种类",
-      "advisor_line": "把李元昊的脾气写成公式。他不会高兴，公式不在乎。"
-    },
-    {
-      "id": "C01",
+      "id": "C02",
       "name": "急递铺改制",
-      "branch": "commerce",
+      "branch": "shang",
       "era": 1,
+      "stage": 1,
       "prereq": [],
-      "prereq_any": [],
       "cost": {
         "power": 15,
         "craft": 10
@@ -122,97 +190,303 @@
       "materials": {
         "money": 50
       },
-      "effect": "军报实时共享；道路上骑兵移动 +1",
-      "advisor_line": "九天前的军报不叫加急，叫考古。"
+      "practice": "",
+      "glyph": "g_courier",
+      "effect": "前线军报延迟消除（实时视野共享）；道路上骑兵移动 +1",
+      "history": "宋代已有急递铺、马递铺传送文书军报",
+      "skip": "接力编组与调度优化",
+      "noskip": "铺兵、驿马与道路本身",
+      "talent": "",
+      "col": 1,
+      "slot": "d"
     },
     {
-      "id": "A01",
-      "name": "占城稻深推广",
-      "branch": "agriculture",
+      "id": "I01",
+      "name": "灌钢法改良",
+      "branch": "gong",
       "era": 1,
+      "stage": 1,
       "prereq": [],
-      "prereq_any": [],
       "cost": {
-        "power": 15,
-        "craft": 10
+        "power": 18,
+        "craft": 18
       },
       "materials": {},
-      "effect": "稻作平原 +1 粮",
-      "advisor_line": "这稻子耐旱。比朝堂上的意见耐旱。"
-    },
-    {
-      "id": "A03",
-      "name": "农田水利规划",
-      "branch": "agriculture",
-      "era": 1,
-      "prereq": [],
-      "prereq_any": [],
-      "cost": {
-        "power": 20,
-        "craft": 10
-      },
-      "materials": {},
-      "effect": "解锁水利规划与堰渠",
-      "advisor_line": "水往低处流。税往高处走。堰渠只管前者。"
+      "practice": "",
+      "glyph": "res_iron",
+      "effect": "冶铁务铁 +25%；神臂弓、步人甲等铁器的前置",
+      "history": "灌钢法（生熟铁合炼）南北朝已有记载，宋代普遍使用；北方已用石炭（煤）冶铁",
+      "skip": "配比与火候判断（以“火色测温表”代替老师傅几十年的眼力）",
+      "noskip": "炉工手艺、燃料供应；产量仍受炉数与冶铁务数量限制",
+      "talent": "",
+      "col": 1,
+      "slot": "c"
     },
     {
       "id": "M01",
-      "name": "复合弓标准化",
-      "branch": "military",
+      "name": "神臂弓",
+      "branch": "jun",
       "era": 1,
-      "prereq": [],
-      "prereq_any": [],
+      "stage": 1,
+      "prereq": [
+        "I01"
+      ],
       "cost": {
-        "power": 15,
-        "craft": 15
+        "power": 22,
+        "craft": 22
       },
-      "materials": {},
-      "effect": "弓手远程 +2，造价 −10%",
-      "advisor_line": "弓这东西，先让每张都一样长，再谈百步穿杨。"
+      "materials": {
+        "iron": 10
+      },
+      "practice": "",
+      "glyph": "unit_crossbow_dark",
+      "effect": "解锁神臂弓手；弓手远程 +1（并入旧“复合弓标准化”）",
+      "history": "宋代弩技术发达；神臂弓史载于熙宁初年献上，Demo 提前约二十余年（GDD 已列为时间错位）",
+      "skip": "弩机几何、蹬弦结构与扳机设计",
+      "noskip": "弓干用桑柘木需长期阴干；铜铁扳机精铸；弩手训练",
+      "talent": "",
+      "col": 2,
+      "slot": "c"
     },
     {
       "id": "M02",
-      "name": "神臂弓",
-      "branch": "military",
+      "name": "堡寨筑城法",
+      "branch": "jun",
       "era": 1,
+      "stage": 1,
+      "prereq": [],
+      "cost": {
+        "power": 18,
+        "craft": 18
+      },
+      "materials": {},
+      "practice": "",
+      "glyph": "bld_fort",
+      "effect": "民夫可建堡寨（野外格，补给与控制区，防 +6）",
+      "history": "范仲淹、种世衡等在陕西大规模修筑堡寨（如青涧城），“进筑”是北宋对夏主要战略",
+      "skip": "选址（视野、水源、射界）与交叉火力布局计算",
+      "noskip": "夯土工程量、驻军与粮草",
+      "talent": "种世衡",
+      "col": 1,
+      "slot": "c"
+    },
+    {
+      "id": "E01",
+      "name": "追日支架",
+      "branch": "dian",
+      "era": 1,
+      "stage": 1,
+      "prereq": [],
+      "cost": {
+        "power": 20,
+        "craft": 12
+      },
+      "materials": {
+        "wood": 5
+      },
+      "practice": "",
+      "glyph": "res_solar",
+      "effect": "发电 +15%；可修复面板完好度（至 80%）",
+      "history": "宋代有浑仪等精密转动仪器与成熟木作",
+      "skip": "太阳高度角轨迹与支架结构设计",
+      "noskip": "木工精度、铜轴套铸造；修复面板只能修线缆与框，修不了硅片",
+      "talent": "燕肃",
+      "col": 1,
+      "slot": "c"
+    },
+    {
+      "id": "A03",
+      "name": "龙骨水车与圩田",
+      "branch": "nong",
+      "era": 1,
+      "stage": 2,
       "prereq": [
-        "M01"
+        "A02",
+        "I01"
       ],
-      "prereq_any": [],
+      "cost": {
+        "power": 30,
+        "craft": 25
+      },
+      "materials": {
+        "wood": 10,
+        "iron": 5
+      },
+      "practice": "",
+      "glyph": "g_chainpump",
+      "effect": "堰渠 +1 粮；解锁圩田改良（江南低地 +2 粮）",
+      "history": "翻车（龙骨水车）汉魏已有；宋代江南圩田大规模开发",
+      "skip": "链板、轮齿与传动效率设计（铁链轴代替木销）",
+      "noskip": "大量木工与铁件；圩堤需年年维护",
+      "talent": "",
+      "col": 3,
+      "slot": "d"
+    },
+    {
+      "id": "A04",
+      "name": "选种与粪肥",
+      "branch": "nong",
+      "era": 1,
+      "stage": 2,
+      "prereq": [
+        "A01"
+      ],
+      "cost": {
+        "power": 25,
+        "craft": 12
+      },
+      "materials": {},
+      "practice": "",
+      "glyph": "imp_farm",
+      "effect": "全国农田粮 +10%；旱蝗损失 −25%（分 2 个秋收逐步生效）",
+      "history": "宋代江南已重视粪壅施肥、稻麦复种",
+      "skip": "选种原则、堆肥发酵与施肥配比",
+      "noskip": "育种需跨越多个生长季；新大陆作物（玉米、番薯、马铃薯）此时根本没有种子，知识再多也跳不过",
+      "talent": "",
+      "col": 3,
+      "slot": "u"
+    },
+    {
+      "id": "I02",
+      "name": "煤井通风与排水",
+      "branch": "gong",
+      "era": 1,
+      "stage": 2,
+      "prereq": [
+        "I01"
+      ],
+      "cost": {
+        "power": 25,
+        "craft": 22
+      },
+      "materials": {
+        "wood": 10
+      },
+      "practice": "",
+      "glyph": "g_mineshaft",
+      "effect": "煤场煤 +1；丘陵/山地可开新煤矿；矿难事件 −50%；深井排水问题引出蒸汽抽水机",
+      "history": "北宋开封等地已普遍烧用石炭，河东、磁州等地煤矿开采活跃",
+      "skip": "通风竖井、巷道支护力学",
+      "noskip": "矿工经验；深井积水最终要靠机械排水（见 K07）",
+      "talent": "",
+      "col": 3,
+      "slot": "u"
+    },
+    {
+      "id": "I03",
+      "name": "胆铜法扩产",
+      "branch": "gong",
+      "era": 1,
+      "stage": 2,
+      "prereq": [
+        "C01"
+      ],
+      "cost": {
+        "power": 22,
+        "craft": 18
+      },
+      "materials": {
+        "iron": 10
+      },
+      "practice": "",
+      "glyph": "g_copperbath",
+      "effect": "铜矿矿场铜 +1；解锁胆铜场（需铜矿：每回合 2 铁 → 1 铜）",
+      "history": "北宋已用“胆水浸铁”（以铁置换胆矾水中的铜）生产铜，信州等地有名",
+      "skip": "置换反应原理、浸槽与沉淀设计",
+      "noskip": "只有胆水泉附近能做；消耗铁",
+      "talent": "",
+      "col": 3,
+      "slot": "d"
+    },
+    {
+      "id": "K01",
+      "name": "齿轮与水磨规范",
+      "branch": "xie",
+      "era": 1,
+      "stage": 2,
+      "prereq": [
+        "I01"
+      ],
       "cost": {
         "power": 25,
         "craft": 25
       },
       "materials": {
-        "iron": 10
+        "wood": 10
       },
-      "effect": "解锁神臂弓手",
-      "advisor_line": "射程三百步，宋朝的狙击枪。就是上弦得用脚蹬，建议士兵练腿。"
+      "practice": "",
+      "glyph": "g_gearmill",
+      "effect": "解锁“水磨坊”（河畔：钱 +2，匠 +1）；齿轮类科技总前置",
+      "history": "宋代水碓、水磨普及；北宋初张思训制水力浑仪，燕肃复原指南车、记里鼓车，齿轮系与水力传动已有积累（苏颂水运仪象台成于北宋后期，在 Demo 之后）",
+      "skip": "齿形曲线与传动比计算",
+      "noskip": "硬木与铸铁齿轮的加工精度、木工技师",
+      "talent": "燕肃",
+      "col": 3,
+      "slot": "c"
+    },
+    {
+      "id": "C03",
+      "name": "活字与防伪交子",
+      "branch": "shang",
+      "era": 1,
+      "stage": 2,
+      "prereq": [
+        "C01"
+      ],
+      "cost": {
+        "power": 28,
+        "craft": 20
+      },
+      "materials": {
+        "copper": 10
+      },
+      "practice": "",
+      "glyph": "bld_jiaozi",
+      "effect": "钱 +10%；交子通胀风险 −；解锁印书局与交子务推广",
+      "history": "毕昇于庆历年间发明泥活字；北宋前期成都已有官办交子",
+      "skip": "金属合金活字、防伪套色版设计",
+      "noskip": "刻字、排字工要大量培养；交子信用靠准备金与制度，滥发照样通胀",
+      "talent": "毕昇",
+      "col": 3,
+      "slot": "u"
+    },
+    {
+      "id": "C04",
+      "name": "漕运整治",
+      "branch": "shang",
+      "era": 1,
+      "stage": 2,
+      "prereq": [
+        "C02",
+        "A02"
+      ],
+      "cost": {
+        "power": 30,
+        "craft": 30
+      },
+      "materials": {
+        "money": 150
+      },
+      "practice": "",
+      "glyph": "g_canalboat",
+      "effect": "漕运 +30%；解锁运河段改良",
+      "history": "汴河漕运是北宋命脉，江淮粮米经运河北上",
+      "skip": "船闸调度、清淤计划",
+      "noskip": "民夫与年年清淤",
+      "talent": "",
+      "col": 3,
+      "slot": "d"
     },
     {
       "id": "M03",
-      "name": "堡寨筑城法",
-      "branch": "military",
+      "name": "床子弩营",
+      "branch": "jun",
       "era": 1,
-      "prereq": [],
-      "prereq_any": [],
-      "cost": {
-        "power": 20,
-        "craft": 20
-      },
-      "materials": {},
-      "effect": "民夫可建堡寨",
-      "advisor_line": "在黄土里垒一圈墙，西夏的马就得换个爱好。"
-    },
-    {
-      "id": "M04",
-      "name": "连弩床弩",
-      "branch": "military",
-      "era": 1,
+      "stage": 2,
       "prereq": [
-        "M02"
+        "M01",
+        "K01"
       ],
-      "prereq_any": [],
       "cost": {
         "power": 30,
         "craft": 30
@@ -221,603 +495,922 @@
         "wood": 10,
         "iron": 10
       },
+      "practice": "",
+      "glyph": "unit_ballista_dark",
       "effect": "解锁床子弩营；城市获远程反击",
-      "advisor_line": "城头上的床弩，是延州能送给铁鹞子的第一份厚礼。"
+      "history": "《武经总要》记载多种床子弩（如三弓床弩）",
+      "skip": "绞盘省力比与弩臂受力计算",
+      "noskip": "大木材料、弩匠",
+      "talent": "",
+      "col": 4,
+      "slot": "c"
     },
     {
-      "id": "I01",
-      "name": "灌钢法改良",
-      "branch": "industry",
-      "era": 1,
-      "prereq": [],
-      "prereq_any": [],
-      "cost": {
-        "power": 20,
-        "craft": 20
-      },
-      "materials": {},
-      "effect": "冶铁务铁 +25%",
-      "advisor_line": "灌钢不是魔术，是把好铁和生铁劝到一起。"
-    },
-    {
-      "id": "E03",
-      "name": "铜线拉丝",
-      "branch": "electric",
-      "era": 2,
-      "prereq": [
-        "E02",
-        "I01"
-      ],
-      "prereq_any": [],
-      "cost": {
-        "power": 40,
-        "craft": 40
-      },
-      "materials": {
-        "copper": 20
-      },
-      "effect": "解锁电线改良",
-      "advisor_line": "把电从宫里牵出去。线很细，闲话会比线传得快。"
-    },
-    {
-      "id": "E04",
-      "name": "手摇发电机",
-      "branch": "electric",
-      "era": 2,
-      "prereq": [
-        "E03"
-      ],
-      "prereq_any": [],
-      "cost": {
-        "power": 50,
-        "craft": 50
-      },
-      "materials": {
-        "copper": 10,
-        "iron": 10
-      },
-      "effect": "解锁人力发电坊",
-      "advisor_line": "没太阳就靠人摇。御膳房终于有比试膳更有用的差事。"
-    },
-    {
-      "id": "E05",
-      "name": "锌铜电堆",
-      "branch": "electric",
-      "era": 2,
-      "prereq": [
-        "E03"
-      ],
-      "prereq_any": [],
-      "cost": {
-        "power": 45,
-        "craft": 40
-      },
-      "materials": {
-        "copper": 10
-      },
-      "effect": "电池上限 +60",
-      "advisor_line": "一堆金属泡在酸里，这就叫电池。别让试膳的尝。"
-    },
-    {
-      "id": "A02",
-      "name": "选种育种",
-      "branch": "agriculture",
-      "era": 2,
-      "prereq": [
-        "A01"
-      ],
-      "prereq_any": [],
-      "cost": {
-        "power": 40,
-        "craft": 20
-      },
-      "materials": {},
-      "effect": "农田粮 +10%；旱蝗损失 −25%",
-      "advisor_line": "挑种子比挑状元实在。种子不写策论。"
-    },
-    {
-      "id": "A04",
-      "name": "龙骨水车改良",
-      "branch": "agriculture",
-      "era": 2,
-      "prereq": [
-        "A03",
-        "I01"
-      ],
-      "prereq_any": [],
-      "cost": {
-        "power": 45,
-        "craft": 40
-      },
-      "materials": {
-        "wood": 10,
-        "iron": 5
-      },
-      "effect": "堰渠 +1 粮；解锁圩田",
-      "advisor_line": "水车骨节响的时候，江南的田就在喝水。"
-    },
-    {
-      "id": "A05",
-      "name": "牧监改良",
-      "branch": "agriculture",
-      "era": 2,
-      "prereq": [
-        "P01"
-      ],
-      "prereq_any": [],
-      "cost": {
-        "power": 40,
-        "craft": 20
-      },
-      "materials": {},
-      "effect": "牧监马 +1；骑兵造价 −15%",
-      "advisor_line": "马比状元稀缺。请把牧监当国库看。"
-    },
-    {
-      "id": "I02",
-      "name": "焦炭冶铁",
-      "branch": "industry",
-      "era": 2,
-      "prereq": [
-        "I01"
-      ],
-      "prereq_any": [],
-      "cost": {
-        "power": 55,
-        "craft": 50
-      },
-      "materials": {
-        "coal": 20
-      },
-      "effect": "解锁焦炉，铁产量提高",
-      "advisor_line": "煤比木炭热。山会感谢你们，铁匠的眉毛未必。"
-    },
-    {
-      "id": "I03",
-      "name": "水力鼓风",
-      "branch": "industry",
-      "era": 2,
-      "prereq": [
-        "I01",
-        "A03"
-      ],
-      "prereq_any": [],
-      "cost": {
-        "power": 50,
-        "craft": 45
-      },
-      "materials": {
-        "wood": 15
-      },
-      "effect": "河畔冶铁务铁 +2；作坊匠 +1",
-      "advisor_line": "让河替人拉风箱。黄河旧道脾气大，支流比较好说话。"
-    },
-    {
-      "id": "I04",
-      "name": "军器标准化",
-      "branch": "industry",
-      "era": 2,
-      "prereq": [
-        "I01",
-        "P01"
-      ],
-      "prereq_any": [],
-      "cost": {
-        "power": 45,
-        "craft": 35
-      },
-      "materials": {},
-      "effect": "单位造价匠 −20%",
-      "advisor_line": "同一把枪头，修的时候才不会变成猜谜。"
-    },
-    {
-      "id": "M05",
+      "id": "M04",
       "name": "步人甲",
-      "branch": "military",
-      "era": 2,
+      "branch": "jun",
+      "era": 1,
+      "stage": 2,
       "prereq": [
         "I01"
       ],
-      "prereq_any": [],
       "cost": {
-        "power": 40,
-        "craft": 40
+        "power": 30,
+        "craft": 35
       },
       "materials": {
         "iron": 20
       },
-      "effect": "解锁步人甲重步兵",
-      "advisor_line": "穿上之后像一口会走路的锅。锅对骑兵不太友好。"
+      "practice": "",
+      "glyph": "unit_heavy_inf_dark",
+      "effect": "解锁步人甲重步兵（K02 后造价 −20%）",
+      "history": "宋代重步兵披挂大量甲片的“步人甲”",
+      "skip": "甲片冲压模具与编缀方式设计",
+      "noskip": "甲片靠锻打，每副耗铁耗时；没有水力锻锤之前无法降本",
+      "talent": "",
+      "col": 3,
+      "slot": "c"
     },
     {
-      "id": "M06",
-      "name": "火药精炼",
-      "branch": "military",
+      "id": "I04",
+      "name": "焦炭冶铁",
+      "branch": "gong",
       "era": 2,
+      "stage": 3,
       "prereq": [
-        "P01"
+        "I02"
       ],
-      "prereq_any": [],
       "cost": {
-        "power": 50,
+        "power": 45,
+        "craft": 45
+      },
+      "materials": {
+        "coal": 20
+      },
+      "practice": "煤场运转 ≥4 回合",
+      "glyph": "bld_coke",
+      "effect": "解锁焦炉：冶铁务消耗煤 → 铁 +50%",
+      "history": "北方用煤冶铁，煤中硫分使铁变脆；先炼焦去硫是关键一步（宋代焦炭使用情况学界仍有讨论）",
+      "skip": "炼焦温度、时长与去硫原理（欧洲靠试错摸索了很久，18 世纪初才实用化）",
+      "noskip": "砌焦炉、找合适的炼焦煤；炉工经验（实践门槛）",
+      "talent": "冶铁匠师",
+      "col": 5,
+      "slot": "c"
+    },
+    {
+      "id": "I05",
+      "name": "耐火砖与坩埚",
+      "branch": "gong",
+      "era": 2,
+      "stage": 3,
+      "prereq": [
+        "I04"
+      ],
+      "cost": {
+        "power": 40,
+        "craft": 35
+      },
+      "materials": {},
+      "practice": "",
+      "glyph": "g_crucible",
+      "effect": "冶炼类建筑耐久 +；焦炉铁 +1；解锁琉璃、坩埚、炼锌罐",
+      "history": "宋代瓷窑（汝、定、钧、景德镇等）高温烧成技术世界领先",
+      "skip": "高铝黏土+石墨的耐火配方",
+      "noskip": "窑工经验与优质黏土产地",
+      "talent": "窑工匠师",
+      "col": 6,
+      "slot": "c"
+    },
+    {
+      "id": "K02",
+      "name": "水排鼓风与水力锻锤",
+      "branch": "xie",
+      "era": 2,
+      "stage": 3,
+      "prereq": [
+        "K01"
+      ],
+      "cost": {
+        "power": 40,
+        "craft": 40
+      },
+      "materials": {
+        "wood": 15
+      },
+      "practice": "",
+      "glyph": "g_triphammer",
+      "effect": "河畔冶铁务铁 +2；作坊匠 +1；步人甲造价 −20%",
+      "history": "东汉杜诗已用水排（水力鼓风）；宋代水碓锻打普遍",
+      "skip": "凸轮、曲柄连杆与落锤设计",
+      "noskip": "必须在河流格；木质水轮易坏需维护",
+      "talent": "燕肃",
+      "col": 5,
+      "slot": "u"
+    },
+    {
+      "id": "K03",
+      "name": "水转大纺车",
+      "branch": "xie",
+      "era": 2,
+      "stage": 3,
+      "prereq": [
+        "K01"
+      ],
+      "cost": {
+        "power": 40,
+        "craft": 35
+      },
+      "materials": {
+        "wood": 10
+      },
+      "practice": "水磨坊运转 ≥3 回合",
+      "glyph": "g_spinning",
+      "effect": "解锁纺织工场（作坊升级：钱 +3，匠 +1）；市舶司钱 +1；闽广城市可种棉",
+      "history": "元代王祯《农书》记载水转大纺车，一般认为宋元之际已在麻纺区使用；宋代棉花主要在闽广、海南",
+      "skip": "多锭同步机构、锭速设计",
+      "noskip": "原料：大规模棉纺须先把棉种从闽广推广北上；纺工培训",
+      "talent": "",
+      "col": 6,
+      "slot": "c"
+    },
+    {
+      "id": "K04",
+      "name": "标准件与量规",
+      "branch": "xie",
+      "era": 2,
+      "stage": 3,
+      "prereq": [
+        "K01",
+        "C01"
+      ],
+      "cost": {
+        "power": 40,
+        "craft": 30
+      },
+      "materials": {},
+      "practice": "",
+      "glyph": "g_calipers",
+      "effect": "单位造价匠 −20%；单位升级费用 −25%",
+      "history": "北宋军器监等官营作坊分工细密，后来的《营造法式》用“材分”统一构件规格",
+      "skip": "公差概念、量规与样板体系",
+      "noskip": "每个作坊都要校准工具，工匠要习惯按规格做活",
+      "talent": "",
+      "col": 5,
+      "slot": "d"
+    },
+    {
+      "id": "A05",
+      "name": "苜蓿轮作与牧监",
+      "branch": "nong",
+      "era": 2,
+      "stage": 3,
+      "prereq": [
+        "A04"
+      ],
+      "cost": {
+        "power": 30,
+        "craft": 20
+      },
+      "materials": {},
+      "practice": "",
+      "glyph": "g_alfalfa",
+      "effect": "牧监马 +1；骑兵造价 −15%；北方农田粮 +1",
+      "history": "苜蓿汉代即已传入用作马料；北宋长期缺马",
+      "skip": "轮作体系设计（类似欧洲以饲草作物为核心的轮作）",
+      "noskip": "马匹繁育周期长；好草场多在边境",
+      "talent": "",
+      "col": 5,
+      "slot": "c"
+    },
+    {
+      "id": "C05",
+      "name": "海船与罗盘航运",
+      "branch": "shang",
+      "era": 2,
+      "stage": 3,
+      "prereq": [
+        "C04"
+      ],
+      "cost": {
+        "power": 40,
+        "craft": 35
+      },
+      "materials": {
+        "wood": 20
+      },
+      "practice": "",
+      "glyph": "g_ship",
+      "effect": "市舶司钱 +3；沿海城市可海运漕粮；海上视野 +1",
+      "history": "宋代海船已有水密隔舱；北宋后期已有磁针用于航海的记载",
+      "skip": "天文定位与海图",
+      "noskip": "大船木料、船匠与季风",
+      "talent": "船匠匠师",
+      "col": 5,
+      "slot": "c"
+    },
+    {
+      "id": "M05",
+      "name": "火药精炼",
+      "branch": "jun",
+      "era": 2,
+      "stage": 3,
+      "prereq": [
+        "C01",
+        "I03"
+      ],
+      "cost": {
+        "power": 40,
         "craft": 30
       },
       "materials": {
         "saltpeter": 10,
         "sulfur": 5
       },
-      "effect": "解锁霹雳炮与硝场",
-      "advisor_line": "硝和硫在一起的时候，请工匠先把眉毛寄存在家里。"
+      "practice": "",
+      "glyph": "res_saltpeter",
+      "effect": "解锁霹雳炮、硝场",
+      "history": "《武经总要》（庆历年间编成）已记载多种火药配方",
+      "skip": "最佳配比、颗粒化火药",
+      "noskip": "硝石来源（刮硝土提炼、硝场要时间）；研磨筛分工艺",
+      "talent": "曾公亮",
+      "col": 5,
+      "slot": "c"
     },
     {
-      "id": "M07",
-      "name": "铁壳手雷",
-      "branch": "military",
+      "id": "M06",
+      "name": "铁壳霹雳弹",
+      "branch": "jun",
       "era": 2,
+      "stage": 3,
       "prereq": [
-        "M06",
-        "I02"
+        "M05",
+        "I04"
       ],
-      "prereq_any": [],
       "cost": {
-        "power": 60,
-        "craft": 50
+        "power": 45,
+        "craft": 40
       },
       "materials": {
         "iron": 15,
         "saltpeter": 10
       },
+      "practice": "",
+      "glyph": "unit_grenadier_dark",
       "effect": "解锁掷弹手",
-      "advisor_line": "铁壳、火药、一根绳子。投掷之前数清楚自己的手指。"
+      "history": "《武经总要》已载火球、火蒺藜等火器；铁壳爆炸弹（如震天雷）见于更晚的宋金战争时期",
+      "skip": "铁壳厚度与装药量计算",
+      "noskip": "大批量铸铁壳需焦炭冶铁的产能",
+      "talent": "",
+      "col": 6,
+      "slot": "c"
     },
     {
-      "id": "C02",
-      "name": "漕运整治",
-      "branch": "commerce",
+      "id": "E02",
+      "name": "铜线拉丝与丝漆绝缘",
+      "branch": "dian",
       "era": 2,
+      "stage": 3,
       "prereq": [
-        "C01",
-        "A03"
+        "E01",
+        "I01",
+        "I03"
       ],
-      "prereq_any": [],
+      "cost": {
+        "power": 30,
+        "craft": 30
+      },
+      "materials": {
+        "copper": 20
+      },
+      "practice": "",
+      "glyph": "g_wirecoil",
+      "effect": "解锁“电线”改良（连通发电设施与开封）；铜线可修复面板线缆",
+      "history": "宋代金银花丝细工、丝绸与漆器发达",
+      "skip": "电学原理、导线规格与绝缘方案（丝包+大漆）",
+      "noskip": "硬钢拉丝模（来自灌钢）；铜纯度；丝漆包线全靠手工",
+      "talent": "",
+      "col": 5,
+      "slot": "c"
+    },
+    {
+      "id": "E03",
+      "name": "磁钢手摇发电机",
+      "branch": "dian",
+      "era": 2,
+      "stage": 3,
+      "prereq": [
+        "E02",
+        "K01"
+      ],
+      "cost": {
+        "power": 45,
+        "craft": 45
+      },
+      "materials": {
+        "copper": 10,
+        "iron": 10
+      },
+      "practice": "",
+      "glyph": "bld_crankgen",
+      "effect": "解锁人力发电坊（每座 10 匠 → 8 电，最多 2 座，仅京城）；K05 后可升级为牛转发电坊",
+      "history": "宋人已知磁石指南、以磁石磨针",
+      "skip": "电磁感应理论（欧洲从电池到发电机走了约三十年）；直接用太阳能板电流绕线充磁，造出强磁钢",
+      "noskip": "线圈绕制、轴承与磁钢淬火；摇柄要人摇",
+      "talent": "",
+      "col": 6,
+      "slot": "c"
+    },
+    {
+      "id": "I06",
+      "name": "透明琉璃",
+      "branch": "gong",
+      "era": 2,
+      "stage": 4,
+      "prereq": [
+        "I05"
+      ],
+      "cost": {
+        "power": 50,
+        "craft": 35
+      },
+      "materials": {},
+      "practice": "",
+      "glyph": "imp_glass",
+      "effect": "面板琉璃罩（免冰雹，减沙尘）；千里镜：城市与斥候视野 +1",
+      "history": "宋代已有琉璃器，但透明度与耐热性不及钠钙玻璃",
+      "skip": "钠钙玻璃配方与退火",
+      "noskip": "纯碱/草木灰供应、磨镜工艺",
+      "talent": "窑工匠师",
+      "col": 7,
+      "slot": "c"
+    },
+    {
+      "id": "K05",
+      "name": "增速齿轮与铸铁轴承",
+      "branch": "xie",
+      "era": 2,
+      "stage": 4,
+      "prereq": [
+        "K02",
+        "I04"
+      ],
       "cost": {
         "power": 50,
         "craft": 50
       },
       "materials": {
-        "money": 150
+        "iron": 15
       },
-      "effect": "漕运 +30%；解锁运河段",
-      "advisor_line": "汴河是开封的食道。食道堵了，京城就只剩脾气。"
+      "practice": "",
+      "glyph": "g_speedgear",
+      "effect": "人力发电坊可升级为牛转发电坊（粮 6 → 电 9，不再耗匠）；水磨坊 +1 产出",
+      "history": "宋代铸铁技术成熟，能铸大型铁件",
+      "skip": "减摩、润滑与多级增速传动设计",
+      "noskip": "铸件精度、齿面磨合；牛要吃粮",
+      "talent": "苏颂",
+      "col": 7,
+      "slot": "c"
     },
     {
-      "id": "C03",
-      "name": "复式簿记",
-      "branch": "commerce",
+      "id": "E04",
+      "name": "锌铜电堆",
+      "branch": "dian",
       "era": 2,
+      "stage": 4,
       "prereq": [
-        "P01"
+        "E02",
+        "I05"
       ],
-      "prereq_any": [],
       "cost": {
-        "power": 40,
-        "craft": 10
-      },
-      "materials": {},
-      "effect": "商税 +15%",
-      "advisor_line": "账本左右两边同时写。贪污的人会恨这种对称。"
-    },
-    {
-      "id": "C04",
-      "name": "活字与防伪交子",
-      "branch": "commerce",
-      "era": 2,
-      "prereq": [
-        "C03"
-      ],
-      "prereq_any": [],
-      "cost": {
-        "power": 50,
-        "craft": 30
+        "power": 45,
+        "craft": 40
       },
       "materials": {
         "copper": 10
       },
-      "effect": "钱 +10%；解锁印书局",
-      "advisor_line": "活字可以排诗，也可以排谁在伪钞。毕昇两边都肯干。"
+      "practice": "",
+      "glyph": "res_battery",
+      "effect": "电池上限 +60",
+      "history": "宋代已有黄铜（鍮石），但金属锌的单独冶炼一般认为在明代才成熟",
+      "skip": "电化学原理、蒸馏炼锌工艺",
+      "noskip": "蒸馏炼锌要耐火罐（I05）；铜锌纯度",
+      "talent": "",
+      "col": 7,
+      "slot": "c"
     },
     {
-      "id": "P03",
-      "name": "精兵简政",
-      "branch": "statecraft",
-      "era": 2,
-      "prereq": [
-        "P01"
-      ],
-      "prereq_any": [],
-      "cost": {
-        "power": 45,
-        "craft": 0
-      },
-      "materials": {},
-      "effect": "可裁汰冗兵，军饷下降",
-      "advisor_line": "裁军要给去处。不然刀还在，饷没了，数学就不好看。"
-    },
-    {
-      "id": "P04",
-      "name": "皇城司密档",
-      "branch": "statecraft",
-      "era": 2,
-      "prereq": [
-        "P02"
-      ],
-      "prereq_any": [],
-      "cost": {
-        "power": 40,
-        "craft": 10
-      },
-      "materials": {},
-      "effect": "解锁皇城司；机密度每回合上升",
-      "advisor_line": "情报机关最好的掩护，仍然是一只没人怀疑的豆沙包。"
-    },
-    {
-      "id": "E06",
+      "id": "E05",
       "name": "水轮发电机",
-      "branch": "electric",
-      "era": 3,
+      "branch": "dian",
+      "era": 2,
+      "stage": 4,
       "prereq": [
-        "E04",
-        "I03"
+        "E03",
+        "K05"
       ],
-      "prereq_any": [],
       "cost": {
-        "power": 90,
-        "craft": 80
+        "power": 75,
+        "craft": 70
       },
       "materials": {
         "copper": 30,
         "iron": 20
       },
-      "effect": "解锁水轮电站",
-      "advisor_line": "河水推轮子，轮子生电。宋朝的河终于不只会决口。"
+      "practice": "水磨坊或河畔冶铁务运转 ≥6 回合",
+      "glyph": "bld_waterwheel",
+      "effect": "解锁水轮电站（+12 电/座，最多 3 座，需电线连通；旱季与冬季结冰时 ×0.6）",
+      "history": "宋代水碓、水磨、水排等水力机械普及",
+      "skip": "发电机绕组、调速与稳压设计",
+      "noskip": "河流选址、电线连通、旱季水量；工匠需先有水力机械运行经验（实践门槛）",
+      "talent": "燕肃",
+      "col": 8,
+      "slot": "c"
     },
     {
-      "id": "E07",
-      "name": "铅酸蓄电池",
-      "branch": "electric",
-      "era": 3,
+      "id": "C06",
+      "name": "铸铁轨道马车",
+      "branch": "shang",
+      "era": 2,
+      "stage": 4,
       "prereq": [
-        "E05",
-        "I02"
+        "C04",
+        "I04"
       ],
-      "prereq_any": [],
       "cost": {
-        "power": 80,
+        "power": 60,
         "craft": 60
       },
       "materials": {
-        "lead": 10,
-        "sulfur": 10
+        "iron": 20,
+        "wood": 20
       },
-      "effect": "电池上限 +150；随驾电源",
-      "advisor_line": "酸液、铅板、一个盖子。随驾可以，随膳不行。"
+      "practice": "焦炉运转 ≥4 回合",
+      "glyph": "imp_rail",
+      "effect": "解锁轨道改良：连接矿区的城市铁/煤 +50%，粮运 +",
+      "history": "欧洲早期矿山轨道先用木轨、后用铸铁轨；宋代铸铁产能足以铸轨",
+      "skip": "轨距、凸缘轮与道岔设计",
+      "noskip": "铁产量（需焦炉支撑）；筑路民夫",
+      "talent": "",
+      "col": 7,
+      "slot": "c"
     },
     {
-      "id": "I05",
-      "name": "坩埚炼钢",
-      "branch": "industry",
-      "era": 3,
+      "id": "A06",
+      "name": "曲辕铁犁与畜力条播",
+      "branch": "nong",
+      "era": 2,
+      "stage": 4,
       "prereq": [
-        "I02"
+        "A05",
+        "I04"
       ],
-      "prereq_any": [],
       "cost": {
-        "power": 90,
-        "craft": 80
+        "power": 50,
+        "craft": 40
+      },
+      "materials": {
+        "iron": 10
+      },
+      "practice": "",
+      "glyph": "imp_plough",
+      "effect": "农田 +1 粮；民夫建造速度 +50%；每座重镇匠 +1（劳力从田里释放）",
+      "history": "唐代已有曲辕犁，宋代农具精良",
+      "skip": "犁壁曲面与条播机设计",
+      "noskip": "铁产量与耕牛数量",
+      "talent": "",
+      "col": 7,
+      "slot": "c"
+    },
+    {
+      "id": "I07",
+      "name": "坩埚炼钢",
+      "branch": "gong",
+      "era": 3,
+      "stage": 5,
+      "prereq": [
+        "I04",
+        "I05"
+      ],
+      "cost": {
+        "power": 100,
+        "craft": 90
       },
       "materials": {
         "coal": 30,
         "iron": 30
       },
-      "effect": "新资源钢；解锁炼钢厂",
-      "advisor_line": "钢不是铁的心情更好，是铁被认真欺负过。"
+      "practice": "焦炉累计运转 ≥12 回合",
+      "glyph": "bld_steelworks",
+      "effect": "新资源“钢”；解锁炼钢厂（每回合 2 铁 + 2 煤 → 1 钢）",
+      "history": "宋代钢主要靠灌钢、百炼，产量小、质量不匀",
+      "skip": "坩埚熔炼原理（欧洲 18 世纪中叶才出现）",
+      "noskip": "坩埚寿命、高温燃料、成分控制全靠经验（实践门槛最高的一项）",
+      "talent": "冶铁匠师",
+      "col": 9,
+      "slot": "c"
     },
     {
-      "id": "I06",
-      "name": "水力镗床",
-      "branch": "industry",
+      "id": "K06",
+      "name": "水力镗床与车床",
+      "branch": "xie",
       "era": 3,
+      "stage": 5,
       "prereq": [
-        "I05",
-        "I03"
+        "K05",
+        "I07"
       ],
-      "prereq_any": [],
-      "cost": {
-        "power": 100,
-        "craft": 90
-      },
-      "materials": {
-        "steel": 10
-      },
-      "effect": "火器战力 +3；炸膛大减",
-      "advisor_line": "炮管要圆。不圆的那种，叫烟花，而且是向后的。"
-    },
-    {
-      "id": "I07",
-      "name": "透明琉璃",
-      "branch": "industry",
-      "era": 3,
-      "prereq": [
-        "I02"
-      ],
-      "prereq_any": [],
-      "cost": {
-        "power": 60,
-        "craft": 40
-      },
-      "materials": {},
-      "effect": "面板防冰雹；视野 +1",
-      "advisor_line": "琉璃罩住太阳能板。冰雹打在罩上，而不是打在我的心情上。"
-    },
-    {
-      "id": "M08",
-      "name": "佛郎机炮",
-      "branch": "military",
-      "era": 3,
-      "prereq": [
-        "M06",
-        "I05"
-      ],
-      "prereq_any": [],
       "cost": {
         "power": 110,
         "craft": 100
       },
       "materials": {
-        "steel": 15,
-        "saltpeter": 15
-      },
-      "effect": "解锁佛郎机炮营",
-      "advisor_line": "后装、子铳、一轮下去城垛会重新考虑人生。"
-    },
-    {
-      "id": "M09",
-      "name": "燧发机构",
-      "branch": "military",
-      "era": 3,
-      "prereq": [
-        "M06",
-        "I05"
-      ],
-      "prereq_any": [],
-      "cost": {
-        "power": 110,
-        "craft": 90
-      },
-      "materials": {
         "steel": 10
       },
-      "effect": "解锁燧发滑膛枪兵",
-      "advisor_line": "火绳的下一步是一块燧石。眉毛的风险还在，手的风险小一点。"
+      "practice": "",
+      "glyph": "g_lathe",
+      "effect": "火器单位战力 +3、炸膛事件 −75%；解锁“精密器械”标签（蒸汽汽缸、枪机的前置）",
+      "history": "中国很早就有加工木器、玉器的简易车旋工具，但没有能切削铁件的刚性机床",
+      "skip": "镗杆刚性、车床丝杠与刀具设计（欧洲 18 世纪后期到 19 世纪初才成熟）",
+      "noskip": "钢刀具（I07）、水力驱动、机床本身要一点点校准",
+      "talent": "苏颂",
+      "col": 10,
+      "slot": "c"
     },
     {
-      "id": "M10",
-      "name": "火器营操典",
-      "branch": "military",
-      "era": 3,
-      "prereq": [],
-      "prereq_any": [
-        "M08",
-        "M09"
-      ],
-      "cost": {
-        "power": 70,
-        "craft": 30
-      },
-      "materials": {},
-      "effect": "火器侧翼加成提高；雨天惩罚减轻",
-      "advisor_line": "排队、齐射、再排队。操典比勇气便宜，也比勇气听话。"
-    },
-    {
-      "id": "C05",
+      "id": "C07",
       "name": "碎石官道",
-      "branch": "commerce",
+      "branch": "shang",
       "era": 3,
+      "stage": 5,
       "prereq": [
-        "C02",
-        "I02"
+        "C04",
+        "I04"
       ],
-      "prereq_any": [],
       "cost": {
-        "power": 70,
-        "craft": 70
+        "power": 85,
+        "craft": 85
       },
       "materials": {
         "money": 300
       },
-      "effect": "官道移动消耗降低；补给更远",
-      "advisor_line": "把路铺硬。泥里走出的援军，通常会迟到九天。"
+      "practice": "",
+      "glyph": "imp_road",
+      "effect": "官道移动消耗降至 1/3；补给范围 +1",
+      "history": "宋代有驿路官道，但路面多为土路；分层碎石路面是近代做法",
+      "skip": "分层级配与排水拱设计",
+      "noskip": "海量碎石——要铁锤与民夫，以及焦炭冶铁带来的廉价铁工具",
+      "talent": "",
+      "col": 9,
+      "slot": "c"
     },
     {
-      "id": "C06",
-      "name": "马拉轨道",
-      "branch": "commerce",
+      "id": "E06",
+      "name": "铅酸蓄电池",
+      "branch": "dian",
       "era": 3,
+      "stage": 5,
       "prereq": [
-        "C05",
-        "I05"
+        "E04"
       ],
-      "prereq_any": [],
       "cost": {
-        "power": 100,
-        "craft": 90
+        "power": 95,
+        "craft": 80
       },
       "materials": {
-        "steel": 20,
-        "wood": 20
+        "copper": 10,
+        "sulfur": 10
       },
-      "effect": "矿区铁煤增产，粮运改善",
-      "advisor_line": "还不是火车。是马在铁上走路。马的表情请自行想象。"
+      "practice": "",
+      "glyph": "g_jarbattery",
+      "effect": "电池上限 +150；解锁随驾电源（御驾亲征时推演不再 ×2）",
+      "history": "宋人知绿矾、胆矾，用于染色、医药与胆铜法",
+      "skip": "绿矾干馏制硫酸、极板化成工艺",
+      "noskip": "极板用料（按铜矿伴生副产计入铜 10，不单列资源）、耐酸陶瓷容器；硫酸危险，作坊事故风险",
+      "talent": "",
+      "col": 9,
+      "slot": "c"
     },
     {
-      "id": "A06",
-      "name": "新式犁与条播",
-      "branch": "agriculture",
+      "id": "M07",
+      "name": "佛郎机炮",
+      "branch": "jun",
       "era": 3,
+      "stage": 5,
       "prereq": [
-        "A04",
-        "I05"
+        "M05",
+        "K06"
       ],
-      "prereq_any": [],
       "cost": {
-        "power": 80,
-        "craft": 60
+        "power": 125,
+        "craft": 115
       },
       "materials": {
-        "steel": 5
+        "copper": 20,
+        "iron": 20,
+        "saltpeter": 15
       },
-      "effect": "农田 +1 粮；民夫建造更快",
-      "advisor_line": "犁头换成钢，地就比较愿意合作。"
+      "practice": "",
+      "glyph": "g_folangji",
+      "effect": "解锁佛郎机炮营",
+      "history": "佛郎机（后装子铳炮）明代才传入中国；宋代青铜铸造（钟、鼎）技术精湛",
+      "skip": "子铳互换、闭气结构设计；直接跳过火枪、早期火铳的几百年迭代",
+      "noskip": "炮膛与子铳要镗孔才能互换（K06）；铜料大量消耗",
+      "talent": "",
+      "col": 11,
+      "slot": "c"
     },
     {
-      "id": "P05",
-      "name": "保甲团练",
-      "branch": "statecraft",
+      "id": "K07",
+      "name": "大气式蒸汽抽水机",
+      "branch": "xie",
       "era": 3,
+      "stage": 6,
       "prereq": [
-        "P03"
+        "K06",
+        "I02"
       ],
-      "prereq_any": [],
       "cost": {
-        "power": 60,
-        "craft": 20
+        "power": 135,
+        "craft": 125
       },
-      "materials": {},
-      "effect": "城市可出团练；可收编私兵",
-      "advisor_line": "乡兵不一定能打铁鹞子，但能让夜路没那么黑。"
+      "materials": {
+        "iron": 30,
+        "coal": 20,
+        "copper": 10
+      },
+      "practice": "",
+      "glyph": "g_steampump",
+      "effect": "解锁蒸汽抽水站（建于煤/铁矿旁：煤或铁 +2/回合）；无河流也能提供机械动力（Demo 内不发电）",
+      "history": "宋代已有木扇鼓风与大型铸铁件，但没有利用蒸汽做功的机械",
+      "skip": "大气压原理、冷凝与阀门时序（欧洲从早期蒸汽泵到实用抽水机用了几十年）",
+      "noskip": "大汽缸镗孔精度（K06）、锅炉铆接、巨大的煤耗——只有建在煤矿旁才划算，这也是蒸汽机最先用于矿井排水的原因",
+      "talent": "",
+      "col": 12,
+      "slot": "c"
+    },
+    {
+      "id": "M08",
+      "name": "燧发机构",
+      "branch": "jun",
+      "era": 3,
+      "stage": 6,
+      "prereq": [
+        "M05",
+        "I07",
+        "K04"
+      ],
+      "cost": {
+        "power": 110,
+        "craft": 100
+      },
+      "materials": {
+        "steel": 10
+      },
+      "practice": "炼钢厂运转 ≥2 回合",
+      "glyph": "unit_musketeer_dark",
+      "effect": "解锁燧发滑膛枪兵",
+      "history": "宋代火器尚处火药箭、火球、火枪（喷火筒）阶段",
+      "skip": "燧发机构与定装弹药设计，跳过火门枪、火绳枪的漫长迭代",
+      "noskip": "弹簧钢（坩埚钢，且炼钢厂要先跑起来）、燧石；枪管靠手工锻焊铰孔，K06 镗床后精度与战力才上来；射手操典（政令“火器营制”）",
+      "talent": "",
+      "col": 12,
+      "slot": "c"
+    },
+    {
+      "id": "E07",
+      "name": "电报试线",
+      "branch": "dian",
+      "era": 3,
+      "stage": 6,
+      "prereq": [
+        "E04",
+        "E02"
+      ],
+      "cost": {
+        "power": 95,
+        "craft": 80
+      },
+      "materials": {
+        "copper": 30
+      },
+      "practice": "",
+      "glyph": "g_telegraph",
+      "effect": "电线连通的城市互通“电报”：军报零延迟；前线城市连通时战略推演不再 ×2、耗电 −3；机密度 −1/回合（太显眼）",
+      "history": "宋代靠急递铺、烽燧传递消息",
+      "skip": "电报编码（以汉字四码编号）、继电方案",
+      "noskip": "长距离架线（铜）、电堆供电、报务员培训",
+      "talent": "",
+      "col": 12,
+      "slot": "c"
     },
     {
       "id": "X01",
       "name": "豆沙包二号计划",
-      "branch": "final",
+      "branch": "zhong",
       "era": 3,
+      "stage": 6,
       "prereq": [
-        "E06",
-        "I06",
-        "C06"
+        "K07",
+        "E05",
+        "I07"
       ],
-      "prereq_any": [],
       "cost": {
-        "power": 150,
-        "craft": 150
+        "power": 180,
+        "craft": 170
       },
       "materials": {
         "steel": 20,
         "coal": 30,
         "copper": 20
       },
-      "effect": "结局评分提升，预告蒸汽机",
-      "advisor_line": "蒸汽机的图纸在我肚子里。先把钢、煤和铜凑齐，再谈烧开水拯救大宋。"
+      "practice": "蒸汽抽水站运转 ≥3 回合",
+      "glyph": "g_condenser",
+      "effect": "Demo 终极：结局评分 +；解锁“蒸汽发电”全作预告；豆沙包隐藏日志片段",
+      "history": "从大气式蒸汽机到分离冷凝式，是热效率的决定性一跳（欧洲约用了半个世纪）",
+      "skip": "分离冷凝器、双作用与飞轮调速原理",
+      "noskip": "精密镗缸、钢件、大量匠力；必须先让大气式抽水机实际运转一段时间（实践门槛）",
+      "talent": "苏颂",
+      "col": 13,
+      "slot": "c"
+    }
+  ],
+  "firmware": [
+    {
+      "id": "D01",
+      "name": "节能调度",
+      "power": 15,
+      "prereq": "",
+      "effect": "待机耗电 4→2；解锁“休眠”"
+    },
+    {
+      "id": "D02",
+      "name": "敌情推演模型",
+      "power": 20,
+      "prereq": "",
+      "effect": "战前推演 6→4；战略推演揭示敌军兵种"
+    },
+    {
+      "id": "D03",
+      "name": "工程知识库索引",
+      "power": 30,
+      "prereq": "D01",
+      "effect": "全部科技设计耗电 −10%；格物图显示预计回合"
+    },
+    {
+      "id": "D04",
+      "name": "气象农时模型",
+      "power": 30,
+      "prereq": "D01",
+      "effect": "天气预报准确率 80%→90%；灾害预警 5→3 电"
+    }
+  ],
+  "edicts": [
+    {
+      "id": "jingbing",
+      "name": "精兵简政",
+      "glyph": "裁",
+      "prereq": "事件“庆历新政”或皇威 ≥ 50",
+      "cost": {
+        "morale": 15,
+        "money": 200,
+        "text": "皇威 15 · 钱 200"
+      },
+      "effect": "军饷 −20%；未安置则兵变",
+      "opposition": [
+        {
+          "who": "禁军将校",
+          "strength": 3
+        }
+      ]
+    },
+    {
+      "id": "huangcheng",
+      "name": "皇城司密档",
+      "glyph": "察",
+      "prereq": "D02 敌情推演模型",
+      "cost": {
+        "morale": 10,
+        "money": 0,
+        "text": "皇威 10"
+      },
+      "effect": "解锁皇城司衙门；机密度 +2/回合",
+      "opposition": [
+        {
+          "who": "台谏",
+          "strength": 2
+        }
+      ]
+    },
+    {
+      "id": "fangtian",
+      "name": "方田均税",
+      "glyph": "田",
+      "prereq": "C01 算学、户籍与簿记",
+      "cost": {
+        "morale": 20,
+        "money": 0,
+        "text": "皇威 20"
+      },
+      "effect": "钱 +8%，豪强势力值 −；豪强私兵风险",
+      "opposition": [
+        {
+          "who": "豪强",
+          "strength": 3
+        },
+        {
+          "who": "宗室",
+          "strength": 1
+        }
+      ]
+    },
+    {
+      "id": "baojia",
+      "name": "保甲团练",
+      "glyph": "甲",
+      "prereq": "C01 + 精兵简政",
+      "cost": {
+        "morale": 10,
+        "money": 100,
+        "text": "皇威 10 · 钱 100"
+      },
+      "effect": "城市自动生成团练；可收编豪强私兵",
+      "opposition": [
+        {
+          "who": "地方士绅",
+          "strength": 2
+        }
+      ]
+    },
+    {
+      "id": "hegu",
+      "name": "和雇匠役",
+      "glyph": "雇",
+      "prereq": "C01 算学、户籍与簿记",
+      "cost": {
+        "morale": 0,
+        "money": 0,
+        "text": "钱 −5%/回合"
+      },
+      "effect": "以钱雇匠代替差役：全国匠 +10%",
+      "opposition": []
+    },
+    {
+      "id": "jiangyi",
+      "name": "匠艺赏格",
+      "glyph": "赏",
+      "prereq": "K04 标准件与量规",
+      "cost": {
+        "morale": 5,
+        "money": 150,
+        "text": "皇威 5 · 钱 150"
+      },
+      "effect": "实践门槛 −25%；“工匠献技”概率 ↑",
+      "opposition": [
+        {
+          "who": "部分文官",
+          "strength": 1
+        }
+      ]
+    },
+    {
+      "id": "gewuyuan",
+      "name": "开格物院",
+      "glyph": "院",
+      "prereq": "C03 活字与防伪交子 + 书院 ≥3",
+      "cost": {
+        "morale": 15,
+        "money": 300,
+        "text": "皇威 15 · 钱 300"
+      },
+      "effect": "试制槽 +1；学子 → 匠师 ×2",
+      "opposition": [
+        {
+          "who": "台谏",
+          "strength": 2
+        },
+        {
+          "who": "太学",
+          "strength": 1
+        }
+      ]
+    },
+    {
+      "id": "huoqi",
+      "name": "火器营制",
+      "glyph": "火",
+      "prereq": "M06 / M07 / M08 之一",
+      "cost": {
+        "morale": 10,
+        "money": 0,
+        "text": "皇威 10"
+      },
+      "effect": "火器侧翼加成翻倍；雨天惩罚减半",
+      "opposition": [
+        {
+          "who": "禁军旧将",
+          "strength": 2
+        }
+      ]
     }
   ]
 }

@@ -1,23 +1,276 @@
 {
   "buildings": [
-    {"id": "granary", "name": "常平仓", "unlock": "start", "cost": {"money": 60, "craft": 20}, "effect": "储粮上限提升，灾年赈济，民心 +5"},
-    {"id": "workshop", "name": "作坊", "unlock": "start", "cost": {"money": 50, "craft": 20}, "effect": "匠 +2"},
-    {"id": "armory", "name": "军器监", "unlock": "start", "cost": {"money": 150, "craft": 60}, "effect": "军事单位造价 -15%，匠 +3"},
-    {"id": "ironworks", "name": "冶铁务", "unlock": "start", "cost": {"money": 100, "craft": 40}, "effect": "铁 +2"},
-    {"id": "coalpit", "name": "煤场", "unlock": "start", "cost": {"money": 80, "craft": 30}, "effect": "煤 +2"},
-    {"id": "pasture", "name": "牧监", "unlock": "start", "cost": {"money": 80, "craft": 20}, "effect": "马 +1"},
-    {"id": "academy", "name": "书院", "unlock": "start", "cost": {"money": 80, "craft": 20}, "effect": "试制匠 -5%，民心 +3"},
-    {"id": "walls", "name": "城墙", "unlock": "start", "cost": {"money": 100, "craft": 40}, "effect": "城防 +8"},
-    {"id": "fort", "name": "堡寨", "unlock": "M03", "cost": {"money": 40, "craft": 30}, "effect": "野外补给与控制，防御 +6"},
-    {"id": "shibosi", "name": "市舶司", "unlock": "start", "cost": {"money": 120, "craft": 30}, "effect": "钱 +4"},
-    {"id": "market", "name": "榷场", "unlock": "start", "cost": {"money": 60, "craft": 10}, "effect": "边境贸易，可关闭以制裁"},
-    {"id": "jiaozi", "name": "交子务", "unlock": "start", "cost": {"money": 100, "craft": 20}, "effect": "钱 +10%"},
-    {"id": "press", "name": "印书局", "unlock": "C04", "cost": {"money": 100, "craft": 40}, "effect": "匠 +2，民心 +3"},
-    {"id": "saltpeter", "name": "硝场", "unlock": "M06", "cost": {"money": 60, "craft": 30}, "effect": "硝 +1"},
-    {"id": "coke", "name": "焦炉", "unlock": "I02", "cost": {"money": 120, "craft": 50}, "effect": "冶铁务铁产量 +50%"},
-    {"id": "steel", "name": "炼钢厂", "unlock": "I05", "cost": {"money": 250, "craft": 120}, "effect": "铁与煤炼钢"},
-    {"id": "handgen", "name": "人力发电坊", "unlock": "E04", "cost": {"money": 80, "craft": 40}, "effect": "匠转化为电"},
-    {"id": "hydro", "name": "水轮电站", "unlock": "E06", "cost": {"money": 200, "craft": 100}, "effect": "+12 电/回合"},
-    {"id": "secret", "name": "皇城司衙门", "unlock": "P04", "cost": {"money": 120, "craft": 20}, "effect": "机密度 +2/回合"}
+    {
+      "id": "granary",
+      "name": "常平仓",
+      "unlock": "start",
+      "cost": {
+        "money": 60,
+        "craft": 20
+      },
+      "effect": "储粮上限提升，灾年赈济，民心 +5",
+      "icon": "bld_granary"
+    },
+    {
+      "id": "workshop",
+      "name": "作坊",
+      "unlock": "start",
+      "cost": {
+        "money": 50,
+        "craft": 20
+      },
+      "effect": "匠 +2",
+      "icon": "bld_workshop"
+    },
+    {
+      "id": "armory",
+      "name": "军器监",
+      "unlock": "start",
+      "cost": {
+        "money": 150,
+        "craft": 60
+      },
+      "effect": "军事单位造价 -15%，匠 +3",
+      "icon": "bld_arsenal"
+    },
+    {
+      "id": "ironworks",
+      "name": "冶铁务",
+      "unlock": "start",
+      "cost": {
+        "money": 100,
+        "craft": 40
+      },
+      "effect": "铁 +2",
+      "icon": "bld_ironworks"
+    },
+    {
+      "id": "coalpit",
+      "name": "煤场",
+      "unlock": "start",
+      "cost": {
+        "money": 80,
+        "craft": 30
+      },
+      "effect": "煤 +2",
+      "icon": "bld_coalyard"
+    },
+    {
+      "id": "pasture",
+      "name": "牧监",
+      "unlock": "start",
+      "cost": {
+        "money": 80,
+        "craft": 20
+      },
+      "effect": "马 +1",
+      "icon": "bld_studfarm"
+    },
+    {
+      "id": "academy",
+      "name": "书院",
+      "unlock": "start",
+      "cost": {
+        "money": 80,
+        "craft": 20
+      },
+      "effect": "试制匠 -5%，民心 +3",
+      "icon": "bld_academy"
+    },
+    {
+      "id": "walls",
+      "name": "城墙",
+      "unlock": "start",
+      "cost": {
+        "money": 100,
+        "craft": 40
+      },
+      "effect": "城防 +8",
+      "icon": "bld_walls"
+    },
+    {
+      "id": "fort",
+      "name": "堡寨",
+      "unlock": "M02",
+      "cost": {
+        "money": 40,
+        "craft": 30
+      },
+      "effect": "野外补给与控制，防御 +6",
+      "icon": "bld_fort"
+    },
+    {
+      "id": "shibosi",
+      "name": "市舶司",
+      "unlock": "start",
+      "cost": {
+        "money": 120,
+        "craft": 30
+      },
+      "effect": "钱 +4",
+      "icon": "bld_maritime"
+    },
+    {
+      "id": "market",
+      "name": "榷场",
+      "unlock": "start",
+      "cost": {
+        "money": 60,
+        "craft": 10
+      },
+      "effect": "边境贸易，可关闭以制裁",
+      "icon": "bld_market"
+    },
+    {
+      "id": "jiaozi",
+      "name": "交子务",
+      "unlock": "C03",
+      "cost": {
+        "money": 100,
+        "craft": 20
+      },
+      "effect": "钱 +10%",
+      "icon": "bld_jiaozi"
+    },
+    {
+      "id": "press",
+      "name": "印书局",
+      "unlock": "C03",
+      "cost": {
+        "money": 100,
+        "craft": 40
+      },
+      "effect": "匠 +2，民心 +3",
+      "icon": "bld_printing"
+    },
+    {
+      "id": "saltpeter",
+      "name": "硝场",
+      "unlock": "M05",
+      "cost": {
+        "money": 60,
+        "craft": 30
+      },
+      "effect": "硝 +1",
+      "icon": "bld_niter"
+    },
+    {
+      "id": "coke",
+      "name": "焦炉",
+      "unlock": "I04",
+      "cost": {
+        "money": 120,
+        "craft": 50
+      },
+      "effect": "冶铁务铁产量 +50%",
+      "icon": "bld_coke"
+    },
+    {
+      "id": "steel",
+      "name": "炼钢厂",
+      "unlock": "I07",
+      "cost": {
+        "money": 250,
+        "craft": 120
+      },
+      "effect": "铁与煤炼钢",
+      "icon": "bld_steelworks"
+    },
+    {
+      "id": "handgen",
+      "name": "人力发电坊",
+      "unlock": "E03",
+      "cost": {
+        "money": 80,
+        "craft": 40
+      },
+      "effect": "匠转化为电",
+      "icon": "bld_crankgen"
+    },
+    {
+      "id": "hydro",
+      "name": "水轮电站",
+      "unlock": "E05",
+      "cost": {
+        "money": 200,
+        "craft": 100
+      },
+      "effect": "+12 电/回合",
+      "icon": "bld_waterwheel"
+    },
+    {
+      "id": "secret",
+      "name": "皇城司衙门",
+      "unlock": "edict_huangcheng",
+      "cost": {
+        "money": 120,
+        "craft": 20
+      },
+      "effect": "机密度 +2/回合",
+      "icon": "bld_huangchengsi"
+    },
+    {
+      "id": "watermill",
+      "name": "水磨坊",
+      "unlock": "K01",
+      "cost": {
+        "money": 70,
+        "craft": 25
+      },
+      "effect": "河畔：钱 +2，匠 +1",
+      "icon": "bld_watermill"
+    },
+    {
+      "id": "copperbath",
+      "name": "胆铜场",
+      "unlock": "I03",
+      "cost": {
+        "money": 80,
+        "craft": 30
+      },
+      "effect": "每回合 2 铁 → 1 铜",
+      "icon": "bld_copperbath"
+    },
+    {
+      "id": "textile",
+      "name": "纺织工场",
+      "unlock": "K03",
+      "cost": {
+        "money": 100,
+        "craft": 40
+      },
+      "effect": "作坊升级：钱 +3、匠 +1",
+      "icon": "bld_textile"
+    },
+    {
+      "id": "oxgen",
+      "name": "牛转发电坊",
+      "unlock": "K05",
+      "cost": {
+        "money": 60,
+        "craft": 20
+      },
+      "effect": "6 粮 → 9 电，不耗匠",
+      "icon": "bld_oxgen"
+    },
+    {
+      "id": "steampump",
+      "name": "蒸汽抽水站",
+      "unlock": "K07",
+      "cost": {
+        "money": 220,
+        "craft": 100
+      },
+      "effect": "矿旁煤或铁 +2/回合",
+      "icon": "bld_steampump"
+    },
+    {
+      "id": "gewuyuan",
+      "name": "格物院",
+      "unlock": "edict_gewuyuan",
+      "cost": {},
+      "effect": "试制槽 +1；学子晋升 ×2",
+      "icon": "bld_gewuyuan"
+    }
   ]
 }

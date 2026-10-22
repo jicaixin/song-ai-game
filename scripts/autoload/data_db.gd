@@ -21,6 +21,13 @@ var eras: Array = []
 var balance: Dictionary = {}
 var resources_meta: Array = []
 var buildings: Array = []
+var firmware: Array = []
+var firmware_by_id := {}
+var edicts: Array = []
+var edict_by_id := {}
+var stages: Array = []
+var events: Array = []
+var event_by_id := {}
 var scenario: Dictionary = {}
 var river_masks := {}
 var feature_hexes := {}
@@ -53,6 +60,20 @@ func _ready() -> void:
 	eras = tech_doc.get("eras", [])
 	for tech_v in techs:
 		tech_by_id[str(tech_v.get("id", ""))] = tech_v
+	firmware = tech_doc.get("firmware", [])
+	for fw_v in firmware:
+		var fw: Dictionary = fw_v
+		firmware_by_id[str(fw.get("id", ""))] = fw
+	edicts = tech_doc.get("edicts", [])
+	for ed_v in edicts:
+		var ed: Dictionary = ed_v
+		edict_by_id[str(ed.get("id", ""))] = ed
+	stages = tech_doc.get("stages", [])
+	var event_doc := _load_dict("res://data/events.json")
+	events = event_doc.get("events", [])
+	for ev_v in events:
+		var ev: Dictionary = ev_v
+		event_by_id[str(ev.get("id", ""))] = ev
 	var res_doc := _load_dict("res://data/resources.json")
 	resources_meta = res_doc.get("resources", [])
 	var bdoc := _load_dict("res://data/buildings.json")

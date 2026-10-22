@@ -1200,14 +1200,9 @@ func _note_click(mb: InputEventMouseButton) -> void:
 
 
 func _blocked(screen: Vector2) -> bool:
-	if screen.y < 56.0:
-		return true
-	if screen.x < 430.0 and screen.y < 250.0:
-		return true
-	if screen.y > 608.0 and screen.x < 900.0:
-		return true
-	if screen.x > 960.0 and screen.y > 350.0:
-		return true
+	var ui := get_tree().get_first_node_in_group("game_ui")
+	if ui and ui.has_method("blocks_pointer"):
+		return bool(ui.call("blocks_pointer", screen))
 	return false
 
 
@@ -1284,6 +1279,35 @@ func _key(event: InputEventKey) -> void:
 		return
 	if _modal() or GameState.input_locked:
 		return
+	var desk_ui := get_tree().get_first_node_in_group("game_ui")
+	if desk_ui:
+		if event.keycode == KEY_T:
+			desk_ui.call("open_desk", "tech")
+			return
+		if event.keycode == KEY_P:
+			desk_ui.call("open_desk", "console")
+			return
+		if event.keycode == KEY_J:
+			desk_ui.call("open_desk", "workshop")
+			return
+		if event.keycode == KEY_I:
+			desk_ui.call("open_desk", "industry")
+			return
+		if event.keycode == KEY_L:
+			desk_ui.call("open_desk", "talent")
+			return
+		if event.keycode == KEY_Y:
+			desk_ui.call("open_desk", "court")
+			return
+		if event.keycode == KEY_H:
+			desk_ui.call("open_desk", "codex")
+			return
+		if event.keycode == KEY_E:
+			desk_ui.call("open_desk", "events")
+			return
+		if event.keycode == KEY_R:
+			desk_ui.call("open_desk", "diplomacy")
+			return
 	if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
 		TurnManager.request_end()
 	elif event.keycode == KEY_SPACE:
@@ -1367,6 +1391,13 @@ func _left_click(screen: Vector2) -> void:
 	else:
 		GameState.selected_uid = -1
 		GameState.inspected_uid = -1
+		var city := DataDB.city_at_hex(h.x, h.y)
+		var gui := get_tree().get_first_node_in_group("game_ui")
+		if gui:
+			if city.is_empty():
+				gui.call("close_city")
+			else:
+				gui.call("open_city", str(city.get("id", "")))
 	full_refresh()
 
 

@@ -16,19 +16,23 @@ var banner_font: Font
 func _ready() -> void:
 	font = _load_font(false)
 	banner_font = _load_font(true)
-	theme = _build_theme()
+	theme = load("res://ui/theme.tres")
 	get_tree().root.theme = theme
 	# Web builds cannot see OS fonts. The engine default only covers Latin,
 	# so any control that misses the theme still needs this face.
 	ThemeDB.fallback_font = font
-	ThemeDB.fallback_font_size = 18
+	ThemeDB.fallback_font_size = 15
 	DisplayServer.window_set_title("我带着AI穿越大宋")
 
 
 func _load_font(msdf: bool) -> Font:
-	# Raw bytes, not the imported face. The importer stored a font with
-	# antialiasing off, and the editor's system fallback hid missing glyphs.
-	var ff := FontFile.new()
+	# Duplicate the imported face so the banner can turn on MSDF without
+	# touching the theme's copy, and so tests can see fallback stay off.
+	var src := load("res://ui/fonts/NotoSerifSC-Regular.subset.ttf") as FontFile
+	if src == null:
+		push_error("中文字体缺失")
+		return ThemeDB.fallback_font
+	var ff := src.duplicate() as FontFile
 	ff.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
 	ff.hinting = TextServer.HINTING_LIGHT
 	ff.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_AUTO
@@ -38,41 +42,24 @@ func _load_font(msdf: bool) -> Font:
 		ff.multichannel_signed_distance_field = true
 		ff.msdf_pixel_range = 8
 		ff.msdf_size = 48
-	var bytes := FileAccess.get_file_as_bytes("res://art/fonts/ui_zh.bytes")
-	ff.data = bytes
-	if bytes.is_empty() or not ff.has_char("我".unicode_at(0)):
-		push_error("中文字体缺失或没有汉字")
-		return ThemeDB.fallback_font
+	if not ff.has_char("我".unicode_at(0)):
+		var bytes := FileAccess.get_file_as_bytes("res://ui/fonts/NotoSerifSC-Regular.subset.ttf")
+		var raw := FontFile.new()
+		raw.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
+		raw.hinting = TextServer.HINTING_LIGHT
+		raw.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_AUTO
+		raw.oversampling = 0.0
+		raw.allow_system_fallback = false
+		if msdf:
+			raw.multichannel_signed_distance_field = true
+			raw.msdf_pixel_range = 8
+			raw.msdf_size = 48
+		raw.data = bytes
+		if bytes.is_empty() or not raw.has_char("我".unicode_at(0)):
+			push_error("中文字体缺失或没有汉字")
+			return ThemeDB.fallback_font
+		return raw
 	return ff
-
-
-func _build_theme() -> Theme:
-	var t := Theme.new()
-	t.default_font = font
-	t.default_font_size = 18
-	var normal := _box(CELADON, WOOD, 3)
-	var hover := _box(Color("245e6a"), WOOD, 3)
-	var pressed := _box(Color("0e3036"), WOOD, 3)
-	var disabled := _box(Color("1a3338"), Color("6d5b3e"), 3)
-	for kind in ["Button"]:
-		t.set_stylebox("normal", kind, normal)
-		t.set_stylebox("hover", kind, hover)
-		t.set_stylebox("pressed", kind, pressed)
-		t.set_stylebox("focus", kind, hover)
-		t.set_stylebox("disabled", kind, disabled)
-		t.set_color("font_color", kind, INK)
-		t.set_color("font_hover_color", kind, INK)
-		t.set_color("font_pressed_color", kind, INK)
-		t.set_color("font_focus_color", kind, INK)
-		t.set_color("font_disabled_color", kind, Color("8d8070"))
-		t.set_font("font", kind, font)
-		t.set_font_size("font_size", kind, 18)
-	t.set_color("font_color", "Label", INK)
-	t.set_font("font", "Label", font)
-	t.set_font_size("font_size", "Label", 18)
-	t.set_stylebox("panel", "Panel", _box(Color("10282ee0"), WOOD, 3))
-	t.set_stylebox("panel", "PanelContainer", _box(Color("10282ee0"), WOOD, 3))
-	return t
 
 
 func _box(bg: Color, border: Color, radius: int = 2) -> StyleBoxFlat:

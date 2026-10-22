@@ -33,10 +33,6 @@ window/stretch/scale_mode="fractional"
 window/dpi/allow_hidpi=true
 window/handheld/orientation=0
 
-[gui]
-
-theme/custom_font="res://art/fonts/ui_zh.ttf"
-
 [debug]
 
 gdscript/warnings/inference_on_variant=0
