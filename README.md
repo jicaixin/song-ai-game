@@ -24,6 +24,8 @@ python3 tools/serve.py
 
 用 Godot 4.3+ 打开本目录，运行主场景 `scenes/main.tscn`。界面按 1280×720 绘制，并用分数缩放跟着窗口走，打开 HiDPI，这样中文不会先画小再被放大。渲染器必须是 GL Compatibility，网页导出才能跑。
 
+地图上的城用 `art/models/song_city/clusters/` 里的低模城池（1 单位 = 1 米，六角外接圆 10 米）。运行时按本图六角外接圆 18 放大 1.8 倍：都城用 `cluster_capital`，州府用 `cluster_walled`，县城用 `cluster_town`，并按城名转 60° 的整数步。顶点色乘在底色上，所以材质打开了 `vertex_color_use_as_albedo`。
+
 规则自测（无界面断言）：
 
 ```bash

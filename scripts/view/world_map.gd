@@ -26,10 +26,12 @@ var banners: Array[Node3D] = []
 var _overlay: MeshInstance3D
 var _focus_applied := ""
 var _unit_kinds := {}
-var _house: ArrayMesh
-var _pagoda: ArrayMesh
 var _perf_frames := 0
 var _tris := 0
+var _cluster_mesh := {}
+var _city_material: StandardMaterial3D
+
+const CITY_SCALE := 1.8
 
 func _ready() -> void:
 	var built: Dictionary = TerrainFactory.build()
@@ -41,8 +43,6 @@ func _ready() -> void:
 	_add_trees(built)
 	_tris = _count_tris(built.land) + _count_tris(built.water) + _count_tris(built.rivers)
 	print("TRIS land %d water %d rivers %d" % [_count_tris(built.land), _count_tris(built.water), _count_tris(built.rivers)])
-	_house = TerrainFactory.house_mesh()
-	_pagoda = TerrainFactory.pagoda_mesh()
 	_build_cities()
 	_overlay = MeshInstance3D.new()
 	_overlay.name = "Overlay"
@@ -256,6 +256,115 @@ func _measure() -> void:
 	map_rect = Rect2(min_p - Vector2(40, 40), (max_p - min_p) + Vector2(80, 80))
 
 
+func _city_mat() -> StandardMaterial3D:
+	if _city_material != null:
+		return _city_material
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color.WHITE
+	mat.vertex_color_use_as_albedo = true
+	mat.roughness = 0.84
+	mat.metallic = 0.0
+	mat.metallic_specular = 0.12
+	mat.cull_mode = BaseMaterial3D.CULL_BACK
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	_city_material = mat
+	return mat
+
+
+func _cluster_kind(city: Dictionary) -> String:
+	if bool(city.get("capital", false)):
+		return "capital"
+	if bool(city.get("major", false)):
+		return "walled"
+	return "town"
+
+
+func _merged_cluster(kind: String) -> ArrayMesh:
+	if _cluster_mesh.has(kind):
+		return _cluster_mesh[kind]
+	var path := "res://art/models/song_city/clusters/cluster_%s.glb" % kind
+	var packed: PackedScene = load(path)
+	var scene := packed.instantiate()
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_material(_city_mat())
+	var stats := _bake_cluster(scene, Transform3D.IDENTITY, st)
+	scene.free()
+	var mesh := st.commit()
+	_cluster_mesh[kind] = mesh
+	print("CLUSTER %s tris %d verts %d color %.2f..%.2f" % [kind, _count_tris(mesh), stats.x, stats.y, stats.z])
+	return mesh
+
+
+func _bake_cluster(node: Node, parent_xf: Transform3D, st: SurfaceTool) -> Vector3:
+	var xf := parent_xf
+	if node is Node3D:
+		xf = parent_xf * (node as Node3D).transform
+	var lo := 1.0
+	var hi := 0.0
+	var nverts := 0
+	if node is MeshInstance3D:
+		var baked := _bake_mesh(node as MeshInstance3D, xf, st)
+		lo = baked.y
+		hi = baked.z
+		nverts = int(baked.x)
+	for child in node.get_children():
+		var sub := _bake_cluster(child, xf, st)
+		nverts += int(sub.x)
+		lo = minf(lo, sub.y)
+		hi = maxf(hi, sub.z)
+	return Vector3(float(nverts), lo, hi)
+
+
+func _bake_mesh(mi: MeshInstance3D, xf: Transform3D, st: SurfaceTool) -> Vector3:
+	var mesh := mi.mesh
+	if mesh == null:
+		return Vector3.ZERO
+	var lo := 1.0
+	var hi := 0.0
+	var nverts := 0
+	var normal_xf := xf.basis.inverse().transposed()
+	for s in mesh.get_surface_count():
+		var arrays: Array = mesh.surface_get_arrays(s)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var norms: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		var cols: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+		var index_data = arrays[Mesh.ARRAY_INDEX]
+		var indices := PackedInt32Array()
+		if index_data is PackedInt32Array:
+			indices = index_data
+		var albedo := Color.WHITE
+		var mat := mesh.surface_get_material(s)
+		if mat == null:
+			mat = mi.get_surface_override_material(s)
+		if mat is StandardMaterial3D:
+			albedo = (mat as StandardMaterial3D).albedo_color
+		var order: Array = []
+		if indices.is_empty():
+			for i in verts.size():
+				order.append(i)
+		else:
+			for i in indices.size():
+				order.append(int(indices[i]))
+		for i_v in order:
+			var i := int(i_v)
+			var col := Color.WHITE
+			if i < cols.size():
+				col = cols[i]
+			col = Color(col.r * albedo.r, col.g * albedo.g, col.b * albedo.b, 1.0)
+			var lum := col.r * 0.3 + col.g * 0.5 + col.b * 0.2
+			lo = minf(lo, lum)
+			hi = maxf(hi, lum)
+			st.set_color(col)
+			var n := Vector3.UP
+			if i < norms.size():
+				n = (normal_xf * norms[i]).normalized()
+			st.set_normal(n)
+			st.add_vertex(xf * verts[i])
+			nverts += 1
+	return Vector3(float(nverts), lo, hi)
+
+
 func _build_cities() -> void:
 	for c_v in DataDB.cities:
 		var city: Dictionary = c_v
@@ -263,54 +372,29 @@ func _build_cities() -> void:
 		var px := HexGrid.axial_to_pixel(ax.x, ax.y)
 		var root := Node3D.new()
 		root.name = str(city.get("id", "city"))
-		root.position = Vector3(px.x, _height_of(ax), px.y)
+		root.position = Vector3(px.x, _height_of(ax) + 0.04, px.y)
 		var pop := int(city.get("pop", 1))
-		var major := bool(city.get("major", false)) or bool(city.get("capital", false))
-		var pad := MeshInstance3D.new()
-		var disc := CylinderMesh.new()
-		disc.top_radius = 7.4 if major else 5.6
-		disc.bottom_radius = disc.top_radius
-		disc.height = 0.16
-		pad.mesh = disc
-		pad.position = Vector3(0, 0.08, 0)
-		pad.material_override = _toon(Color("c2b48a"))
-		pad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		root.add_child(pad)
-		var count := clampi(4 + pop / 2, 4, 7)
-		if major:
-			count = mini(count + 2, 8)
-		for i in count:
-			var house := MeshInstance3D.new()
-			house.mesh = _house
-			house.material_override = _toon(Color.WHITE)
-			var ang := float(i) * 2.15 + 0.4
-			var rad := 3.2 + float(i % 3) * 1.7
-			house.position = Vector3(cos(ang) * rad, 0, sin(ang) * rad)
-			house.rotation.y = ang
-			var s := 2.05 + float(pop) * 0.03
-			house.scale = Vector3(s, s, s)
-			root.add_child(house)
-		if major:
-			var pagoda := MeshInstance3D.new()
-			pagoda.mesh = _pagoda
-			pagoda.material_override = _toon(Color.WHITE)
-			pagoda.scale = Vector3(1.55, 1.55, 1.55)
-			root.add_child(pagoda)
-		var walls := int(city.get("walls", 0))
-		if walls > 0 or major:
-			for i in 8:
-				var ang2 := TAU * float(i) / 8.0
-				var seg := MeshInstance3D.new()
-				var box := BoxMesh.new()
-				box.size = Vector3(2.4, 0.85, 0.32)
-				seg.mesh = box
-				seg.material_override = _toon(Color("d9cbb0"))
-				var wr := 6.6 if major else 5.2
-				seg.position = Vector3(cos(ang2) * wr, 0.5, sin(ang2) * wr)
-				seg.rotation.y = -ang2
-				root.add_child(seg)
+		var kind := _cluster_kind(city)
+		var visual := MeshInstance3D.new()
+		visual.name = "CityMesh"
+		visual.mesh = _merged_cluster(kind)
+		visual.material_override = _city_mat()
+		visual.scale = Vector3(CITY_SCALE, CITY_SCALE, CITY_SCALE)
+		var steps := posmod(hash(str(city.get("id", ""))), 6)
+		visual.rotation.y = deg_to_rad(60.0 * float(steps))
+		# Contact darkening is baked into the vertex colors. A real-time
+		# shadow for every city redraws tens of thousands of triangles.
+		visual.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(visual)
 		var fc := DataDB.color_of(str(DataDB.faction(str(city.get("faction", ""))).get("color", "ffffff")))
-		var by := 10.2 if major else 8.4
+		var by := 11.2
+		if kind == "walled":
+			by = 13.2
+		elif kind == "capital":
+			by = 20.4
+		var banner := Node3D.new()
+		banner.name = "Banner"
+		root.add_child(banner)
 		var quad := MeshInstance3D.new()
 		var qm := QuadMesh.new()
 		qm.size = Vector2(8.2, 1.85)
@@ -322,7 +406,7 @@ func _build_cities() -> void:
 		quad.material_override = qmat
 		quad.position = Vector3(0.4, by, 0)
 		quad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		root.add_child(quad)
+		banner.add_child(quad)
 		var ball := MeshInstance3D.new()
 		var sm := SphereMesh.new()
 		sm.radius = 0.72
@@ -335,27 +419,30 @@ func _build_cities() -> void:
 		ball.material_override = bmat
 		ball.position = Vector3(-3.15, by, 0.02)
 		ball.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		root.add_child(ball)
+		banner.add_child(ball)
 		var short_name := str(city.get("short", city.get("name", "")))
 		var shadow := _city_label(short_name, Vector3(0.72, by - 0.08, -0.04), Color(0, 0, 0, 0.45))
-		root.add_child(shadow)
+		banner.add_child(shadow)
 		var lab := _city_label(short_name, Vector3(0.65, by + 0.02, 0.06), Color("f7f1e4"))
-		root.add_child(lab)
+		banner.add_child(lab)
 		var pop_lab := _city_label(str(pop), Vector3(-3.15, by + 0.02, 0.08), Color("1a2428"))
 		pop_lab.font_size = 36
 		pop_lab.pixel_size = 0.032
-		root.add_child(pop_lab)
+		banner.add_child(pop_lab)
+		var walls := int(city.get("walls", 0))
 		if walls > 0:
 			var wall_lab := _city_label("防%d" % walls, Vector3(0.7, by - 1.15, 0.05), Color("f4ead2"))
 			wall_lab.font_size = 28
 			wall_lab.pixel_size = 0.028
-			root.add_child(wall_lab)
+			banner.add_child(wall_lab)
 		var pri := 1
 		if bool(city.get("major", false)):
 			pri = 2
 		if bool(city.get("capital", false)):
 			pri = 3
 		root.set_meta("pri", pri)
+		root.set_meta("kind", kind)
+		root.set_meta("banner_h", by)
 		root.set_meta("banner", true)
 		add_child(root)
 		banners.append(root)
@@ -1003,7 +1090,8 @@ func _cull_banners() -> void:
 	for node in banners:
 		if not is_instance_valid(node):
 			continue
-		var sp := camera.unproject_position(node.global_position + Vector3(0, 10.0, 0))
+		var banner_h: float = float(node.get_meta("banner_h", 12.0))
+		var sp := camera.unproject_position(node.global_position + Vector3(0, banner_h, 0))
 		ranked.append({"n": node, "s": sp, "p": int(node.get_meta("pri", 1))})
 	ranked.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a.p) > int(b.p))
 	var gap := 150.0
@@ -1027,7 +1115,22 @@ func _cull_banners() -> void:
 					break
 			if show:
 				kept.append(sp)
-		(item.n as Node3D).visible = show
+		var city_root := item.n as Node3D
+		var banner_node := city_root.get_node_or_null("Banner") as Node3D
+		if banner_node:
+			banner_node.visible = show
+		var city_mesh := city_root.get_node_or_null("CityMesh") as MeshInstance3D
+		if city_mesh:
+			var city_kind := str(city_root.get_meta("kind", "town"))
+			var show_mesh := true
+			if city_kind == "town":
+				if zoom_index <= 0:
+					show_mesh = false
+				elif zoom_index == 1:
+					var here := HexGrid.pixel_to_axial(look_xz)
+					var there := HexGrid.pixel_to_axial(Vector2(city_root.position.x, city_root.position.z))
+					show_mesh = HexGrid.distance(here, there) <= 7
+			city_mesh.visible = show_mesh
 
 
 func minimap_image() -> Image:
