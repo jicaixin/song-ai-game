@@ -160,6 +160,7 @@ func _header(parent: VBoxContainer, title: String, close_key: String) -> void:
 	close.custom_minimum_size = Vector2(88, 40)
 	close.pressed.connect(shut)
 	row.add_child(close)
+	debug_btns["desk_close"] = close
 	if close_key != "":
 		debug_btns[close_key] = close
 
