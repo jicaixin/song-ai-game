@@ -36,6 +36,7 @@ var _env: Environment
 var _land_shader: ShaderMaterial
 var _water_shader: ShaderMaterial
 var _border_shader: ShaderMaterial
+var _wash_shader: ShaderMaterial
 var _wash_node: MeshInstance3D
 var _fill_node: MeshInstance3D
 var _debug_dist := 0.0
@@ -75,7 +76,7 @@ func _ready() -> void:
 	_add_mesh("Water", built.water, _water_mat(), false)
 	_border_shader = _stroke_mat()
 	_add_mesh("RealmStroke", built.border_stroke, _border_shader, false)
-	_wash_node = _add_mesh("RealmWash", built.border_wash, _wash_mat(0.45), false)
+	_wash_node = _add_mesh("RealmWash", built.border_wash, _wash_mat(40.0), false)
 	_fill_node = _add_mesh("RealmFill", built.realm_fill, _fill_mat(), false)
 	_fill_node.visible = false
 	feature_points = built.features
@@ -155,6 +156,10 @@ func _wash_mat(bias: float) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/border_wash.gdshader")
 	mat.set_shader_parameter("cam_bias", bias)
+	mat.set_shader_parameter("wash_inset", 2.0)
+	# After trees and the other transparent props, so the tint stays on top.
+	mat.render_priority = 20
+	_wash_shader = mat
 	return mat
 
 
@@ -348,7 +353,10 @@ func _sync_grade() -> void:
 	if _land_shader:
 		_land_shader.set_shader_parameter("grid_fade", fade)
 	if _border_shader:
-		_border_shader.set_shader_parameter("border_half_m", _border_half_metres(border_px))
+		var half_m := _border_half_metres(border_px)
+		_border_shader.set_shader_parameter("border_half_m", half_m)
+		if _wash_shader:
+			_wash_shader.set_shader_parameter("wash_inset", half_m + 0.6)
 	if _env:
 		_env.fog_density = density
 		_env.fog_aerial_perspective = 0.0 if overview else 0.08

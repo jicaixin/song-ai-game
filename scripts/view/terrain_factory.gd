@@ -1096,6 +1096,7 @@ static func _realm_meshes() -> Dictionary:
 	var fill := SurfaceTool.new()
 	fill.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var seen := {}
+	var wash_seen := {}
 	var discs := {}
 	var seg_n := 0
 	var chords := _border_chords()
@@ -1113,22 +1114,27 @@ static func _realm_meshes() -> Dictionary:
 		var key := sa + "|" + sb
 		if sb < sa:
 			key = sb + "|" + sa
-		if seen.has(key):
-			continue
-		seen[key] = true
-		seg_n += 1
-		var nrm := Vector2(-ab.y, ab.x).normalized()
 		var col: Color = chord["color"]
-		var pa := Vector3(a.x, _surface_height(a) + 0.3, a.y)
-		var pb := Vector3(b.x, _surface_height(b) + 0.3, b.y)
-		_stroke_half(stroke, pa, pb, nrm, -1.0, 0.0, col, ref_m)
-		_stroke_half(stroke, pa, pb, nrm, 0.0, 1.0, col, ref_m)
-		if not discs.has(sa):
-			discs[sa] = true
-			_stroke_disc(stroke, pa, col, ref_m)
-		if not discs.has(sb):
-			discs[sb] = true
-			_stroke_disc(stroke, pb, col, ref_m)
+		# One ribbon on the shared chord. Each realm still keeps its own wash:
+		# the other side of the same chord is a different owner.
+		if not seen.has(key):
+			seen[key] = true
+			seg_n += 1
+			var nrm := Vector2(-ab.y, ab.x).normalized()
+			var pa := Vector3(a.x, _surface_height(a) + 0.3, a.y)
+			var pb := Vector3(b.x, _surface_height(b) + 0.3, b.y)
+			_stroke_half(stroke, pa, pb, nrm, -1.0, 0.0, col, ref_m)
+			_stroke_half(stroke, pa, pb, nrm, 0.0, 1.0, col, ref_m)
+			if not discs.has(sa):
+				discs[sa] = true
+				_stroke_disc(stroke, pa, col, ref_m)
+			if not discs.has(sb):
+				discs[sb] = true
+				_stroke_disc(stroke, pb, col, ref_m)
+		var wkey := key + "|" + col.to_html(false)
+		if wash_seen.has(wkey):
+			continue
+		wash_seen[wkey] = true
 		var inward: Vector2 = chord["inward"]
 		var wash_col := Color(col.r, col.g, col.b, 0.30)
 		var clear := Color(col.r, col.g, col.b, 0.0)
@@ -1138,8 +1144,7 @@ static func _realm_meshes() -> Dictionary:
 		var wb := Vector3(b.x, _surface_height(b) + 0.16, b.y)
 		var wa2 := Vector3(a2.x, _surface_height(a2) + 0.16, a2.y)
 		var wb2 := Vector3(b2.x, _surface_height(b2) + 0.16, b2.y)
-		_flat_tri(wash, wa, wb, wa2, wash_col, wash_col, clear)
-		_flat_tri(wash, wb, wb2, wa2, wash_col, clear, clear)
+		_wash_quad(wash, wa, wb, wa2, wb2, wash_col, clear, inward)
 	for row in DataDB.height:
 		for col in DataDB.width:
 			var ax := HexGrid.axial_from_offset(col, row)
@@ -1190,6 +1195,24 @@ static func _stroke_disc(st: SurfaceTool, center: Vector3, col: Color, ref_m: fl
 		_stroke_vert(st, center, Vector2.ZERO, 0.0, col, ref_m)
 		_stroke_vert(st, center, Vector2(cos(a0), sin(a0)), 1.0, col, ref_m)
 		_stroke_vert(st, center, Vector2(cos(a1), sin(a1)), 1.0, col, ref_m)
+
+
+static func _wash_quad(st: SurfaceTool, a: Vector3, b: Vector3, a2: Vector3, b2: Vector3, lip: Color, clear: Color, inward: Vector2) -> void:
+	# UV.x is 0 on the frontier and 1 half a hex inside. UV2 is the owner's
+	# inward direction, used to tuck the lip under the stroke.
+	_wash_vert(st, a, lip, 0.0, inward)
+	_wash_vert(st, b, lip, 0.0, inward)
+	_wash_vert(st, a2, clear, 1.0, inward)
+	_wash_vert(st, b, lip, 0.0, inward)
+	_wash_vert(st, b2, clear, 1.0, inward)
+	_wash_vert(st, a2, clear, 1.0, inward)
+
+
+static func _wash_vert(st: SurfaceTool, p: Vector3, col: Color, lip: float, inward: Vector2) -> void:
+	st.set_color(col)
+	st.set_uv(Vector2(lip, 0.0))
+	st.set_uv2(inward)
+	st.add_vertex(p)
 
 
 static func _flat_tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, ca: Color, cb: Color, cc: Color) -> void:
