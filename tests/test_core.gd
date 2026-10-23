@@ -329,6 +329,20 @@ func check_tiles() -> void:
 			undo = action
 	check("tile_fortify", not fort.is_empty() and not bool(fort.get("enabled", true)) and str(fort.get("reason", "")) == "本月已行动", str(fort))
 	check("tile_undo", not undo.is_empty() and bool(undo.get("enabled", false)), str(undo))
+	var trait_blob := "\n".join(self_plan.get("more", []))
+	check("tile_trait", trait_blob.find("vs_class") < 0 and trait_blob.find("克制骑兵") >= 0, trait_blob)
+	var shi := _named_unit("石元孙部")
+	var bu := _named_unit("步跋子")
+	if not shi.is_empty() and not bu.is_empty():
+		var ranged := TileActions.plan(Vector2i(int(bu.q), int(bu.r)), int(shi.uid))
+		var rhead := str(ranged.get("head", ""))
+		var rsub := str(ranged.get("card_sub", ""))
+		check("tile_zero", rhead.find("我 0") >= 0 and rhead.find("-0~0") < 0, rhead)
+		check("tile_sub", rsub.find("步跋子") >= 0 and rsub.find("生命") >= 0 and rsub.find("相距") >= 0 and rsub.find("山地步兵") >= 0, rsub)
+	check("tile_loss", TileActions.loss_text("我", 0, 0) == "我 0" and TileActions.loss_text("敌", 4, 8) == "敌 -4~8", "")
+	var low: Dictionary = TileActions.place_card(Vector2(400, 680), 20.0, Vector2(260, 320))
+	var low_pos: Vector2 = low.get("pos", Vector2.ZERO)
+	check("tile_place_low", low_pos.y >= 60.0 and low_pos.y + 320.0 <= 704.0, str(low_pos))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1040
 	var bad := 0

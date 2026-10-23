@@ -66,7 +66,7 @@ static func plan_reach(hex: Vector2i, uid: int, cost: Dictionary, parent: Dictio
 			style = "attack"
 			cursor = "cur_ranged" if ranged else "cur_attack"
 			var preview := _assess_at(unit, occ, start)
-			head = "%s %s · 敌 -%d~%d / 我 -%d~%d" % [atk_label, str(occ.name), int(preview.def_min), int(preview.def_max), int(preview.atk_min), int(preview.atk_max)]
+			head = "%s %s · %s / %s" % [atk_label, str(occ.name), loss_text("敌", int(preview.def_min), int(preview.def_max)), loss_text("我", int(preview.atk_min), int(preview.atk_max))]
 			_append_forecast_more(more, preview)
 			actions.append(_act(atk_id, atk_label, atk_icon, "", true, "", "cmd", 0, preview))
 			hostile = true
@@ -94,7 +94,7 @@ static func plan_reach(hex: Vector2i, uid: int, cost: Dictionary, parent: Dictio
 			reason = "移动力已用完" if int(unit.mp) <= 0 else "相距 %d，射程 %d" % [dist, cap]
 			if landing == NONE and int(unit.mp) > 0:
 				reason = "走不到能出手的位置" if not _closer(start, hex, cost) else "相距 %d，射程 %d" % [dist, cap]
-			head = "%s · %s · 生命 %d" % [str(occ.name), _faction_name(str(occ.faction)), int(occ.hp)]
+			head = "%s · %s · 生命%d" % [str(occ.name), _faction_name(str(occ.faction)), int(occ.hp)]
 			more.append("打不到：" + reason)
 			_append_unit_more(more, occ)
 			actions.append(_act(atk_id, atk_label, atk_icon, "", false, reason, "cmd", 0, {}))
@@ -189,6 +189,9 @@ static func plan_reach(hex: Vector2i, uid: int, cost: Dictionary, parent: Dictio
 		actions.append(_act("info", "战斗明细", "act_info", "V", true, "", "info", 0, {}))
 	if not direct and not actions.is_empty() and _find(actions, "cancel").is_empty():
 		actions.append(_act("cancel", "取消", "act_cancel", "Esc", true, "", "info", 0, {}))
+	var card_sub := ""
+	if not occ.is_empty() and not unit.is_empty() and DataDB.hostile(str(unit.get("faction", "")), str(occ.get("faction", ""))):
+		card_sub = _card_sub(unit, occ)
 	var default_id := ""
 	for a_v in actions:
 		var a: Dictionary = a_v
@@ -214,6 +217,7 @@ static func plan_reach(hex: Vector2i, uid: int, cost: Dictionary, parent: Dictio
 		"shader": _shader_of(style),
 		"color": _color_of(style, city),
 		"hatch": 0.35 if style == "attack" else 0.0,
+		"card_sub": card_sub,
 	}
 
 
@@ -267,7 +271,8 @@ static func place_card(anchor: Vector2, radius: float, card: Vector2, extra: Rec
 		for spot in spots:
 			if _place_ok(spot, card, anchor, radius, extra, avoid):
 				return {"pos": spot, "nudge": false}
-	return {"pos": spots[0], "nudge": true}
+	var fallback := _clamp_card(spots[0], card)
+	return {"pos": fallback, "nudge": true}
 
 
 static func cmd_actions(plan: Dictionary) -> Array:
@@ -299,7 +304,9 @@ static func _place_ok(pos: Vector2, card: Vector2, anchor: Vector2, radius: floa
 		return false
 	if extra.size.x > 1.0 and rect.intersects(extra):
 		return false
-	if avoid_dock and rect.intersects(Rect2(1020, 450, 260, 270)):
+	if rect.intersects(Rect2(0, 576, 1016, 160)):
+		return false
+	if avoid_dock and rect.intersects(Rect2(1008, 440, 272, 280)):
 		return false
 	return true
 
@@ -466,7 +473,9 @@ static func _append_place_more(more: Array, hex: Vector2i, terr: Dictionary, cit
 		if not output.is_empty():
 			more.append("本月产出 粮%d 钱%d" % [int(output.get("food", 0)), int(output.get("money", 0))])
 	if _has_river(hex):
-		more.append("渡河攻击 -3 / 渡大河 -6；大河暂不挡路")
+		more.append("渡河攻击 -3")
+		more.append("渡大河 -6")
+		more.append("大河暂不挡路")
 	var feat := DataDB.feature_at(hex.x, hex.y)
 	if str(feat.get("id", "")) == "pass":
 		more.append("%s · 关隘" % str(feat.get("name", "关")))
@@ -485,13 +494,14 @@ static func _append_path_more(more: Array, path: Array) -> void:
 
 static func _append_unit_more(more: Array, unit: Dictionary) -> void:
 	var spec := DataDB.unit_type(str(unit.def_id))
-	more.append("生命 %d，移动 %d/%d" % [int(unit.hp), int(unit.mp), int(unit.max_mp)])
+	more.append("生命%d，移动%d/%d" % [int(unit.hp), int(unit.mp), int(unit.max_mp)])
 	if str(unit.general) != "":
 		more.append("将领 %s" % str(unit.general))
-	var traits: Array = spec.get("traits", [])
-	if not traits.is_empty():
-		var row: Dictionary = traits[0]
-		more.append(str(row.get("name", row.get("type", "特性"))))
+	for trait_v in spec.get("traits", []):
+		var row: Dictionary = trait_v
+		var line := _trait_line(row)
+		if line != "":
+			more.append(line)
 
 
 static func _append_forecast_more(more: Array, preview: Dictionary) -> void:
@@ -505,17 +515,111 @@ static func _self_head(unit: Dictionary) -> String:
 	var spec := DataDB.unit_type(str(unit.def_id))
 	if int(unit.mp) <= 0:
 		return "%s · 本月已行动" % str(unit.name)
-	return "%s · %s · 移动 %d/%d" % [str(unit.name), str(spec.get("name", "")), int(unit.mp), int(unit.max_mp)]
+	return "%s · %s · 移动%d/%d" % [str(unit.name), str(spec.get("name", "")), int(unit.mp), int(unit.max_mp)]
 
 
 static func _unit_head(unit: Dictionary) -> String:
-	return "%s · %s · 生命 %d" % [str(unit.name), _faction_name(str(unit.faction)), int(unit.hp)]
+	return "%s · %s · 生命%d" % [str(unit.name), _faction_name(str(unit.faction)), int(unit.hp)]
 
 
 static func _faction_name(id: String) -> String:
 	if id == "":
 		return "无主"
 	return str(DataDB.faction(id).get("name", id))
+
+
+static func _clamp_card(pos: Vector2, card: Vector2) -> Vector2:
+	var safe := Rect2(16, 60, 1248, 644)
+	var advisor := Rect2(0, 576, 1016, 160)
+	var dock := Rect2(1008, 440, 272, 280)
+	var x := clampf(pos.x, safe.position.x, maxf(safe.position.x, safe.end.x - card.x))
+	var y := clampf(pos.y, safe.position.y, maxf(safe.position.y, safe.end.y - card.y))
+	if Rect2(Vector2(x, y), card).intersects(advisor):
+		y = advisor.position.y - card.y - 6.0
+	if Rect2(Vector2(x, y), card).intersects(dock):
+		var left := dock.position.x - card.x - 8.0
+		if left >= safe.position.x:
+			x = left
+		else:
+			y = dock.position.y - card.y - 6.0
+	x = clampf(x, safe.position.x, maxf(safe.position.x, safe.end.x - card.x))
+	y = clampf(y, safe.position.y, maxf(safe.position.y, safe.end.y - card.y))
+	return Vector2(x, y)
+
+
+static func loss_text(who: String, lo: int, hi: int) -> String:
+	if lo == 0 and hi == 0:
+		return "%s 0" % who
+	return "%s -%d~%d" % [who, lo, hi]
+
+
+static func _card_sub(unit: Dictionary, occ: Dictionary) -> String:
+	var terr := DataDB.terrain(DataDB.terrain_id(int(occ.q), int(occ.r)))
+	var spec := DataDB.unit_type(str(occ.get("def_id", "")))
+	var dist := HexGrid.distance(Vector2i(int(unit.q), int(unit.r)), Vector2i(int(occ.q), int(occ.r)))
+	return "%s · %s / %s%s · 生命%d · 相距%d" % [
+		str(occ.get("name", "")),
+		str(terr.get("name", "土地")),
+		_faction_name(str(occ.get("faction", ""))),
+		_class_label(spec),
+		int(occ.get("hp", 0)),
+		dist,
+	]
+
+
+static func _class_label(spec: Dictionary) -> String:
+	var kind := str(spec.get("unit_class", ""))
+	var base := "步兵"
+	match kind:
+		"ranged":
+			base = "弓兵"
+		"cavalry":
+			base = "骑兵"
+		"siege":
+			base = "攻城"
+		"infantry":
+			base = "步兵"
+		_:
+			base = str(spec.get("name", "部队"))
+	for trait_v in spec.get("traits", []):
+		var row: Dictionary = trait_v
+		if str(row.get("type", "")) != "terrain_power":
+			continue
+		var terrains: Array = row.get("terrains", [])
+		if kind == "infantry" and (terrains.has("mountain") or terrains.has("loess")):
+			return "山地步兵"
+	return base
+
+
+static func _trait_line(row: Dictionary) -> String:
+	var kind := str(row.get("type", ""))
+	var bonus := int(row.get("bonus", 0))
+	var named := str(row.get("name", ""))
+	if named != "":
+		return named
+	match kind:
+		"vs_class":
+			return "克制%s +%d" % [_class_word(str(row.get("class", ""))), bonus]
+		"charge":
+			return "冲锋 +%d" % bonus
+		"terrain_power":
+			return "山地战力 +%d" % bonus
+		_:
+			return ""
+
+
+static func _class_word(kind: String) -> String:
+	match kind:
+		"cavalry":
+			return "骑兵"
+		"ranged":
+			return "弓兵"
+		"siege":
+			return "攻城"
+		"infantry":
+			return "步兵"
+		_:
+			return "兵"
 
 
 static func _has_river(hex: Vector2i) -> bool:

@@ -24,11 +24,11 @@ func _ready() -> void:
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(box)
 	head = Kit.label("", "TooltipHeadLabel")
-	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	head.custom_minimum_size = Vector2(160, 0)
+	head.autowrap_mode = TextServer.AUTOWRAP_OFF
+	head.custom_minimum_size = Vector2(200, 0)
 	box.add_child(head)
 	detail = Kit.label("", "TooltipDetailLabel")
-	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	detail.autowrap_mode = TextServer.AUTOWRAP_OFF
 	detail.visible = false
 	box.add_child(detail)
 	_ready_ui = true
@@ -118,13 +118,13 @@ func _follow() -> void:
 
 
 func _fit() -> void:
-	var w := 180.0
+	var w := 220.0
 	w = maxf(w, head.get_minimum_size().x + 28.0)
 	if detail.visible:
 		w = maxf(w, detail.get_minimum_size().x + 28.0)
-	w = minf(w, 300.0)
+	w = minf(w, 420.0)
 	custom_minimum_size = Vector2(w, 0)
-	head.custom_minimum_size.x = w - 28.0
+	head.custom_minimum_size.x = maxf(head.get_minimum_size().x, w - 28.0)
 	detail.custom_minimum_size.x = w - 28.0
 	reset_size()
 

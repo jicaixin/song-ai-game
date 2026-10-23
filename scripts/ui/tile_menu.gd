@@ -14,6 +14,7 @@ var focus_i := 0
 var rows: Array = []
 var card: PanelContainer
 var leader: Line2D
+var subtitle := ""
 var _flash := 0.0
 var _built := false
 
@@ -122,10 +123,10 @@ func debug_buttons() -> Dictionary:
 		return out
 	for row_v in rows:
 		var row: Dictionary = row_v
-		var btn: Button = row.get("button")
-		if btn == null:
+		var hit: Control = row.get("panel")
+		if hit == null:
 			continue
-		var r := btn.get_global_rect()
+		var r := hit.get_global_rect()
 		out["menu_" + str(row.id)] = {
 			"x": r.position.x,
 			"y": r.position.y,
@@ -166,12 +167,13 @@ func _rebuild() -> void:
 	card.custom_minimum_size = Vector2(232, 0)
 	add_child(card)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 2)
+	box.add_theme_constant_override("separation", 0)
 	card.add_child(box)
 	var head := Kit.label(_title(), "MenuTitleLabel")
 	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(head)
-	var sub := Kit.label(_subtitle(), "MenuSubLabel")
+	subtitle = _subtitle()
+	var sub := Kit.label(subtitle, "MenuSubLabel")
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(sub)
 	var preview := _forecast()
@@ -186,13 +188,7 @@ func _rebuild() -> void:
 		rows.append(row)
 		i += 1
 	_fit_width(box)
-	var tall := 88.0
-	var preview_now := _forecast()
-	if not preview_now.is_empty():
-		tall += 72.0
-	for row_v in rows:
-		var row: Dictionary = row_v
-		tall += 56.0 if row.reason != null else 42.0
+	var tall := box.get_combined_minimum_size().y + 20.0
 	card.custom_minimum_size.y = tall
 	var placed: Dictionary = Actions.place_card(anchor, radius, card.custom_minimum_size, Rect2())
 	if bool(placed.nudge):
@@ -215,66 +211,122 @@ func _fit_width(box: VBoxContainer) -> void:
 			(child as Control).custom_minimum_size.x = width - 16.0
 
 
-func _row(action: Dictionary, index: int) -> Dictionary:
+func _row(action: Dictionary, _index: int) -> Dictionary:
 	var enabled := bool(action.get("enabled", false))
 	var reason := str(action.get("reason", ""))
 	var tall := (not enabled) and reason != ""
-	var panel := PanelContainer.new()
-	if tall:
-		panel.theme_type_variation = "MenuRowReason"
+	var is_default := bool(action.get("default", false))
+	var panel := RowChrome.new()
+	panel.row_h = 48.0 if tall else 36.0
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	panel.gui_input.connect(_on_row.bind(str(action.get("id", ""))))
+	if not tall:
+		panel.mouse_entered.connect(_on_row_hover.bind(panel, true, is_default, enabled))
+		panel.mouse_exited.connect(_on_row_hover.bind(panel, false, is_default, enabled))
 	var wrap := VBoxContainer.new()
 	wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wrap.add_theme_constant_override("separation", 0)
+	wrap.set_anchors_preset(Control.PRESET_FULL_RECT)
+	wrap.offset_left = 10.0
+	wrap.offset_top = 2.0
+	wrap.offset_right = -8.0
+	wrap.offset_bottom = -2.0
 	panel.add_child(wrap)
 	var line := HBoxContainer.new()
-	line.add_theme_constant_override("separation", 6)
+	line.add_theme_constant_override("separation", 8)
 	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	line.alignment = BoxContainer.ALIGNMENT_CENTER
 	wrap.add_child(line)
-	var num := Kit.label(_num_text(action, index), "MenuReasonLabel")
-	num.custom_minimum_size = Vector2(16, 0)
-	line.add_child(num)
-	var btn := Button.new()
-	btn.focus_mode = Control.FOCUS_NONE
-	btn.theme_type_variation = "MenuRowDefault" if bool(action.get("default", false)) else "MenuRow"
-	btn.text = str(action.get("label", ""))
-	btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	btn.disabled = not enabled
-	btn.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var digit := _digit(action)
+	if digit != "":
+		var num := Kit.label(digit, "MenuReasonLabel")
+		num.custom_minimum_size = Vector2(14, 0)
+		num.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		line.add_child(num)
 	var icon_name := str(action.get("icon", ""))
 	if not enabled and icon_name != "":
 		icon_name += "_disabled"
 	if icon_name != "":
-		btn.icon = Kit.icon(icon_name)
-	btn.custom_minimum_size = Vector2(0, 36 if not tall else 28)
-	line.add_child(btn)
-	var key := str(action.get("key", ""))
-	if bool(action.get("default", false)):
-		key = "Enter"
+		var icon := TextureRect.new()
+		icon.texture = Kit.icon(icon_name)
+		icon.custom_minimum_size = Vector2(24, 24)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		line.add_child(icon)
+	var lab := Kit.label(str(action.get("label", "")), "MenuTitleLabel")
+	lab.add_theme_font_size_override("font_size", 16)
+	lab.autowrap_mode = TextServer.AUTOWRAP_OFF
+	lab.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lab.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_paint_label(lab, is_default, enabled)
+	line.add_child(lab)
+	var key := _keycap_text(action)
 	if key != "":
 		var cap := PanelContainer.new()
-		cap.theme_type_variation = "KeycapActive" if bool(action.get("default", false)) else "Keycap"
+		cap.theme_type_variation = "KeycapActive" if is_default and enabled else "Keycap"
 		cap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cap.size_flags_horizontal = Control.SIZE_SHRINK_END
 		cap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		var kl := Kit.label(key, "KeycapLabel")
+		kl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		cap.add_child(kl)
 		line.add_child(cap)
+	if not enabled:
+		line.modulate.a = 0.4
 	var reason_label: Label = null
 	if tall:
+		line.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		line.custom_minimum_size.y = 22
 		reason_label = Kit.label(reason, "MenuReasonLabel")
-		reason_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		reason_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 		wrap.add_child(reason_label)
+	_apply_row_style(panel, is_default, enabled, false, tall)
 	return {
 		"id": str(action.get("id", "")),
 		"kind": str(action.get("kind", "")),
 		"key": str(action.get("key", "")),
 		"enabled": enabled,
-		"default": bool(action.get("default", false)),
-		"button": btn,
+		"default": is_default,
+		"button": lab,
 		"panel": panel,
 		"reason": reason_label,
+		"tall": tall,
 	}
+
+
+func _paint_label(lab: Label, is_default: bool, enabled: bool) -> void:
+	var color := Color("f3e9d2")
+	if not enabled:
+		color = Color("a39482")
+	elif is_default:
+		color = Color("e8cb7c")
+	lab.add_theme_color_override("font_color", color)
+
+
+func _on_row_hover(panel: RowChrome, inside: bool, is_default: bool, enabled: bool) -> void:
+	if not enabled:
+		return
+	_apply_row_style(panel, is_default, enabled, inside, false)
+
+
+func _apply_row_style(panel: RowChrome, is_default: bool, enabled: bool, hover: bool, tall: bool) -> void:
+	var style: StyleBox = null
+	if tall:
+		style = get_theme_stylebox("panel", "MenuRowReason")
+	else:
+		var variation := "MenuRowDefault" if is_default and enabled and not hover else "MenuRow"
+		var state := "disabled" if not enabled else ("hover" if hover else "normal")
+		style = get_theme_stylebox(state, variation)
+	if style == null:
+		var flat := StyleBoxFlat.new()
+		flat.bg_color = Color(0.07, 0.14, 0.16, 0.94)
+		style = flat
+	panel.chrome = style.duplicate()
+	panel.queue_redraw()
 
 
 func _forecast() -> Dictionary:
@@ -291,8 +343,8 @@ func _forecast_panel(preview: Dictionary) -> PanelContainer:
 	panel.theme_type_variation = "MenuForecast"
 	var box := VBoxContainer.new()
 	panel.add_child(box)
-	box.add_child(_bar_line("敌 -%d~%d" % [int(preview.def_min), int(preview.def_max)], int(preview.def_mid), false))
-	box.add_child(_bar_line("我 -%d~%d" % [int(preview.atk_min), int(preview.atk_max)], int(preview.atk_mid), true))
+	box.add_child(_bar_line(Actions.loss_text("敌", int(preview.def_min), int(preview.def_max)), int(preview.def_mid), false))
+	box.add_child(_bar_line(Actions.loss_text("我", int(preview.atk_min), int(preview.atk_max)), int(preview.atk_mid), true))
 	if int(preview.atk_mid) > int(preview.def_mid):
 		var warn := Kit.label("预计不利", "ForecastBadLabel")
 		box.add_child(warn)
@@ -324,6 +376,9 @@ func _title() -> String:
 
 
 func _subtitle() -> String:
+	var sub := str(plan.get("card_sub", ""))
+	if sub != "":
+		return sub
 	var head := str(plan.get("head", ""))
 	var bits := head.split(" · ")
 	if bits.size() > 1:
@@ -331,10 +386,18 @@ func _subtitle() -> String:
 	return ""
 
 
-func _num_text(action: Dictionary, _index: int) -> String:
-	if str(action.get("kind", "")) != "cmd":
-		return ""
-	return str(action.get("key", ""))
+func _digit(action: Dictionary) -> String:
+	var key := str(action.get("key", ""))
+	if key.length() == 1 and key.is_valid_int():
+		return key
+	return ""
+
+
+func _keycap_text(action: Dictionary) -> String:
+	var key := str(action.get("key", ""))
+	if bool(action.get("default", false)) and _digit(action) != "":
+		return "Enter"
+	return key
 
 
 func _first_enabled() -> int:
@@ -368,9 +431,13 @@ func _paint_focus() -> void:
 	var i := 0
 	for row_v in rows:
 		var row: Dictionary = row_v
-		var btn: Button = row.button
 		var on := i == focus_i and bool(row.enabled)
-		btn.theme_type_variation = "MenuRowDefault" if on else "MenuRow"
+		row.default = on
+		var panel: RowChrome = row.panel
+		_apply_row_style(panel, on, bool(row.enabled), false, bool(row.get("tall", false)))
+		var lab: Label = row.button
+		if lab != null:
+			_paint_label(lab, on, bool(row.enabled))
 		i += 1
 
 
@@ -431,3 +498,21 @@ func _place_leader() -> void:
 		side = card.position + Vector2(card.size.x, 24)
 	leader.points = PackedVector2Array([anchor, side])
 	leader.visible = card.visible
+
+
+class RowChrome extends Control:
+	var chrome: StyleBox
+	var row_h := 36.0
+
+	func _get_minimum_size() -> Vector2:
+		var w := 120.0
+		for child in get_children():
+			var node := child as Control
+			if node == null:
+				continue
+			w = maxf(w, node.get_combined_minimum_size().x + 18.0)
+		return Vector2(w, row_h)
+
+	func _draw() -> void:
+		if chrome != null and size.x > 2.0 and size.y > 2.0:
+			draw_style_box(chrome, Rect2(Vector2.ZERO, size))

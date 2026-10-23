@@ -2361,15 +2361,18 @@ func _apply_hover(screen: Vector2) -> void:
 		_clear_tip()
 		if not _menu_open():
 			_hide_hover_ring()
+			hover_ok = false
 		_apply_cursor("cur_default")
 		return
 	if _blocked(screen):
+		hover_ok = false
 		_hide_hover_ring()
 		_clear_tip()
 		_apply_cursor("cur_default")
 		return
 	var h := _pick_hex(screen)
 	if h.x >= 999999 or not DataDB.in_bounds(h.x, h.y):
+		hover_ok = false
 		_hide_hover_ring()
 		_clear_tip()
 		_apply_cursor("cur_default")

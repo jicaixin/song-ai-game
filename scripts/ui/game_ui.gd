@@ -529,8 +529,19 @@ func _refresh_research() -> void:
 		research_bar.visible = false
 
 
+func _panel_uid() -> int:
+	if menu_is_open():
+		return GameState.selected_uid
+	var map := get_tree().get_first_node_in_group("world_map") as WorldMap
+	if map != null and map.hover_ok:
+		var occ: Dictionary = GameState.unit_at(map.hover)
+		if not occ.is_empty():
+			return int(occ.uid)
+	return GameState.selected_uid
+
+
 func _refresh_unit() -> void:
-	var uid := GameState.inspected_uid if GameState.inspected_uid != -1 else GameState.selected_uid
+	var uid := _panel_uid()
 	var u := GameState.unit_by_id(uid)
 	unit_card.visible = not u.is_empty()
 	if u.is_empty():
@@ -543,7 +554,7 @@ func _refresh_unit() -> void:
 	if str(u.general) != "":
 		text += "\n将领 %s" % str(u.general)
 	unit_label.text = text
-	var show_reason := block_line != "" and GameState.inspected_uid == int(u.uid)
+	var show_reason := block_line != "" and not menu_is_open() and GameState.inspected_uid == int(u.uid)
 	unit_reason.visible = show_reason
 	unit_reason.text = block_line if show_reason else ""
 	var tall := 168 if show_reason else 132
@@ -703,11 +714,13 @@ func open_tile_menu(plan: Dictionary, hex: Vector2i, anchor: Vector2, radius: fl
 		return
 	tile_menu.open_at(plan, hex, anchor, radius)
 	EventBus.tile_menu.emit(true)
+	_refresh_unit()
 
 
 func close_tile_menu() -> void:
 	if tile_menu and tile_menu.is_open():
 		tile_menu.shut()
+		_refresh_unit()
 
 
 func menu_is_open() -> bool:
@@ -726,6 +739,8 @@ func move_tile_menu(anchor: Vector2, radius: float) -> void:
 
 
 func present_hover(hex: Vector2i, plan: Dictionary) -> void:
+	if not menu_is_open():
+		_refresh_unit()
 	if tile_tip == null:
 		return
 	if menu_is_open() or modal_open() or GameState.input_locked:
@@ -741,6 +756,8 @@ func present_hover(hex: Vector2i, plan: Dictionary) -> void:
 func clear_hover_tip() -> void:
 	if tile_tip and tile_tip.has_method("clear_tip"):
 		tile_tip.clear_tip()
+	if not menu_is_open():
+		_refresh_unit()
 
 
 func shake_tip() -> void:
@@ -764,7 +781,27 @@ func arm_combat_return(plan: Dictionary, hex: Vector2i, anchor: Vector2, radius:
 func tile_menu_debug() -> Dictionary:
 	if not menu_is_open():
 		return {"open": false}
-	return {"open": true, "q": tile_menu.target.x, "r": tile_menu.target.y}
+	var labels: Array = []
+	for row_v in tile_menu.rows:
+		var row: Dictionary = row_v
+		var lab: Label = row.get("button")
+		var key := str(row.get("key", ""))
+		labels.append("%s|%s" % [lab.text if lab else "", key])
+	var rect := Rect2()
+	if tile_menu.card:
+		rect = tile_menu.card.get_global_rect()
+	return {
+		"open": true,
+		"q": tile_menu.target.x,
+		"r": tile_menu.target.y,
+		"sub": tile_menu.subtitle,
+		"rows": labels,
+		"x": rect.position.x,
+		"y": rect.position.y,
+		"w": rect.size.x,
+		"h": rect.size.y,
+		"panel": unit_label.text if unit_label else "",
+	}
 
 
 func _deselect_unit() -> void:

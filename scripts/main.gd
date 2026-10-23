@@ -233,6 +233,8 @@ func _process(_delta: float) -> void:
 		"tutorial_dim": [ui.tutorial_dim().x, ui.tutorial_dim().y],
 		"tutorial_done": GameState.tutorial_done,
 		"tile_menu": ui.tile_menu_debug() if ui.has_method("tile_menu_debug") else {},
+		"hover_head": str(world.hover_plan.get("head", "")),
+		"hover_more": world.hover_plan.get("more", []),
 	})
 
 

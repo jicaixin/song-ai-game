@@ -13,7 +13,13 @@ const LINES := [
 var active := false
 var step := 0
 var host: GameUI
-var shade: Shade
+var dim_layer: CanvasLayer
+var shade: Control
+var dim_top: ColorRect
+var dim_bottom: ColorRect
+var dim_left: ColorRect
+var dim_right: ColorRect
+var dim_frame: Control
 var bubble: PanelContainer
 var body: Label
 var note: Label
@@ -63,20 +69,35 @@ func _wire() -> void:
 func _ensure() -> void:
 	if shade != null:
 		return
-	shade = Shade.new()
+	dim_layer = CanvasLayer.new()
+	dim_layer.name = "TutorialDim"
+	dim_layer.layer = 12
+	add_child(dim_layer)
+	shade = Control.new()
 	shade.name = "TutorialShade"
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	shade.position = Vector2.ZERO
-	shade.size = size
-	shade.custom_minimum_size = size
-	add_child(shade)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.offset_left = 0.0
+	shade.offset_top = 0.0
+	shade.offset_right = 0.0
+	shade.offset_bottom = 0.0
+	dim_layer.add_child(shade)
+	dim_top = _dim_piece()
+	dim_bottom = _dim_piece()
+	dim_left = _dim_piece()
+	dim_right = _dim_piece()
+	dim_frame = HoleFrame.new()
+	dim_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dim_frame.z_index = 1
+	shade.add_child(dim_frame)
 	bubble = PanelContainer.new()
 	bubble.name = "TutorialBubble"
 	bubble.mouse_filter = Control.MOUSE_FILTER_STOP
+	bubble.z_index = 2
 	bubble.position = Vector2(300, 78)
 	bubble.size = Vector2(620, 188)
 	bubble.add_theme_stylebox_override("panel", _panel_style())
-	add_child(bubble)
+	dim_layer.add_child(bubble)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 6)
 	bubble.add_child(box)
@@ -188,11 +209,24 @@ func _place() -> void:
 		bubble.custom_minimum_size = Vector2(640, tall)
 	if shade == null:
 		return
+	var vp := get_viewport_rect().size
+	if vp.x < 2.0:
+		vp = Vector2(1280, 720)
+	if dim_layer:
+		dim_layer.visible = true
+	shade.visible = true
 	shade.position = Vector2.ZERO
-	shade.size = size
-	shade.custom_minimum_size = size
-	shade.hole = Rect2(hole_global.position - global_position, hole_global.size)
-	shade.queue_redraw()
+	shade.size = vp
+	shade.custom_minimum_size = vp
+	var hole := hole_global
+	_fill_dim(dim_top, Rect2(0, 0, vp.x, maxf(0.0, hole.position.y)))
+	_fill_dim(dim_bottom, Rect2(0, hole.end.y, vp.x, maxf(0.0, vp.y - hole.end.y)))
+	_fill_dim(dim_left, Rect2(0, hole.position.y, maxf(0.0, hole.position.x), maxf(0.0, hole.size.y)))
+	_fill_dim(dim_right, Rect2(hole.end.x, hole.position.y, maxf(0.0, vp.x - hole.end.x), maxf(0.0, hole.size.y)))
+	if dim_frame != null:
+		dim_frame.position = hole.position
+		dim_frame.size = hole.size
+		dim_frame.queue_redraw()
 
 
 func _hole_for_step() -> Rect2:
@@ -265,6 +299,10 @@ func _advance() -> void:
 func _finish() -> void:
 	active = false
 	visible = false
+	if dim_layer:
+		dim_layer.visible = false
+	if shade:
+		shade.visible = false
 	guide = Vector2i(999999, 0)
 	_push_guide()
 	GameState.tutorial_done = true
@@ -337,10 +375,6 @@ func _input(event: InputEvent) -> void:
 func _passes(at: Vector2) -> bool:
 	if hole_global.has_point(at):
 		return true
-	if shade != null:
-		var local := at - shade.global_position
-		if shade.hole.has_point(local):
-			return true
 	var map := _map()
 	if map != null and map.camera != null and DataDB.in_bounds(guide.x, guide.y):
 		var sp := map.world_to_screen(HexGrid.axial_to_pixel(guide.x, guide.y))
@@ -359,22 +393,24 @@ func _key_ok(key: InputEventKey) -> bool:
 	return false
 
 
-class Shade extends Control:
-	var hole := Rect2()
+func _dim_piece() -> ColorRect:
+	var rect := ColorRect.new()
+	rect.color = Color(0, 0, 0, 0.62)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	shade.add_child(rect)
+	return rect
 
-	func _ready() -> void:
-		resized.connect(queue_redraw)
 
+func _fill_dim(rect: ColorRect, area: Rect2) -> void:
+	if rect == null:
+		return
+	rect.position = area.position
+	rect.size = Vector2(maxf(0.0, area.size.x), maxf(0.0, area.size.y))
+	rect.visible = area.size.x > 1.0 and area.size.y > 1.0
+
+
+class HoleFrame extends Control:
 	func _draw() -> void:
-		var dim := Color(0, 0, 0, 0.62)
-		var s := size
-		if s.x < 2.0 or s.y < 2.0:
-			s = get_viewport_rect().size
-			if s.x < 2.0:
-				s = Vector2(1280, 720)
-		draw_rect(Rect2(0, 0, s.x, maxf(0.0, hole.position.y)), dim, true)
-		draw_rect(Rect2(0, hole.end.y, s.x, maxf(0.0, s.y - hole.end.y)), dim, true)
-		draw_rect(Rect2(0, hole.position.y, maxf(0.0, hole.position.x), hole.size.y), dim, true)
-		draw_rect(Rect2(hole.end.x, hole.position.y, maxf(0.0, s.x - hole.end.x), hole.size.y), dim, true)
-		if hole.size.x > 2.0 and hole.size.y > 2.0:
-			draw_rect(hole, Color("e7c98a"), false, 3.0)
+		if size.x < 2.0 or size.y < 2.0:
+			return
+		draw_rect(Rect2(Vector2.ZERO, size), Color("e7c98a"), false, 3.0)
