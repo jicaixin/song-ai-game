@@ -1,11 +1,14 @@
 extends Node
 
+const TechPlan = preload("res://scripts/ui/tech_plan.gd")
+
 var title_layer: CanvasLayer
 var title: TitleScreen
 var game_root: Node2D
 var world: WorldMap
 var ui: GameUI
 var ready_flag := false
+var _tech_cmd := ""
 
 func _ready() -> void:
 	title_layer = CanvasLayer.new()
@@ -72,6 +75,7 @@ func _enter_game() -> void:
 func _process(_delta: float) -> void:
 	if not DebugBridge.enabled:
 		return
+	_poll_tech_cmd()
 	if Engine.get_process_frames() % 8 != 0:
 		return
 	var screen := "title"
@@ -137,4 +141,96 @@ func _process(_delta: float) -> void:
 		"tris": world.get_meta("tris", world._tris),
 		"mesh_draws": world.get_meta("mesh_draws", -1),
 		"shadow_draws": world.get_meta("shadow_draws", -1),
+		"tech_view": ui.desk.tech_view,
+		"tech_target": GameState.tech_target,
+		"tech_tutorial": ui.desk.tech_tutorial,
+		"tech_mode": ui.desk.mode,
+		"tech_picked": ui.desk.picked,
+		"tech_legend": ui.desk.tech_show_legend,
+		"tech_parts": ui.desk.tech_show_parts,
+		"tech_bar": ui.desk.tech_legend_bar,
 	})
+
+
+func _poll_tech_cmd() -> void:
+	if not OS.has_feature("web"):
+		return
+	var raw = JavaScriptBridge.eval("window.__techCmd || ''")
+	if not (raw is String):
+		return
+	var text := str(raw)
+	if text == "" or text == _tech_cmd:
+		return
+	_tech_cmd = text
+	var cmd := text.split("|")[0]
+	var desk := ui.desk
+	if cmd == "sample":
+		GameState.load_tech_sample()
+		return
+	if cmd == "open":
+		desk.open("tech")
+		return
+	if cmd == "focus":
+		desk.tech_view = "focus"
+		desk.tech_show_legend = false
+		desk.tech_show_parts = false
+		desk.tech_tutorial = -1
+		_show_tech(desk)
+		return
+	if cmd == "overview":
+		desk.tech_view = "overview"
+		desk.tech_show_legend = false
+		desk.tech_show_parts = false
+		desk.tech_tutorial = -1
+		_show_tech(desk)
+		return
+	if cmd == "target":
+		desk.tech_view = "focus"
+		desk.tech_show_legend = false
+		desk.tech_show_parts = false
+		desk.tech_tutorial = -1
+		desk.tech_legend_bar = 1
+		desk.picked = "E05"
+		_show_tech(desk)
+		TechPlan.set_target("E05")
+		return
+	if cmd == "tutorial":
+		TechPlan.clear_target()
+		desk.picked = ""
+		desk.tech_view = "focus"
+		desk.tech_show_legend = false
+		desk.tech_show_parts = false
+		desk.tech_legend_bar = 0
+		desk.tech_tutorial = 0
+		_show_tech(desk)
+		return
+	if cmd == "legend":
+		desk.tech_view = "focus"
+		desk.tech_show_parts = false
+		desk.tech_tutorial = -1
+		desk.tech_show_legend = true
+		_show_tech(desk)
+		return
+	if cmd == "parts":
+		desk.tech_view = "focus"
+		desk.tech_show_legend = false
+		desk.tech_tutorial = -1
+		desk.tech_show_parts = true
+		_show_tech(desk)
+		return
+	if cmd == "bar":
+		desk.tech_legend_bar = 1
+		if desk.mode == "tech":
+			desk._fill()
+		return
+	if cmd.begins_with("pick:"):
+		desk.picked = cmd.substr(5)
+		if desk.mode == "tech":
+			desk._fill()
+
+
+func _show_tech(desk: Desk) -> void:
+	if desk.mode == "tech":
+		desk._fill()
+	else:
+		desk.open("tech")

@@ -28,6 +28,10 @@ var tech_designing := ""
 var tech_design_prog := 0
 var tech_blueprints: Array = []
 var tech_trials: Array = []
+var tech_paused := {}
+var tech_target := ""
+var tech_tutorial_done := false
+var site_turns := {}
 var firmware_done: Array = []
 var edicts_done: Array = []
 var notice := ""
@@ -425,6 +429,10 @@ func _reset_research() -> void:
 	tech_design_prog = 0
 	tech_blueprints = []
 	tech_trials = []
+	tech_paused = {}
+	tech_target = ""
+	tech_tutorial_done = false
+	site_turns = {}
 	firmware_done = []
 	edicts_done = []
 	notice = ""
@@ -460,7 +468,27 @@ func era_unlocked(era: int) -> bool:
 		return true
 	if era == 2:
 		return turn > 30
-	return turn > 75
+	if era == 3:
+		return turn > 75 or _era_done_count(2) >= 11
+	return false
+
+
+func _era_done_count(era: int) -> int:
+	var n := 0
+	for id_v in tech_done:
+		var tech: Dictionary = DataDB.tech_by_id.get(str(id_v), {})
+		if int(tech.get("era", 0)) == era:
+			n += 1
+	return n
+
+
+func prereqs_done(id: String) -> bool:
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	var pre: Array = tech.get("prereq", [])
+	for pre_v in pre:
+		if not tech_done.has(str(pre_v)):
+			return false
+	return true
 
 
 func tech_state(id: String) -> String:
@@ -501,7 +529,8 @@ func start_design(id: String) -> bool:
 	tech_queue.erase(id)
 	if tech_designing == "":
 		tech_designing = id
-		tech_design_prog = 0
+		tech_design_prog = int(tech_paused.get(id, 0))
+		tech_paused.erase(id)
 	elif id != tech_designing and not tech_queue.has(id):
 		tech_queue.append(id)
 	EventBus.state_changed.emit()
@@ -509,8 +538,13 @@ func start_design(id: String) -> bool:
 
 
 func cancel_design() -> void:
+	pause_design()
+
+
+func pause_design() -> void:
 	if tech_designing == "":
 		return
+	tech_paused[tech_designing] = tech_design_prog
 	tech_designing = ""
 	tech_design_prog = 0
 	_pull_queue()
@@ -656,14 +690,29 @@ func _research_tick() -> void:
 
 
 func _pull_queue() -> void:
-	if tech_designing != "" or tech_queue.is_empty():
+	if tech_designing != "":
 		return
-	var nxt := str(tech_queue.pop_front())
-	if tech_done.has(nxt) or tech_blueprints.has(nxt):
-		_pull_queue()
-		return
-	tech_designing = nxt
-	tech_design_prog = 0
+	var i := 0
+	while i < tech_queue.size():
+		var nxt := str(tech_queue[i])
+		if tech_done.has(nxt) or tech_blueprints.has(nxt) or _is_trialing(nxt):
+			tech_queue.remove_at(i)
+			continue
+		if prereqs_done(nxt):
+			tech_queue.remove_at(i)
+			tech_designing = nxt
+			tech_design_prog = int(tech_paused.get(nxt, 0))
+			tech_paused.erase(nxt)
+			return
+		i += 1
+
+
+func _is_trialing(id: String) -> bool:
+	for trial_v in tech_trials:
+		var trial: Dictionary = trial_v
+		if str(trial.get("id", "")) == id:
+			return true
+	return false
 
 
 func _complete_tech(id: String) -> void:
@@ -749,6 +798,10 @@ func to_save() -> Dictionary:
 		"tech_design_prog": tech_design_prog,
 		"tech_blueprints": tech_blueprints.duplicate(),
 		"tech_trials": tech_trials.duplicate(true),
+		"tech_paused": tech_paused.duplicate(),
+		"tech_target": tech_target,
+		"tech_tutorial_done": tech_tutorial_done,
+		"site_turns": site_turns.duplicate(),
 		"firmware_done": firmware_done.duplicate(),
 		"edicts_done": edicts_done.duplicate(),
 		"relations": relations.duplicate(),
@@ -815,6 +868,10 @@ func from_save(data: Dictionary) -> bool:
 	markets = _str_list(data.get("markets", []))
 	envoy_turn = _int_dict(data.get("envoy_turn", {}))
 	event_choice = _str_dict(data.get("event_choice", {}))
+	tech_paused = _int_dict(data.get("tech_paused", {}))
+	tech_target = str(data.get("tech_target", ""))
+	tech_tutorial_done = bool(data.get("tech_tutorial_done", false))
+	site_turns = _int_dict(data.get("site_turns", {}))
 	tech_trials = []
 	for trial_v in data.get("tech_trials", []):
 		if typeof(trial_v) != TYPE_DICTIONARY:
@@ -831,3 +888,35 @@ func from_save(data: Dictionary) -> bool:
 	playing = true
 	EventBus.state_changed.emit()
 	return true
+
+
+func load_tech_sample() -> void:
+	# 第 52 回合示例：设计 K03 22/40，队列 K05→E05，试制 K02 与 K04，图纸 I05，铜 14，已完成 21 项。
+	turn = 52
+	year = 1044
+	month = 4
+	tech_done = []
+	for tech_v in DataDB.techs:
+		var tech: Dictionary = tech_v
+		var id := str(tech.get("id", ""))
+		var era := int(tech.get("era", 1))
+		if era == 1 or id == "I04" or id == "M05" or id == "E02" or id == "E03":
+			tech_done.append(id)
+	tech_designing = "K03"
+	tech_design_prog = 22
+	tech_queue = ["K05", "E05"]
+	tech_blueprints = ["I05"]
+	tech_trials = [
+		{"id": "K02", "prog": 22, "need": 28},
+		{"id": "K04", "prog": 12, "need": 30},
+	]
+	tech_paused = {}
+	tech_target = ""
+	tech_tutorial_done = true
+	if not edicts_done.has("gewuyuan"):
+		edicts_done.append("gewuyuan")
+	resources["copper"] = 14
+	resources["iron"] = 46
+	site_turns = {"mill": 6}
+	battery = 48
+	EventBus.state_changed.emit()

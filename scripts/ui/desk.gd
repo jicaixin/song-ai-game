@@ -2,6 +2,7 @@ class_name Desk
 extends Control
 
 const Kit = preload("res://scripts/ui/kit.gd")
+const TechDesk = preload("res://scripts/ui/tech_desk.gd")
 
 const MAT_NAME := {
 	"wood": "木",
@@ -40,6 +41,21 @@ var mode := ""
 var writing := false
 var city_id := ""
 var picked := ""
+var tech_view := "focus"
+var tech_tutorial := -1
+var tech_show_legend := false
+var tech_show_parts := false
+var tech_hover := ""
+var tech_branch := ""
+var tech_only_ready := false
+var tech_practice := false
+var tech_mat := ""
+var tech_query := ""
+var tech_legend_bar := -1
+var tech_scroll := 0
+var tech_fold := ""
+var tech_click_id := ""
+var tech_click_ms := 0
 var dim: ColorRect
 var host: Control
 var detail: PanelContainer
@@ -69,6 +85,8 @@ func is_open() -> bool:
 
 func open(which: String) -> void:
 	mode = which
+	if which == "tech" and not GameState.tech_tutorial_done and tech_tutorial < 0:
+		tech_tutorial = 0
 	visible = true
 	_fill()
 
@@ -106,17 +124,24 @@ func _fill() -> void:
 	var keep_pick := picked
 	_wipe()
 	picked = keep_pick
-	var wide := 1180.0 if mode == "tech" else 1040.0
-	var high := 660.0 if mode == "tech" else 620.0
+	if mode == "tech":
+		dim.color = Color("e7dcc4")
+		var board := TechDesk.new()
+		board.desk = self
+		board.set_anchors_preset(Control.PRESET_FULL_RECT)
+		host.add_child(board)
+		board.build()
+		return
+	dim.color = Color(0, 0, 0, 0.45)
+	var wide := 1040.0
+	var high := 620.0
 	var paper := _place_paper(wide, high)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	paper.add_child(box)
-	if mode == "tech":
-		_page_tech(box)
-	elif mode == "console":
+	if mode == "console":
 		_page_console(box)
 	elif mode == "workshop":
 		_page_workshop(box)
@@ -165,184 +190,6 @@ func _header(parent: VBoxContainer, title: String, close_key: String) -> void:
 	debug_btns["desk_close"] = close
 	if close_key != "":
 		debug_btns[close_key] = close
-
-
-func _page_tech(box: VBoxContainer) -> void:
-	_header(box, "格物图", "tech_close")
-	box.add_child(Kit.label("设计耗电，试制耗匠与材料。走完第 30 回合开时代二，走完第 75 回合开时代三。", "CaptionLabel"))
-	var split := HBoxContainer.new()
-	split.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	split.add_theme_constant_override("separation", 12)
-	box.add_child(split)
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.custom_minimum_size = Vector2(720, 500)
-	split.add_child(scroll)
-	var tree := VBoxContainer.new()
-	tree.add_theme_constant_override("separation", 6)
-	scroll.add_child(tree)
-	_build_tree(tree)
-	detail = Kit.panel("PlainPanel")
-	detail.custom_minimum_size = Vector2(320, 500)
-	split.add_child(detail)
-	_fill_detail()
-
-
-func _build_tree(tree: VBoxContainer) -> void:
-	var head := HBoxContainer.new()
-	tree.add_child(head)
-	var pad := Control.new()
-	pad.custom_minimum_size = Vector2(76, 18)
-	head.add_child(pad)
-	for col in range(1, 14):
-		var cap := ""
-		for st_v in DataDB.stages:
-			var st: Dictionary = st_v
-			if int(st.get("col_from", 0)) == col:
-				cap = "%s %s" % [str(st.get("name", "")), str(st.get("subtitle", ""))]
-		var lab := Kit.label(cap, "SmallLabel")
-		lab.custom_minimum_size = Vector2(220, 18)
-		lab.clip_text = true
-		head.add_child(lab)
-	for b_v in DataDB.branches:
-		var branch: Dictionary = b_v
-		var bid := str(branch.get("id", ""))
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 4)
-		tree.add_child(row)
-		var mark := VBoxContainer.new()
-		mark.custom_minimum_size = Vector2(72, 36)
-		row.add_child(mark)
-		mark.add_child(Kit.icon_rect("branch_%s" % bid, 28))
-		mark.add_child(Kit.label(str(branch.get("name", "")), "SmallLabel"))
-		for col in range(1, 14):
-			var cell := VBoxContainer.new()
-			cell.custom_minimum_size = Vector2(220, 4)
-			cell.add_theme_constant_override("separation", 4)
-			row.add_child(cell)
-			var found: Array = []
-			for tech_v in DataDB.techs:
-				var tech: Dictionary = tech_v
-				if str(tech.get("branch", "")) == bid and int(tech.get("col", 0)) == col:
-					found.append(tech)
-			found.sort_custom(_slot_less)
-			for tech_v2 in found:
-				var tech2: Dictionary = tech_v2
-				cell.add_child(_node_button(tech2))
-
-
-func _slot_less(a: Dictionary, b: Dictionary) -> bool:
-	return _slot_rank(str(a.get("slot", "c"))) < _slot_rank(str(b.get("slot", "c")))
-
-
-func _slot_rank(slot: String) -> int:
-	if slot == "u":
-		return 0
-	if slot == "c":
-		return 1
-	return 2
-
-
-func _node_button(tech: Dictionary) -> Control:
-	var id := str(tech.get("id", ""))
-	var state := GameState.tech_state(id)
-	var wrap := VBoxContainer.new()
-	var b := Kit.button(str(tech.get("name", "")), Kit.state_variation("TechNodeButton", state))
-	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	b.icon = Kit.icon("tech_%s" % id)
-	b.expand_icon = true
-	b.clip_text = false
-	b.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
-	b.add_theme_font_size_override("font_size", 13)
-	b.custom_minimum_size = Vector2(212, 40)
-	b.pressed.connect(_pick_tech.bind(id))
-	wrap.add_child(b)
-	if state == "designing" or state == "nopower":
-		var bar := ProgressBar.new()
-		bar.theme_type_variation = "NodeBarNoPower" if state == "nopower" else "NodeBarDesign"
-		bar.max_value = float(GameState.design_need(id))
-		bar.value = float(GameState.tech_design_prog)
-		bar.show_percentage = false
-		bar.custom_minimum_size = Vector2(150, 6)
-		wrap.add_child(bar)
-	elif state == "trial":
-		var trial := _trial(id)
-		var bar := ProgressBar.new()
-		bar.theme_type_variation = "NodeBarTrial"
-		bar.max_value = float(maxi(1, int(trial.get("need", 1))))
-		bar.value = float(int(trial.get("prog", 0)))
-		bar.show_percentage = false
-		bar.custom_minimum_size = Vector2(150, 6)
-		wrap.add_child(bar)
-	return wrap
-
-
-func _pick_tech(id: String) -> void:
-	picked = id
-	_fill_detail()
-
-
-func _fill_detail() -> void:
-	if detail == null:
-		return
-	for child in detail.get_children():
-		detail.remove_child(child)
-		child.free()
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 6)
-	detail.add_child(box)
-	if picked == "" or not DataDB.tech_by_id.has(picked):
-		box.add_child(Kit.label("点一项。", "BodyLabel"))
-		box.add_child(Kit.label("青的是设计，赭的是试制，金的是已经推广。", "CaptionLabel"))
-		return
-	var tech: Dictionary = DataDB.tech_by_id[picked]
-	var state := GameState.tech_state(picked)
-	box.add_child(Kit.icon_rect("tech_%s" % picked, 40))
-	box.add_child(Kit.label(str(tech.get("name", "")), "H2Label"))
-	box.add_child(Kit.label("%s · %s · %s" % [picked, _branch_full(str(tech.get("branch", ""))), str(STATE_NAME.get(state, state))], "SmallLabel"))
-	box.add_child(Kit.label(str(tech.get("effect", "")), "BodyLabel"))
-	var cost: Dictionary = tech.get("cost", {})
-	box.add_child(Kit.label("设计 %d 电 · 试制 %d 匠" % [int(cost.get("power", 0)), int(cost.get("craft", 0))], "CaptionLabel"))
-	var mats := _mat_text(tech.get("materials", {}))
-	if mats != "":
-		box.add_child(Kit.label("材料 " + mats, "CaptionLabel"))
-	var practice := str(tech.get("practice", ""))
-	if practice != "":
-		box.add_child(Kit.label("实践 " + practice, "CaptionLabel"))
-	var talent := str(tech.get("talent", ""))
-	if talent != "":
-		box.add_child(Kit.label("可请 " + talent, "CaptionLabel"))
-	if state == "designing" or state == "nopower":
-		var need := GameState.design_need(picked)
-		var left := maxi(0, need - GameState.tech_design_prog)
-		var turns := int(ceil(float(left) / 10.0))
-		var extra := ""
-		if GameState.firmware_done.has("D03"):
-			extra = "，约 %d 回合" % turns
-		box.add_child(Kit.label("进度 %d / %d%s" % [GameState.tech_design_prog, need, extra], "SmallLabel"))
-	elif state == "trial":
-		var trial := _trial(picked)
-		box.add_child(Kit.label("试制 %d / %d 回合" % [int(trial.get("prog", 0)), int(trial.get("need", 1))], "SmallLabel"))
-	box.add_child(Kit.label(str(tech.get("history", "")), "CaptionLabel"))
-	box.add_child(Kit.label("能跳过：" + str(tech.get("skip", "")), "CaptionLabel"))
-	box.add_child(Kit.label("跳不过：" + str(tech.get("noskip", "")), "CaptionLabel"))
-	if state == "available":
-		var act := Kit.button("开始设计" if GameState.tech_designing == "" else "加入队列", "PrimaryButton")
-		act.pressed.connect(func() -> void: GameState.start_design(picked))
-		box.add_child(act)
-	elif state == "queued":
-		var act := Kit.button("移出队列", "Button")
-		act.pressed.connect(func() -> void: GameState.remove_queued(picked))
-		box.add_child(act)
-	elif state == "designing" or state == "nopower":
-		var act := Kit.button("取消设计", "Button")
-		act.pressed.connect(func() -> void: GameState.cancel_design())
-		box.add_child(act)
-	elif state == "blueprint":
-		var act := Kit.button("投入试制", "PrimaryButton")
-		act.pressed.connect(func() -> void: GameState.start_trial(picked))
-		box.add_child(act)
 
 
 func _page_console(box: VBoxContainer) -> void:

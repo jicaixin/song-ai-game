@@ -1,5 +1,7 @@
 extends RefCounted
 
+const TechPlan = preload("res://scripts/ui/tech_plan.gd")
+
 var failed := 0
 
 func run_tests() -> int:
@@ -10,6 +12,7 @@ func run_tests() -> int:
 	check_geo_and_cities()
 	check_path()
 	check_save_roundtrip()
+	check_tech()
 	check_camera()
 	check_font()
 	if failed > 0:
@@ -230,3 +233,84 @@ func check_save_roundtrip() -> void:
 	GameState.tech_designing = ""
 	var design_data: Dictionary = SaveManager.unpack(packed_design)
 	check("design_load", GameState.from_save(design_data) and GameState.tech_designing == "A01", GameState.tech_designing)
+
+
+func check_tech() -> void:
+	GameState.new_game()
+	GameState.load_tech_sample()
+	check("sample_done", GameState.tech_done.size() == 21, str(GameState.tech_done.size()))
+	var era2 := TechPlan.era_progress(2)
+	check("sample_era2", era2 == Vector2i(4, 17), str(era2))
+	check("sample_era", TechPlan.current_era() == 2 and TechPlan.era_complete(1) and not GameState.era_unlocked(3))
+	check("state_k03", TechPlan.view_state("K03") == "designing" and GameState.tech_design_prog == 22)
+	check("state_i05", TechPlan.view_state("I05") == "blueprint")
+	check("state_k02", TechPlan.view_state("K02") == "trial")
+	check("state_a05", TechPlan.view_state("A05") == "available")
+	check("state_e05", TechPlan.view_state("E05") == "noprereq" and TechPlan.queue_index("E05") == 2)
+	check("state_k05", TechPlan.view_state("K05") == "noprereq" and TechPlan.queue_index("K05") == 1)
+	check("state_i07", TechPlan.view_state("I07") == "locked")
+	var frontier: Array = []
+	for tech_v in DataDB.techs:
+		var tech: Dictionary = tech_v
+		var id := str(tech.get("id", ""))
+		if TechPlan.is_frontier(id, 2):
+			frontier.append(id)
+	frontier.sort()
+	check("frontier", frontier == ["C07", "E06", "E07", "I07"], ",".join(frontier))
+	var sug: Dictionary = TechPlan.suggestion()
+	check("suggest_e05", str(sug.get("id", "")) == "E05" and str(sug.get("kind", "")) == "target", str(sug))
+	var chain: Array = TechPlan.spine("E05")
+	check("spine", chain == ["K02", "K05", "E05"], ",".join(chain))
+	var sum: Dictionary = TechPlan.totals("E05")
+	check("totals", int(sum.get("power", 0)) == 125 and int(sum.get("craft", 0)) == 126 and int(sum.get("months", 0)) == 20 and int(sum.get("eta", 0)) == 72, str(sum))
+	var jumps := ""
+	for block_v in TechPlan.blockers():
+		var block: Dictionary = block_v
+		jumps += str(block.get("jump", "")) + ","
+	check("blockers", jumps.contains("workshop") and jumps.contains("industry"), jumps)
+	var practice: Dictionary = TechPlan.practice_row("E05")
+	check("practice", bool(practice.get("ok", false)) and int(practice.get("have", 0)) == 6 and int(practice.get("need", 0)) == 6, str(practice))
+	check("verb_before", TechPlan.primary_verb("E05") == "设为目标")
+	TechPlan.set_target("E05")
+	check("target_keeps_design", GameState.tech_target == "E05" and GameState.tech_designing == "K03" and GameState.tech_state("E05") != "designing")
+	check("verb_after", TechPlan.primary_verb("E05") == "")
+	var packed: String = SaveManager.pack(GameState.to_save())
+	GameState.tech_target = ""
+	GameState.tech_trials = []
+	var loaded: Dictionary = SaveManager.unpack(packed)
+	var restored := GameState.from_save(loaded)
+	var need := 0
+	for trial_v in GameState.tech_trials:
+		var trial: Dictionary = trial_v
+		if str(trial.get("id", "")) == "K02":
+			need = int(trial.get("need", 0))
+	check("tech_save", restored and GameState.tech_target == "E05" and need == 28 and int(GameState.site_turns.get("mill", 0)) == 6, "need %d target %s" % [need, GameState.tech_target])
+	var desk := Engine.get_main_loop().root.find_child("Desk", true, false) as Desk
+	check("desk_node", desk != null)
+	if desk != null:
+		GameState.load_tech_sample()
+		desk.open("tech")
+		check("tech_focus", desk.mode == "tech" and desk.debug_btns.has("node_E05") and desk.debug_btns.has("tech_accept"))
+		desk.picked = "E05"
+		desk._fill()
+		check("tech_drawer", desk.debug_btns.has("tech_verb") or desk.debug_btns.has("tech_make_target"))
+		desk.tech_view = "overview"
+		desk.tech_show_legend = false
+		desk.tech_show_parts = false
+		desk.picked = ""
+		desk._fill()
+		var tiles := 0
+		for key_v in desk.debug_btns.keys():
+			if str(key_v).begins_with("node_"):
+				tiles += 1
+		check("tech_overview", tiles == 43, str(tiles))
+		desk.tech_view = "focus"
+		desk.tech_tutorial = 0
+		desk._fill()
+		check("tech_tutorial", desk.debug_btns.has("tech_skip") and desk.debug_btns.has("tech_next"))
+		desk.tech_tutorial = -1
+		desk.tech_show_legend = true
+		desk._fill()
+		check("tech_legend", desk.debug_btns.has("tech_sheet_close"))
+		desk.shut()
+	GameState.new_game()
