@@ -4,6 +4,9 @@ extends Control
 const Kit = preload("res://scripts/ui/kit.gd")
 const Desk = preload("res://scripts/ui/desk.gd")
 const Onboarding = preload("res://scripts/ui/onboarding.gd")
+const TileMenuSc = preload("res://scripts/ui/tile_menu.gd")
+const TileTipSc = preload("res://scripts/ui/tile_tip.gd")
+const TileMarksSc = preload("res://scripts/ui/tile_marks.gd")
 
 const RES_BAR := [
 	["food", "res_food", "HudNumberLabel", Color("6db394")],
@@ -38,7 +41,13 @@ var research_body: Label
 var research_bar: ProgressBar
 var unit_card: PanelContainer
 var unit_label: Label
-var hover_chip: Label
+var unit_close: Button
+var unit_reason: Label
+var block_line := ""
+var tile_menu
+var tile_tip
+var tile_marks
+var _combat_back: Dictionary = {}
 var advisor_root: Control
 var advisor_label: Label
 var portrait: TextureRect
@@ -75,11 +84,14 @@ func _ready() -> void:
 	_build_toast()
 	_build_return()
 	_build_combat()
+	_build_tiles()
 	desk = Desk.new()
 	desk.name = "Desk"
 	add_child(desk)
 	EventBus.state_changed.connect(_refresh)
 	EventBus.advisor_changed.connect(_refresh_advisor)
+	EventBus.camera_moved.connect(_on_camera_moved)
+	EventBus.turn_started.connect(close_tile_menu)
 
 
 func _build_top() -> void:
@@ -187,22 +199,49 @@ func _build_unit() -> void:
 	unit_card.custom_minimum_size = Vector2(300, 132)
 	unit_card.visible = false
 	add_child(unit_card)
+	var holder := Control.new()
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.set_anchors_preset(Control.PRESET_FULL_RECT)
+	unit_card.add_child(holder)
 	unit_label = Kit.label("", "HudLabel")
 	unit_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	unit_card.add_child(unit_label)
+	unit_label.position = Vector2(10, 8)
+	unit_label.size = Vector2(248, 96)
+	holder.add_child(unit_label)
+	unit_close = Kit.button("×", "Button")
+	unit_close.position = Vector2(262, 6)
+	unit_close.custom_minimum_size = Vector2(28, 28)
+	unit_close.pressed.connect(_deselect_unit)
+	holder.add_child(unit_close)
+	unit_reason = Kit.label("", "MenuReasonLabel")
+	unit_reason.position = Vector2(10, 104)
+	unit_reason.size = Vector2(270, 36)
+	unit_reason.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	unit_reason.visible = false
+	holder.add_child(unit_reason)
+	btn_map["unit_close"] = unit_close
 
 
 func _build_hover() -> void:
-	key_hint = Kit.label("空格 下一支可动宋军 · Home 回延州", "HudMutedLabel")
+	key_hint = Kit.label("空格 下一支可动宋军 · Home 回延州 · Shift 看明细", "HudMutedLabel")
 	key_hint.position = Vector2(16, 520)
-	key_hint.size = Vector2(640, 24)
+	key_hint.size = Vector2(720, 24)
 	key_hint.clip_text = true
 	add_child(key_hint)
-	hover_chip = Kit.label("", "HudMutedLabel")
-	hover_chip.position = Vector2(16, 548)
-	hover_chip.size = Vector2(520, 28)
-	hover_chip.clip_text = true
-	add_child(hover_chip)
+
+
+func _build_tiles() -> void:
+	tile_marks = TileMarksSc.new()
+	tile_marks.name = "TileMarks"
+	tile_marks.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(tile_marks)
+	tile_tip = TileTipSc.new()
+	tile_tip.name = "TileTip"
+	add_child(tile_tip)
+	tile_menu = TileMenuSc.new()
+	tile_menu.name = "TileMenu"
+	tile_menu.closed.connect(_on_tile_menu_closed)
+	add_child(tile_menu)
 
 
 func _build_advisor() -> void:
@@ -304,11 +343,12 @@ func _build_combat() -> void:
 	combat_panel.size = Vector2(720, 340)
 	combat_panel.custom_minimum_size = Vector2(720, 340)
 	combat_panel.visible = false
+	combat_panel.z_index = 70
 	add_child(combat_panel)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
 	combat_panel.add_child(box)
-	var title := Kit.label("接战", "H2Label")
+	var title := Kit.label("战斗明细", "H2Label")
 	title.add_theme_color_override("font_color", Color("f3e9d2"))
 	box.add_child(title)
 	combat_label = Kit.label("", "HudLabel")
@@ -322,9 +362,9 @@ func _build_combat() -> void:
 	fight_button.custom_minimum_size = Vector2(160, 44)
 	fight_button.pressed.connect(_confirm_fight)
 	row.add_child(fight_button)
-	cancel_button = Kit.button("罢手", "Button")
+	cancel_button = Kit.button("取消", "Button")
 	cancel_button.custom_minimum_size = Vector2(160, 44)
-	cancel_button.pressed.connect(hide_combat)
+	cancel_button.pressed.connect(_cancel_detail)
 	row.add_child(cancel_button)
 	btn_map["fight"] = fight_button
 	btn_map["cancel"] = cancel_button
@@ -364,6 +404,7 @@ func tutorial_dim() -> Vector2:
 
 
 func open_desk(which: String) -> void:
+	close_tile_menu()
 	hide_combat()
 	if desk.mode == which:
 		desk.shut()
@@ -377,6 +418,7 @@ func open_save(writing: bool) -> void:
 
 
 func open_city(id: String) -> void:
+	close_tile_menu()
 	hide_combat()
 	desk.open_city(id)
 
@@ -397,6 +439,8 @@ func _process(delta: float) -> void:
 
 
 func _refresh() -> void:
+	if GameState.input_locked:
+		close_tile_menu()
 	var map := get_tree().get_first_node_in_group("world_map") as WorldMap
 	var over := map != null and map.overview
 	_set_play_visible(not over)
@@ -424,7 +468,6 @@ func _refresh() -> void:
 	weather_label.text = str(DataDB.balance.get("weather", {}).get(GameState.weather_id, {}).get("name", ""))
 	_refresh_research()
 	_refresh_unit()
-	_refresh_hover(map)
 	_refresh_advisor()
 	_refresh_toast()
 	var waiting := _song_waiting()
@@ -451,8 +494,9 @@ func _set_play_visible(show_hud: bool) -> void:
 		key_hint.visible = show_hud
 	if not show_hud:
 		unit_card.visible = false
-		hover_chip.visible = false
 		toast.visible = false
+		close_tile_menu()
+		clear_hover_tip()
 
 
 func _refresh_research() -> void:
@@ -499,25 +543,12 @@ func _refresh_unit() -> void:
 	if str(u.general) != "":
 		text += "\n将领 %s" % str(u.general)
 	unit_label.text = text
-
-
-func _refresh_hover(map: WorldMap) -> void:
-	if map == null or not map.hover_ok:
-		hover_chip.visible = false
-		return
-	hover_chip.visible = true
-	var h := map.hover
-	var tid := DataDB.terrain_id(h.x, h.y)
-	var terr := DataDB.terrain(tid)
-	var owner := DataDB.owner_id(h.x, h.y)
-	var owner_name := "无主"
-	if owner != "":
-		owner_name = str(DataDB.faction(owner).get("name", owner))
-	var line := "%s · %s" % [str(terr.get("name", tid)), owner_name]
-	var city := DataDB.city_at_hex(h.x, h.y)
-	if not city.is_empty():
-		line += " · %s" % str(city.get("name", ""))
-	hover_chip.text = line
+	var show_reason := block_line != "" and GameState.inspected_uid == int(u.uid)
+	unit_reason.visible = show_reason
+	unit_reason.text = block_line if show_reason else ""
+	var tall := 168 if show_reason else 132
+	unit_card.size = Vector2(300, tall)
+	unit_card.custom_minimum_size = Vector2(300, tall)
 
 
 func _refresh_advisor() -> void:
@@ -537,7 +568,7 @@ func _refresh_toast() -> void:
 func _song_waiting() -> bool:
 	for u_v in GameState.units:
 		var u: Dictionary = u_v
-		if str(u.get("faction", "")) == "song" and int(u.get("hp", 0)) > 0 and int(u.get("mp", 0)) > 0:
+		if str(u.get("faction", "")) == "song" and int(u.get("hp", 0)) > 0 and int(u.get("mp", 0)) > 0 and not bool(u.get("skip_turn", false)):
 			return true
 	return false
 
@@ -576,13 +607,29 @@ func _confirm_fight() -> void:
 
 
 func hide_combat() -> void:
+	_combat_back = {}
 	combat_panel.visible = false
 	set_meta("atk", -1)
 	set_meta("def", -1)
 
 
+func _cancel_detail() -> void:
+	var back := _combat_back
+	_combat_back = {}
+	combat_panel.visible = false
+	set_meta("atk", -1)
+	set_meta("def", -1)
+	if back.is_empty():
+		return
+	var hex: Vector2i = back.get("hex", Vector2i(999999, 0))
+	var anchor: Vector2 = back.get("anchor", Vector2.ZERO)
+	open_tile_menu(back.get("plan", {}), hex, anchor, float(back.get("radius", 40.0)))
+
+
 func hide_modals() -> void:
-	hide_combat()
+	if combat_panel.visible:
+		_cancel_detail()
+		return
 	if desk:
 		desk.shut()
 
@@ -607,8 +654,6 @@ func blocks_pointer(screen: Vector2) -> bool:
 	if research_card.visible and research_card.get_global_rect().has_point(screen):
 		return true
 	if unit_card.visible and unit_card.get_global_rect().has_point(screen):
-		return true
-	if hover_chip.visible and hover_chip.get_global_rect().has_point(screen):
 		return true
 	return false
 
@@ -645,7 +690,103 @@ func debug_buttons() -> Dictionary:
 			var extra: Button = desk.debug_btns[key2]
 			if is_instance_valid(extra):
 				_put_button(out, key2, extra)
+	if tile_menu and tile_menu.has_method("debug_buttons"):
+		var menu_btns: Dictionary = tile_menu.debug_buttons()
+		for key_v3 in menu_btns.keys():
+			out[str(key_v3)] = menu_btns[key_v3]
 	return out
+
+
+func open_tile_menu(plan: Dictionary, hex: Vector2i, anchor: Vector2, radius: float) -> void:
+	clear_hover_tip()
+	if tile_menu == null:
+		return
+	tile_menu.open_at(plan, hex, anchor, radius)
+	EventBus.tile_menu.emit(true)
+
+
+func close_tile_menu() -> void:
+	if tile_menu and tile_menu.is_open():
+		tile_menu.shut()
+
+
+func menu_is_open() -> bool:
+	return tile_menu != null and tile_menu.is_open()
+
+
+func tile_menu_key(event: InputEventKey) -> bool:
+	if tile_menu == null:
+		return false
+	return tile_menu.handle_key(event)
+
+
+func move_tile_menu(anchor: Vector2, radius: float) -> void:
+	if tile_menu and tile_menu.has_method("move_anchor"):
+		tile_menu.move_anchor(anchor, radius)
+
+
+func present_hover(hex: Vector2i, plan: Dictionary) -> void:
+	if tile_tip == null:
+		return
+	if menu_is_open() or modal_open() or GameState.input_locked:
+		tile_tip.clear_tip()
+		return
+	var map := get_tree().get_first_node_in_group("world_map") as WorldMap
+	if map and (map.dragging or map.animating or map.suspend > 0):
+		tile_tip.clear_tip()
+		return
+	tile_tip.present(hex, plan)
+
+
+func clear_hover_tip() -> void:
+	if tile_tip and tile_tip.has_method("clear_tip"):
+		tile_tip.clear_tip()
+
+
+func shake_tip() -> void:
+	if tile_tip and tile_tip.has_method("shake"):
+		tile_tip.shake()
+
+
+func set_block_line(text: String) -> void:
+	block_line = text
+	_refresh_unit()
+
+
+func clear_block_line() -> void:
+	set_block_line("")
+
+
+func arm_combat_return(plan: Dictionary, hex: Vector2i, anchor: Vector2, radius: float) -> void:
+	_combat_back = {"plan": plan, "hex": hex, "anchor": anchor, "radius": radius}
+
+
+func tile_menu_debug() -> Dictionary:
+	if not menu_is_open():
+		return {"open": false}
+	return {"open": true, "q": tile_menu.target.x, "r": tile_menu.target.y}
+
+
+func _deselect_unit() -> void:
+	block_line = ""
+	GameState.selected_uid = -1
+	GameState.inspected_uid = -1
+	var map := get_tree().get_first_node_in_group("world_map") as WorldMap
+	if map:
+		map.full_refresh()
+	EventBus.state_changed.emit()
+
+
+func _on_camera_moved() -> void:
+	var map := get_tree().get_first_node_in_group("world_map") as WorldMap
+	if map and map._menu_hold:
+		return
+	close_tile_menu()
+	clear_hover_tip()
+
+
+func _on_tile_menu_closed() -> void:
+	EventBus.tile_menu.emit(false)
 
 
 func _put_button(out: Dictionary, key: String, b: Button) -> void:

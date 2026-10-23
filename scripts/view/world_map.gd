@@ -51,6 +51,38 @@ var _pan_dur := 0.5
 var _pan_active := false
 var _center_hex := Vector2i(999999, 0)
 var guide_hex := Vector2i(999999, 0)
+var hover_plan: Dictionary = {}
+var _hover_ring: MeshInstance3D
+var _hover_fill: MeshInstance3D
+var _center_ring: MeshInstance3D
+var _guide_ring: MeshInstance3D
+var _guide_fill: MeshInstance3D
+var _overlay_mat: StandardMaterial3D
+var _hover_shader: Shader
+var _cursor_kind := ""
+var _cursors := {}
+var _last_screen := Vector2(-1, -1)
+var _motion_pending := false
+var _menu_hold := false
+var _px_per_wu := 2.5
+var _px_zoom := -1
+var _tab_i := 0
+var _menu_hex := Vector2i(999999, 0)
+var _menu_plan: Dictionary = {}
+var _menu_bound := false
+const Actions = preload("res://scripts/core/tile_actions.gd")
+const CURSOR_HOT := {
+	"cur_default": Vector2(2, 2),
+	"cur_select": Vector2(10, 2),
+	"cur_move": Vector2(16, 28),
+	"cur_move_far": Vector2(16, 28),
+	"cur_attack": Vector2(4, 4),
+	"cur_ranged": Vector2(16, 16),
+	"cur_no": Vector2(16, 16),
+	"cur_inspect": Vector2(12, 12),
+	"cur_city": Vector2(16, 24),
+	"cur_drag": Vector2(16, 16),
+}
 var _booting := false
 var _boot_seen := false
 var _boot_state: Dictionary = {}
@@ -121,6 +153,16 @@ func _boot_apply(built: Dictionary) -> void:
 	_overlay.name = "Overlay"
 	_overlay.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_overlay)
+	_hover_shader = load("res://shaders/hex_hover.gdshader")
+	var ring := _ring_mesh()
+	var fill := _fill_mesh()
+	_hover_ring = _hex_node("HoverRing", ring, false)
+	_hover_fill = _hex_node("HoverFill", fill, true)
+	_center_ring = _hex_node("CenterRing", ring, false)
+	_guide_ring = _hex_node("GuideRing", ring, false)
+	_guide_fill = _hex_node("GuideFill", fill, true)
+	_load_cursors()
+	_apply_cursor("cur_default")
 	_unit_kinds = {
 		"infantry": TerrainFactory.unit_mesh("infantry"),
 		"archer": TerrainFactory.unit_mesh("archer"),
@@ -800,7 +842,10 @@ func _rebuild_units() -> void:
 		var root := Node3D.new()
 		var body := MeshInstance3D.new()
 		body.mesh = _unit_kinds[kind]
-		body.material_override = _toon(_cloth(str(u.faction)))
+		var cloth := _cloth(str(u.faction))
+		if str(u.faction) == "song" and int(u.mp) <= 0:
+			cloth = cloth.darkened(0.15)
+		body.material_override = _toon(cloth)
 		root.add_child(body)
 		var pole := MeshInstance3D.new()
 		var pm := BoxMesh.new()
@@ -920,6 +965,7 @@ func focus_smooth(world: Vector2, dur: float = 0.5) -> void:
 
 
 func return_home() -> void:
+	_emit_camera()
 	if overview:
 		_leave_overview(false)
 	_debug_dist = 0.0
@@ -944,6 +990,9 @@ func _tick_pan(delta: float) -> void:
 	if t >= 1.0:
 		look_xz = _pan_to
 		_pan_active = false
+		if _menu_hold:
+			_menu_hold = false
+			_reposition_menu()
 	_place_camera()
 
 
@@ -1024,6 +1073,7 @@ func enter_overview() -> void:
 
 
 func focus_from_minimap(ax: Vector2i) -> void:
+	_emit_camera()
 	if overview:
 		_leave_overview(false)
 	_debug_dist = 0.0
@@ -1034,6 +1084,7 @@ func focus_from_minimap(ax: Vector2i) -> void:
 
 
 func _enter_overview() -> void:
+	_emit_camera()
 	if not overview:
 		_saved_look = look_xz
 		_saved_zoom = zoom_index
@@ -1057,6 +1108,7 @@ func _enter_overview() -> void:
 func _leave_overview(restore: bool) -> void:
 	if not overview:
 		return
+	_emit_camera()
 	overview = false
 	_debug_dist = 0.0
 	if restore:
@@ -1230,7 +1282,7 @@ func _sync_center_hex() -> void:
 	if next == _center_hex:
 		return
 	_center_hex = next
-	_refresh_overlay()
+	_place_center_ring()
 
 
 func focus_after_load() -> void:
@@ -1269,6 +1321,10 @@ func _process(delta: float) -> void:
 			set_meta("draw_calls", draws)
 			set_meta("prims", prims)
 	_poll_focus()
+	if _motion_pending:
+		_motion_pending = false
+		_apply_hover(_last_screen)
+	_pulse_guide()
 	if overview:
 		_place_realm_labels()
 	if Engine.get_process_frames() % 12 == 0:
@@ -1286,6 +1342,9 @@ func _process(delta: float) -> void:
 		dir.y += 1
 	if dir != Vector2.ZERO and camera != null:
 		_pan_active = false
+		_emit_camera()
+		_clear_tip()
+		_hide_hover_ring()
 		var right := camera.global_transform.basis.x
 		var fwd := -camera.global_transform.basis.z
 		right.y = 0.0
@@ -1361,7 +1420,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			look_xz += before - after
 			_clamp_look()
 			_place_camera()
-		_update_hover(mot.position)
+		_last_screen = mot.position
+		_motion_pending = true
 		return
 	if event is InputEventMouseButton and event.pressed:
 		var mb := event as InputEventMouseButton
@@ -1381,7 +1441,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			dragging = false
 			get_viewport().set_input_as_handled()
 			return
-		if _modal() or GameState.input_locked:
+		if _modal() or GameState.input_locked or suspend > 0 or animating:
 			return
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			_left_click(mb.position)
@@ -1399,7 +1459,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			var pos := order_pos
 			order_press = false
 			dragging = false
-			if fire and not _modal() and not GameState.input_locked:
+			if fire and not _modal() and not GameState.input_locked and suspend == 0 and not animating:
 				_right_click(pos)
 				get_viewport().set_input_as_handled()
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -1410,18 +1470,22 @@ func _key(event: InputEventKey) -> void:
 	if event.keycode == KEY_HOME:
 		return_home()
 		return
+	var ui := _ui()
+	if ui and ui.has_method("tile_menu_key") and bool(ui.call("tile_menu_key", event)):
+		return
 	if event.keycode == KEY_ESCAPE:
-		var ui := get_tree().get_first_node_in_group("game_ui")
 		if ui and bool(ui.call("modal_open")):
 			ui.call("hide_modals")
 		else:
 			GameState.selected_uid = -1
 			GameState.inspected_uid = -1
+			_clear_block()
 			recompute_reach()
 			_refresh_overlay()
+			_apply_hover(_last_screen)
 			EventBus.state_changed.emit()
 		return
-	if _modal() or GameState.input_locked:
+	if _modal() or GameState.input_locked or suspend > 0:
 		return
 	if event.unicode == 63:
 		var help_ui := get_tree().get_first_node_in_group("game_ui")
@@ -1457,6 +1521,22 @@ func _key(event: InputEventKey) -> void:
 		if event.keycode == KEY_R:
 			desk_ui.call("open_desk", "diplomacy")
 			return
+	if event.keycode == KEY_Q:
+		_hot_standby()
+		return
+	if event.keycode == KEY_C and not event.ctrl_pressed and not event.alt_pressed:
+		_hot_city()
+		return
+	if event.keycode == KEY_V:
+		_hot_info()
+		return
+	if event.keycode == KEY_Z and event.ctrl_pressed:
+		_hot_undo()
+		return
+	if event.keycode == KEY_TAB:
+		_tab_target()
+		get_viewport().set_input_as_handled()
+		return
 	if event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER:
 		TurnManager.request_end()
 	elif event.keycode == KEY_SPACE:
@@ -1478,10 +1558,11 @@ func _key(event: InputEventKey) -> void:
 
 
 func _cycle_unit() -> void:
+	_emit_camera()
 	var ids: Array[int] = []
 	for u_v in GameState.units:
 		var u: Dictionary = u_v
-		if str(u.faction) == "song" and int(u.hp) > 0 and int(u.mp) > 0:
+		if str(u.faction) == "song" and int(u.hp) > 0 and int(u.mp) > 0 and not bool(u.get("skip_turn", false)):
 			ids.append(int(u.uid))
 	if ids.is_empty():
 		return
@@ -1496,6 +1577,7 @@ func _cycle_unit() -> void:
 
 
 func _zoom_at(screen: Vector2, step: int) -> void:
+	_emit_camera()
 	_pan_active = false
 	var before := screen_to_world(screen)
 	_debug_dist = 0.0
@@ -1515,102 +1597,75 @@ func _zoom_at(screen: Vector2, step: int) -> void:
 
 
 func _update_hover(screen: Vector2) -> void:
-	if _blocked(screen):
-		if hover_ok:
-			hover_ok = false
-			_refresh_overlay()
-		return
-	var world := screen_to_world(screen)
-	var h := HexGrid.pixel_to_axial(world)
-	var ok := DataDB.in_bounds(h.x, h.y)
-	if ok != hover_ok or h != hover:
-		hover = h
-		hover_ok = ok
-		_refresh_overlay()
+	_last_screen = screen
+	_apply_hover(screen)
 
 
 func _left_click(screen: Vector2) -> void:
-	var h := _hex_at(screen)
-	if h == Vector2i(999999, 0):
+	if suspend > 0 or animating:
 		return
-	var u := GameState.unit_at(h)
-	if not u.is_empty() and str(u.faction) == "song":
-		GameState.selected_uid = int(u.uid)
+	if _menu_open():
+		return
+	if _blocked(screen):
+		return
+	var h := _pick_hex(screen)
+	if h.x >= 999999:
+		return
+	var selected := GameState.selected_unit()
+	var occ := GameState.unit_at(h)
+	if not selected.is_empty() and not occ.is_empty() and int(occ.uid) == int(selected.uid):
+		_open_menu(h, Actions.plan_reach(h, int(selected.uid), reach_cost, reach_parent))
+		return
+	var moving := not selected.is_empty() and str(selected.faction) == "song" and int(selected.mp) > 0
+	if not moving:
+		_browse_click(h, occ)
+		return
+	if not occ.is_empty() and str(occ.faction) == "song" and int(occ.uid) != int(selected.uid):
+		GameState.selected_uid = int(occ.uid)
 		GameState.inspected_uid = -1
-	elif not u.is_empty():
-		GameState.inspected_uid = int(u.uid)
-	else:
-		GameState.selected_uid = -1
-		GameState.inspected_uid = -1
-		var city := DataDB.city_at_hex(h.x, h.y)
-		var gui := get_tree().get_first_node_in_group("game_ui")
-		if gui:
-			if city.is_empty():
-				gui.call("close_city")
-			else:
-				gui.call("open_city", str(city.get("id", "")))
-	full_refresh()
+		_clear_block()
+		full_refresh()
+		EventBus.state_changed.emit()
+		return
+	var plan := Actions.plan_reach(h, int(selected.uid), reach_cost, reach_parent)
+	var cmds: Array = Actions.enabled_cmds(plan)
+	if cmds.is_empty():
+		_reject_click(h, occ, plan)
+		return
+	if bool(plan.get("direct", false)) and cmds.size() == 1:
+		var only: Dictionary = cmds[0]
+		_run_action(str(only.get("id", "")), plan, h)
+		return
+	_open_menu(h, plan)
 
 
 func _right_click(screen: Vector2) -> void:
-	var h := _hex_at(screen)
-	if h == Vector2i(999999, 0):
+	if suspend > 0 or animating:
 		return
-	var u := GameState.selected_unit()
-	if u.is_empty() or str(u.faction) != "song":
+	if _menu_open():
+		_close_menu()
 		return
-	var enemy := GameState.unit_at(h)
-	if not enemy.is_empty() and DataDB.hostile(str(u.faction), str(enemy.faction)):
-		_try_attack(u, enemy)
+	if _blocked(screen):
 		return
-	if reach_cost.has(h):
-		_move_to(u, h)
-
-
-func _try_attack(u: Dictionary, enemy: Dictionary) -> void:
-	if _can_attack_now(u, enemy):
-		_open_preview(u, enemy)
+	var h := _pick_hex(screen)
+	if h.x >= 999999:
 		return
-	var spec := DataDB.unit_type(str(u.def_id))
-	var max_range := int(spec.get("range", 1)) if int(spec.get("ranged", 0)) > 0 else 1
-	var best := Vector2i(999999, 0)
-	var best_cost := 9999
-	var target := Vector2i(int(enemy.q), int(enemy.r))
-	for h_v in reach_cost.keys():
-		var h: Vector2i = h_v
-		var cost := int(reach_cost[h])
-		if cost >= int(u.mp):
-			continue
-		if HexGrid.distance(h, target) > max_range or HexGrid.distance(h, target) < 1:
-			continue
-		if cost < best_cost:
-			best_cost = cost
-			best = h
-	if best.x == 999999:
+	var selected := GameState.selected_unit()
+	var occ := GameState.unit_at(h)
+	if not selected.is_empty() and not occ.is_empty() and int(occ.uid) == int(selected.uid):
+		_open_menu(h, Actions.plan_reach(h, int(selected.uid), reach_cost, reach_parent))
 		return
-	await _move_to(u, best)
-	u = GameState.unit_by_id(int(u.uid))
-	enemy = GameState.unit_by_id(int(enemy.uid))
-	if u.is_empty() or enemy.is_empty():
+	if selected.is_empty() or str(selected.faction) != "song" or int(selected.mp) <= 0:
 		return
-	if _can_attack_now(u, enemy):
-		_open_preview(u, enemy)
-
-
-func _can_attack_now(u: Dictionary, enemy: Dictionary) -> bool:
-	if int(u.mp) <= 0:
-		return false
-	var spec := DataDB.unit_type(str(u.def_id))
-	var dist := HexGrid.distance(Vector2i(int(u.q), int(u.r)), Vector2i(int(enemy.q), int(enemy.r)))
-	if int(spec.get("ranged", 0)) > 0:
-		return dist >= 1 and dist <= int(spec.get("range", 0))
-	return dist == 1
-
-
-func _open_preview(atk: Dictionary, dfd: Dictionary) -> void:
-	var ui := get_tree().get_first_node_in_group("game_ui")
-	if ui:
-		ui.call("show_combat", CombatResolver.assess(atk, dfd), int(atk.uid), int(dfd.uid))
+	if not occ.is_empty() and str(occ.faction) == "song":
+		return
+	var plan := Actions.plan_reach(h, int(selected.uid), reach_cost, reach_parent)
+	if _hostile_cmd(plan):
+		_open_menu(h, plan)
+		return
+	var def_id := str(plan.get("default_id", ""))
+	if def_id == "move" or def_id == "enter" or def_id == "move_near":
+		_run_action(def_id, plan, h)
 
 
 func _move_to(u: Dictionary, dest: Vector2i) -> void:
@@ -1621,6 +1676,9 @@ func _move_to(u: Dictionary, dest: Vector2i) -> void:
 	if path.is_empty():
 		return
 	var cost := int(reach_cost[dest])
+	var prior: Dictionary = u.get("undo", {})
+	if prior.is_empty():
+		u["undo"] = {"q": start.x, "r": start.y, "mp": int(u.mp)}
 	suspend += 1
 	GameState.spend_mp(int(u.uid), cost)
 	GameState.set_pos(int(u.uid), dest)
@@ -1659,26 +1717,17 @@ func _refresh_overlay() -> void:
 				var dist := HexGrid.distance(Vector2i(int(u.q), int(u.r)), Vector2i(int(other.q), int(other.r)))
 				if dist >= 1 and dist <= max_range:
 					_stroke_hex(st, Vector2i(int(other.q), int(other.r)), Color("c44a3a"), 0.26)
-	if hover_ok:
-		_stroke_hex(st, hover, Color(1, 1, 1, 0.85), 0.16)
-	if DataDB.in_bounds(guide_hex.x, guide_hex.y):
-		_fill_hex(st, guide_hex, Color(0.91, 0.74, 0.32, 0.35))
-		_stroke_hex(st, guide_hex, Color("e7c98a"), 0.42)
-	if not overview and DataDB.in_bounds(_center_hex.x, _center_hex.y):
-		var selected_hex := Vector2i(999999, 0)
-		if not u.is_empty():
-			selected_hex = Vector2i(int(u.q), int(u.r))
-		if _center_hex != selected_hex and _center_hex != hover and _center_hex != guide_hex:
-			_stroke_hex(st, _center_hex, Color(0.95, 0.9, 0.72, 0.32), 0.1)
 	st.generate_normals()
 	_overlay.mesh = st.commit()
-	var mat := StandardMaterial3D.new()
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.vertex_color_use_as_albedo = true
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
-	_overlay.material_override = mat
+	if _overlay_mat == null:
+		_overlay_mat = StandardMaterial3D.new()
+		_overlay_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_overlay_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_overlay_mat.vertex_color_use_as_albedo = true
+		_overlay_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_overlay_mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+		_overlay.material_override = _overlay_mat
+	_place_center_ring()
 
 
 func _fill_hex(st: SurfaceTool, h: Vector2i, color: Color) -> void:
@@ -2039,3 +2088,625 @@ func debug_units() -> Array:
 			"mp": int(u.mp),
 		})
 	return out
+
+
+func _emit_camera() -> void:
+	if _menu_hold:
+		_menu_hold = false
+	EventBus.camera_moved.emit()
+
+
+func _ui() -> Node:
+	return get_tree().get_first_node_in_group("game_ui")
+
+
+func _menu_open() -> bool:
+	var ui := _ui()
+	return ui != null and ui.has_method("menu_is_open") and bool(ui.call("menu_is_open"))
+
+
+func _close_menu() -> void:
+	var ui := _ui()
+	if ui and ui.has_method("close_tile_menu"):
+		ui.call("close_tile_menu")
+
+
+func _clear_tip() -> void:
+	var ui := _ui()
+	if ui and ui.has_method("clear_hover_tip"):
+		ui.call("clear_hover_tip")
+
+
+func _clear_block() -> void:
+	var ui := _ui()
+	if ui and ui.has_method("set_block_line"):
+		ui.call("set_block_line", "")
+
+
+func _bind_menu() -> void:
+	if _menu_bound:
+		return
+	var ui := _ui()
+	if ui == null:
+		return
+	var menu = ui.get("tile_menu")
+	if menu == null:
+		return
+	menu.chosen.connect(_on_menu_choice)
+	_menu_bound = true
+
+
+func _on_menu_choice(id: String) -> void:
+	var plan := _menu_plan.duplicate(true)
+	var hex := _menu_hex
+	_menu_plan = {}
+	_run_action(id, plan, hex)
+
+
+func _reposition_menu() -> void:
+	if not _menu_open():
+		return
+	if not DataDB.in_bounds(_menu_hex.x, _menu_hex.y):
+		return
+	var sp := world_to_screen(HexGrid.axial_to_pixel(_menu_hex.x, _menu_hex.y))
+	var ui := _ui()
+	if ui and ui.has_method("move_tile_menu"):
+		ui.call("move_tile_menu", sp, _hex_radius_px())
+
+
+func _sync_px() -> void:
+	var band := zoom_index + (100 if overview else 0)
+	if _px_zoom == band and _px_per_wu > 0.2:
+		return
+	_px_zoom = band
+	if camera == null:
+		return
+	var a := world_to_screen(look_xz)
+	var b := world_to_screen(look_xz + Vector2(1.0, 0.0))
+	_px_per_wu = maxf(a.distance_to(b), 0.25)
+
+
+func _hex_radius_px() -> float:
+	var origin := world_to_screen(look_xz)
+	var edge := world_to_screen(look_xz + Vector2(HexGrid.SIZE, 0.0))
+	return maxf(origin.distance_to(edge), 8.0)
+
+
+func _ring_mesh() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var inner := HexGrid.SIZE - 2.4
+	var outer := HexGrid.SIZE + 2.4
+	for i in 6:
+		var a0 := deg_to_rad(60.0 * float(i) - 30.0)
+		var a1 := deg_to_rad(60.0 * float(i + 1) - 30.0)
+		var i0 := Vector3(cos(a0) * inner, 0.0, sin(a0) * inner)
+		var i1 := Vector3(cos(a1) * inner, 0.0, sin(a1) * inner)
+		var o0 := Vector3(cos(a0) * outer, 0.0, sin(a0) * outer)
+		var o1 := Vector3(cos(a1) * outer, 0.0, sin(a1) * outer)
+		var edge := float(i)
+		st.set_uv(Vector2(edge, 0.0))
+		st.add_vertex(i0)
+		st.set_uv(Vector2(edge + 1.0, 0.0))
+		st.add_vertex(i1)
+		st.set_uv(Vector2(edge, 1.0))
+		st.add_vertex(o0)
+		st.set_uv(Vector2(edge + 1.0, 0.0))
+		st.add_vertex(i1)
+		st.set_uv(Vector2(edge + 1.0, 1.0))
+		st.add_vertex(o1)
+		st.set_uv(Vector2(edge, 1.0))
+		st.add_vertex(o0)
+	st.generate_normals()
+	return st.commit()
+
+
+func _fill_mesh() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var center := Vector3.ZERO
+	var rad := HexGrid.SIZE * 0.92
+	for i in 6:
+		var a0 := deg_to_rad(60.0 * float(i) - 30.0)
+		var a1 := deg_to_rad(60.0 * float(i + 1) - 30.0)
+		var p0 := Vector3(cos(a0) * rad, 0.0, sin(a0) * rad)
+		var p1 := Vector3(cos(a1) * rad, 0.0, sin(a1) * rad)
+		st.set_uv(Vector2(0.5, 0.5))
+		st.add_vertex(center)
+		st.set_uv(Vector2(0.0, 0.0))
+		st.add_vertex(p0)
+		st.set_uv(Vector2(1.0, 0.0))
+		st.add_vertex(p1)
+	st.generate_normals()
+	return st.commit()
+
+
+func _hex_node(node_name: String, mesh: ArrayMesh, is_fill: bool) -> MeshInstance3D:
+	var inst := MeshInstance3D.new()
+	inst.name = node_name
+	inst.mesh = mesh
+	inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mat := ShaderMaterial.new()
+	mat.shader = _hover_shader
+	mat.set_shader_parameter("is_fill", 1 if is_fill else 0)
+	inst.material_override = mat
+	inst.visible = false
+	add_child(inst)
+	return inst
+
+
+func _paint_hex(node: MeshInstance3D, hex: Vector2i, style_id: int, color: Color, design_w: float, hatch: float, is_fill: bool, fill_color: Color) -> void:
+	if node == null:
+		return
+	if not DataDB.in_bounds(hex.x, hex.y):
+		node.visible = false
+		return
+	var p := HexGrid.axial_to_pixel(hex.x, hex.y)
+	var lift := 0.22 if is_fill else 0.34
+	node.position = Vector3(p.x, _height_of(hex) + lift, p.y)
+	node.visible = true
+	var mat := node.material_override as ShaderMaterial
+	if mat == null:
+		return
+	_sync_px()
+	mat.set_shader_parameter("style_id", style_id)
+	mat.set_shader_parameter("line_color", color)
+	mat.set_shader_parameter("fill_color", fill_color)
+	mat.set_shader_parameter("hatch_alpha", hatch)
+	mat.set_shader_parameter("design_w", design_w)
+	mat.set_shader_parameter("zoom_band", 0 if overview else zoom_index)
+	mat.set_shader_parameter("px_per_wu", _px_per_wu)
+	mat.set_shader_parameter("is_fill", 1 if is_fill else 0)
+	mat.set_shader_parameter("pulse", 1.0)
+
+
+func _show_hover_ring(hex: Vector2i, plan: Dictionary) -> void:
+	var style := str(plan.get("style", "empty"))
+	var color: Color = plan.get("color", Color.WHITE)
+	var design := float(plan.get("design_w", 0.16))
+	var shader_id := int(plan.get("shader", 0))
+	var hatch := float(plan.get("hatch", 0.0))
+	if style == "impassable":
+		hatch = 0.2
+	_paint_hex(_hover_ring, hex, shader_id, color, design, 0.0, false, Color(0, 0, 0, 0))
+	if hatch > 0.001:
+		_paint_hex(_hover_fill, hex, 0, color, design, hatch, true, Color(0, 0, 0, 0))
+	elif _hover_fill:
+		_hover_fill.visible = false
+
+
+func _hide_hover_ring() -> void:
+	hover_ok = false
+	hover_plan = {}
+	if _hover_ring:
+		_hover_ring.visible = false
+	if _hover_fill:
+		_hover_fill.visible = false
+
+
+func _place_center_ring() -> void:
+	if _center_ring == null:
+		return
+	var hide := overview or not DataDB.in_bounds(_center_hex.x, _center_hex.y)
+	if not hide:
+		var selected := GameState.selected_unit()
+		var selected_hex := Vector2i(999999, 0)
+		if not selected.is_empty():
+			selected_hex = Vector2i(int(selected.q), int(selected.r))
+		if _center_hex == selected_hex or (hover_ok and _center_hex == hover) or _center_hex == guide_hex:
+			hide = true
+	if hide:
+		_center_ring.visible = false
+		return
+	_paint_hex(_center_ring, _center_hex, 0, Color(0.95, 0.9, 0.72, 0.32), 0.1, 0.0, false, Color(0, 0, 0, 0))
+
+
+func _pulse_guide() -> void:
+	if _guide_ring == null:
+		return
+	if overview or not DataDB.in_bounds(guide_hex.x, guide_hex.y):
+		_guide_ring.visible = false
+		if _guide_fill:
+			_guide_fill.visible = false
+		return
+	var pulse := 0.8 + 0.2 * sin(float(Time.get_ticks_msec()) / 1000.0 * TAU / 1.2)
+	var gold := Color("e7c98a")
+	_paint_hex(_guide_ring, guide_hex, 1, gold, 0.42, 0.0, false, Color(0, 0, 0, 0))
+	_paint_hex(_guide_fill, guide_hex, 0, gold, 0.42, 0.0, true, Color(gold.r, gold.g, gold.b, 0.35))
+	var ring_mat := _guide_ring.material_override as ShaderMaterial
+	var fill_mat := _guide_fill.material_override as ShaderMaterial
+	if ring_mat:
+		ring_mat.set_shader_parameter("pulse", pulse)
+	if fill_mat:
+		fill_mat.set_shader_parameter("pulse", pulse)
+
+
+func _load_cursors() -> void:
+	var hi := false
+	if not OS.has_feature("web"):
+		hi = DisplayServer.screen_get_scale() >= 2.0
+	for kind_v in CURSOR_HOT.keys():
+		var kind := str(kind_v)
+		var path := "res://ui/cursors/png/%s%s.png" % [kind, "@2x" if hi else ""]
+		if ResourceLoader.exists(path):
+			_cursors[kind] = load(path)
+
+
+func _apply_cursor(kind: String) -> void:
+	if kind == _cursor_kind:
+		return
+	_cursor_kind = kind
+	var tex: Texture2D = _cursors.get(kind, null)
+	if tex == null:
+		Input.set_custom_mouse_cursor(null)
+		return
+	var hot: Vector2 = CURSOR_HOT.get(kind, Vector2(2, 2))
+	if not OS.has_feature("web") and DisplayServer.screen_get_scale() >= 2.0:
+		hot *= 2.0
+	Input.set_custom_mouse_cursor(tex, Input.CURSOR_ARROW, hot)
+
+
+func _apply_hover(screen: Vector2) -> void:
+	if camera == null:
+		return
+	_sync_px()
+	if dragging:
+		_apply_cursor("cur_drag")
+		_hide_hover_ring()
+		_clear_tip()
+		if _menu_open():
+			_close_menu()
+		return
+	if suspend > 0 or animating or _modal() or _menu_open():
+		_clear_tip()
+		if not _menu_open():
+			_hide_hover_ring()
+		_apply_cursor("cur_default")
+		return
+	if _blocked(screen):
+		_hide_hover_ring()
+		_clear_tip()
+		_apply_cursor("cur_default")
+		return
+	var h := _pick_hex(screen)
+	if h.x >= 999999 or not DataDB.in_bounds(h.x, h.y):
+		_hide_hover_ring()
+		_clear_tip()
+		_apply_cursor("cur_default")
+		return
+	hover = h
+	hover_ok = true
+	var plan := Actions.plan_reach(h, GameState.selected_uid, reach_cost, reach_parent)
+	hover_plan = plan
+	_show_hover_ring(h, plan)
+	_apply_cursor(str(plan.get("cursor", "cur_default")))
+	if GameState.input_locked:
+		_clear_tip()
+	else:
+		var ui := _ui()
+		if ui and ui.has_method("present_hover"):
+			ui.call("present_hover", h, plan)
+	_place_center_ring()
+
+
+func _pick_hex(screen: Vector2) -> Vector2i:
+	var none := Vector2i(999999, 0)
+	if camera == null:
+		return none
+	var unit_hex := _unit_hit(screen)
+	if unit_hex.x < 999999:
+		return unit_hex
+	var banner := _banner_hit(screen)
+	if banner.x < 999999:
+		return banner
+	var ground := HexGrid.pixel_to_axial(screen_to_world(screen))
+	if DataDB.in_bounds(ground.x, ground.y):
+		return ground
+	return none
+
+
+func _unit_hit(screen: Vector2) -> Vector2i:
+	var none := Vector2i(999999, 0)
+	var radius := _hex_radius_px()
+	var best := none
+	var best_d := 100000.0
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		if int(u.hp) <= 0:
+			continue
+		var ax := Vector2i(int(u.q), int(u.r))
+		var sp := world_to_screen(HexGrid.axial_to_pixel(ax.x, ax.y))
+		var rect := Rect2(sp.x - radius * 0.4, sp.y - radius * 0.6, radius * 0.8, radius * 1.2)
+		if rect.has_point(screen):
+			var dist := sp.distance_to(screen)
+			if dist < best_d:
+				best_d = dist
+				best = ax
+	return best
+
+
+func _banner_hit(screen: Vector2) -> Vector2i:
+	var none := Vector2i(999999, 0)
+	for c_v in DataDB.cities:
+		var city: Dictionary = c_v
+		var ax := Vector2i(int(city.q), int(city.r))
+		var px := HexGrid.axial_to_pixel(ax.x, ax.y)
+		var kind := _cluster_kind(city)
+		var by := 11.2
+		if kind == "walled":
+			by = 13.2
+		elif kind == "capital":
+			by = 20.4
+		var center := Vector3(px.x + 0.4, _height_of(ax) + 0.04 + by, px.y)
+		if camera.is_position_behind(center):
+			continue
+		var sp := camera.unproject_position(center)
+		var sp_r := camera.unproject_position(center + Vector3(4.1, 0.0, 0.0))
+		var sp_u := camera.unproject_position(center + Vector3(0.0, 0.9, 0.0))
+		var hw := absf(sp_r.x - sp.x)
+		var hh := absf(sp_u.y - sp.y)
+		var rect := Rect2(sp.x - hw, sp.y - hh, hw * 2.0, hh * 2.0)
+		if rect.has_point(screen):
+			return ax
+	return none
+
+
+func _browse_click(h: Vector2i, occ: Dictionary) -> void:
+	_clear_block()
+	var gui := _ui()
+	if not occ.is_empty() and str(occ.faction) == "song":
+		GameState.selected_uid = int(occ.uid)
+		GameState.inspected_uid = -1
+		if gui:
+			gui.call("close_city")
+	elif not occ.is_empty():
+		GameState.inspected_uid = int(occ.uid)
+	else:
+		GameState.inspected_uid = -1
+		var city := DataDB.city_at_hex(h.x, h.y)
+		if gui:
+			if city.is_empty():
+				gui.call("close_city")
+			else:
+				gui.call("open_city", str(city.get("id", "")))
+	full_refresh()
+	EventBus.state_changed.emit()
+
+
+func _reject_click(h: Vector2i, occ: Dictionary, plan: Dictionary) -> void:
+	var ui := _ui()
+	if ui and ui.has_method("shake_tip"):
+		ui.call("shake_tip")
+	if not occ.is_empty() and DataDB.hostile("song", str(occ.faction)):
+		GameState.inspected_uid = int(occ.uid)
+		var why := str(plan.get("reason", ""))
+		if why == "":
+			why = "打不到"
+		if ui and ui.has_method("set_block_line"):
+			ui.call("set_block_line", "打不到：" + why)
+		EventBus.state_changed.emit()
+	_note_blocked(h, plan)
+
+
+func _note_blocked(h: Vector2i, plan: Dictionary) -> void:
+	if GameState.hint_blocked_seen:
+		return
+	if str(plan.get("style", "")) != "impassable":
+		return
+	var terr := DataDB.terrain(DataDB.terrain_id(h.x, h.y))
+	var tname := str(terr.get("name", ""))
+	if tname != "湖泊" and tname != "海洋":
+		return
+	GameState.hint_blocked_seen = true
+	AdvisorSystem.say("blocked_first")
+
+
+func _hostile_cmd(plan: Dictionary) -> bool:
+	if bool(plan.get("hostile", false)):
+		return true
+	for c_v in Actions.enabled_cmds(plan):
+		var cmd: Dictionary = c_v
+		var cid := str(cmd.get("id", ""))
+		if cid == "attack" or cid == "ranged" or cid == "move_attack":
+			return true
+	return false
+
+
+func _open_menu(hex: Vector2i, plan: Dictionary) -> void:
+	hover = hex
+	hover_ok = true
+	hover_plan = plan
+	_show_hover_ring(hex, plan)
+	_menu_hex = hex
+	_menu_plan = plan
+	_bind_menu()
+	var sp := world_to_screen(HexGrid.axial_to_pixel(hex.x, hex.y))
+	var rad := _hex_radius_px()
+	var ui := _ui()
+	if ui == null or not ui.has_method("open_tile_menu"):
+		return
+	var rough_h := 96.0 + float(plan.get("actions", []).size()) * 48.0
+	var placed: Dictionary = Actions.place_card(sp, rad, Vector2(232, rough_h))
+	if bool(placed.get("nudge", false)):
+		_menu_hold = true
+		focus_smooth(HexGrid.axial_to_pixel(hex.x, hex.y), 0.2)
+	ui.call("clear_hover_tip")
+	ui.call("open_tile_menu", plan, hex, sp, rad)
+	_hint_menu(plan)
+
+
+func _hint_menu(plan: Dictionary) -> void:
+	if bool(plan.get("hostile", false)) and not GameState.hint_enemy_menu_seen:
+		GameState.hint_enemy_menu_seen = true
+		GameState.hint_menu_seen = true
+		AdvisorSystem.say("menu_enemy")
+		return
+	if not GameState.hint_menu_seen:
+		GameState.hint_menu_seen = true
+		AdvisorSystem.say("menu_first")
+
+
+func _run_action(id: String, plan: Dictionary, hex: Vector2i) -> void:
+	var u := GameState.selected_unit()
+	if id == "cancel":
+		return
+	if id == "deselect":
+		GameState.selected_uid = -1
+		GameState.inspected_uid = -1
+		_clear_block()
+		full_refresh()
+		EventBus.state_changed.emit()
+		return
+	if id == "info":
+		_open_detail(plan, hex)
+		return
+	if id == "city":
+		var city := DataDB.city_at_hex(hex.x, hex.y)
+		if city.is_empty() and not u.is_empty():
+			city = DataDB.city_at_hex(int(u.q), int(u.r))
+		var ui := _ui()
+		if ui and not city.is_empty():
+			ui.call("open_city", str(city.get("id", "")))
+		return
+	if id == "fortify":
+		if not u.is_empty():
+			GameState.fortify(int(u.uid))
+			full_refresh()
+		return
+	if id == "standby":
+		_hot_standby()
+		return
+	if id == "undo":
+		_hot_undo()
+		return
+	if id == "move" or id == "enter":
+		if not u.is_empty():
+			await _move_to(u, hex)
+		return
+	if id == "move_near":
+		var landing: Vector2i = plan.get("landing", Vector2i(999999, 0))
+		if landing.x < 999999 and not u.is_empty():
+			await _move_to(u, landing)
+		return
+	if id == "attack" or id == "ranged":
+		var enemy := GameState.unit_at(hex)
+		if not u.is_empty() and not enemy.is_empty():
+			_strike_now(int(u.uid), int(enemy.uid))
+		return
+	if id == "move_attack":
+		await _move_then_attack(plan, hex)
+
+
+func _open_detail(plan: Dictionary, hex: Vector2i) -> void:
+	var preview: Dictionary = {}
+	for a_v in plan.get("actions", []):
+		var action: Dictionary = a_v
+		var pv: Dictionary = action.get("preview", {})
+		if not pv.is_empty():
+			preview = pv
+			break
+	var occ := GameState.unit_at(hex)
+	if preview.is_empty() or occ.is_empty():
+		if not occ.is_empty():
+			GameState.inspected_uid = int(occ.uid)
+			EventBus.state_changed.emit()
+		return
+	var ui := _ui()
+	if ui == null:
+		return
+	var sp := world_to_screen(HexGrid.axial_to_pixel(hex.x, hex.y))
+	if ui.has_method("arm_combat_return"):
+		ui.call("arm_combat_return", plan, hex, sp, _hex_radius_px())
+	ui.call("show_combat", preview, GameState.selected_uid, int(occ.uid))
+
+
+func _strike_now(atk_uid: int, def_uid: int) -> void:
+	var dfd := GameState.unit_by_id(def_uid)
+	if dfd.is_empty():
+		return
+	animate_strike(atk_uid, Vector2i(int(dfd.q), int(dfd.r)))
+	GameState.resolve_attack(atk_uid, def_uid)
+	full_refresh()
+
+
+func _move_then_attack(plan: Dictionary, hex: Vector2i) -> void:
+	var u := GameState.selected_unit()
+	if u.is_empty():
+		return
+	var landing: Vector2i = plan.get("landing", Vector2i(999999, 0))
+	var enemy := GameState.unit_at(hex)
+	if enemy.is_empty() or landing.x >= 999999:
+		return
+	var eid := int(enemy.uid)
+	var uid := int(u.uid)
+	await _move_to(u, landing)
+	u = GameState.unit_by_id(uid)
+	enemy = GameState.unit_by_id(eid)
+	if u.is_empty() or enemy.is_empty() or int(u.mp) <= 0:
+		return
+	_strike_now(uid, eid)
+
+
+func _hot_standby() -> void:
+	var u := GameState.selected_unit()
+	if u.is_empty() or str(u.faction) != "song" or int(u.mp) <= 0:
+		return
+	u["skip_turn"] = true
+	GameState.last_event = "%s 待命。" % str(u.name)
+	EventBus.state_changed.emit()
+
+
+func _hot_undo() -> void:
+	var u := GameState.selected_unit()
+	if u.is_empty():
+		return
+	var snap: Dictionary = u.get("undo", {})
+	if snap.is_empty():
+		return
+	u.q = int(snap.get("q", u.q))
+	u.r = int(snap.get("r", u.r))
+	u.mp = int(snap.get("mp", u.mp))
+	u.erase("undo")
+	GameState.last_event = "%s 撤回了移动。" % str(u.name)
+	full_refresh()
+	EventBus.state_changed.emit()
+
+
+func _hot_city() -> void:
+	var u := GameState.selected_unit()
+	if u.is_empty():
+		return
+	var city := DataDB.city_at_hex(int(u.q), int(u.r))
+	if city.is_empty() or str(city.get("faction", "")) != "song":
+		return
+	var ui := _ui()
+	if ui:
+		ui.call("open_city", str(city.get("id", "")))
+
+
+func _hot_info() -> void:
+	if not hover_ok or hover_plan.is_empty():
+		return
+	_open_detail(hover_plan, hover)
+
+
+func _tab_target() -> void:
+	var u := GameState.selected_unit()
+	if u.is_empty() or str(u.faction) != "song" or int(u.mp) <= 0:
+		return
+	var targets: Array[Vector2i] = []
+	for other_v in GameState.units:
+		var other: Dictionary = other_v
+		if int(other.hp) <= 0:
+			continue
+		if not DataDB.hostile(str(u.faction), str(other.faction)):
+			continue
+		var h := Vector2i(int(other.q), int(other.r))
+		var plan := Actions.plan_reach(h, int(u.uid), reach_cost, reach_parent)
+		if _hostile_cmd(plan):
+			targets.append(h)
+	if targets.is_empty():
+		return
+	_tab_i = (_tab_i + 1) % targets.size()
+	var dest: Vector2i = targets[_tab_i]
+	_open_menu(dest, Actions.plan_reach(dest, int(u.uid), reach_cost, reach_parent))

@@ -3,8 +3,8 @@ extends Control
 const Kit = preload("res://scripts/ui/kit.gd")
 
 const LINES := [
-	"先点延州守军。左键，选自己人。城下那支西夏先别惹。",
-	"右键点这一格亮着的地方。绿格子是今天还走得动的路。",
+	"先点刘平部。左键，选自己人。城下那支西夏先别惹。",
+	"鼠标先放到这格亮着的地方，看看要走几步。再左键点一下，人就过去了。绿格子是这个月还走得到的路。",
 	"右下有小地图。点一格就到那一格。迷了路，按回延州，或按 Home。",
 	"空格换下一支还能动的宋军。殿前司远在开封，空格会把镜头带过去。",
 	"看明白了就按结束回合，或按回车。西夏会自己动。",
@@ -16,6 +16,7 @@ var host: GameUI
 var shade: Shade
 var bubble: PanelContainer
 var body: Label
+var note: Label
 var dots: Label
 var skip_btn: Button
 var next_btn: Button
@@ -94,6 +95,11 @@ func _ensure() -> void:
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(body)
+	note = Kit.label("用惯右键的话，右键也行。", "CaptionLabel")
+	note.add_theme_font_size_override("font_size", 13)
+	note.add_theme_color_override("font_color", Color("f3e9d2"))
+	note.visible = false
+	box.add_child(note)
 	var foot := HBoxContainer.new()
 	foot.add_theme_constant_override("separation", 8)
 	box.add_child(foot)
@@ -130,6 +136,8 @@ func _show_step() -> void:
 		marks += "● " if i == step else "○ "
 	dots.text = marks + "  %d / %d" % [step + 1, LINES.size()]
 	next_btn.text = "知道了" if step == LINES.size() - 1 else "下一步"
+	if note:
+		note.visible = step == 1
 	if host:
 		host.btn_map["tutor_skip"] = skip_btn
 		host.btn_map["tutor_next"] = next_btn
@@ -146,7 +154,7 @@ func _remember() -> void:
 			guide = Vector2i(int(garrison.q), int(garrison.r))
 	elif step == 1:
 		var u := GameState.selected_unit()
-		if u.is_empty() or str(u.name) != "延州守军":
+		if u.is_empty() or str(u.name) != "刘平部":
 			u = _garrison()
 		if not u.is_empty():
 			track_uid = int(u.uid)
@@ -163,14 +171,21 @@ func _process(_delta: float) -> void:
 		size = vp
 	_place()
 	_check()
+	if step == 1 and body != null and active:
+		var map := _map()
+		if map != null and map.hover_ok and map.hover == guide and str(map.hover_plan.get("head", "")) != "":
+			body.text = "看见‘%s’没有？大宋的路况，我替您算好了。" % str(map.hover_plan.get("head", ""))
+		else:
+			body.text = LINES[1]
 
 
 func _place() -> void:
 	hole_global = _hole_for_step()
 	if bubble != null:
 		bubble.position = Vector2(280, 64)
-		bubble.size = Vector2(640, 176)
-		bubble.custom_minimum_size = Vector2(640, 176)
+		var tall := 210 if step == 1 else 176
+		bubble.size = Vector2(640, tall)
+		bubble.custom_minimum_size = Vector2(640, tall)
 	if shade == null:
 		return
 	shade.position = Vector2.ZERO
@@ -202,7 +217,7 @@ func _hole_for_step() -> Rect2:
 func _check() -> void:
 	if step == 0:
 		var picked := GameState.selected_unit()
-		if not picked.is_empty() and str(picked.name) == "延州守军":
+		if not picked.is_empty() and str(picked.name) == "刘平部":
 			_advance()
 	elif step == 1 and track_uid >= 0:
 		var moved := GameState.unit_by_id(track_uid)
@@ -238,6 +253,8 @@ func _advance() -> void:
 		return
 	_busy = true
 	step += 1
+	if host and host.has_method("close_tile_menu"):
+		host.close_tile_menu()
 	if step >= LINES.size():
 		_finish()
 	else:
@@ -267,7 +284,7 @@ func _push_guide() -> void:
 func _garrison() -> Dictionary:
 	for u_v in GameState.units:
 		var u: Dictionary = u_v
-		if str(u.name) == "延州守军":
+		if str(u.name) == "刘平部":
 			return u
 	return {}
 

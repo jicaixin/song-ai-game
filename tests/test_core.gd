@@ -1,6 +1,7 @@
 extends RefCounted
 
 const TechPlan = preload("res://scripts/ui/tech_plan.gd")
+const TileActions = preload("res://scripts/core/tile_actions.gd")
 
 var failed := 0
 
@@ -12,6 +13,7 @@ func run_tests() -> int:
 	check_geo_and_cities()
 	check_path()
 	check_save_roundtrip()
+	check_tiles()
 	check_tech()
 	check_camera()
 	check_font()
@@ -228,13 +230,139 @@ func check_save_roundtrip() -> void:
 	GameState.year = 999
 	check("load", GameState.from_save(data) and GameState.year == year and GameState.turn == turn)
 	check("advisor", GameState.advisor_text.find("豆沙包") >= 0, GameState.advisor_text)
-	check("controls_line", text.find("空格") >= 0 and text.find("右键") >= 0, text)
+	check("controls_line", text.find("左键") >= 0 and text.find("右键") < 0 and text.find("豆沙包") >= 0, text)
 	check("tutorial_flag", data.has("tutorial_done") and not bool(data.get("tutorial_done")))
 	check("design", GameState.start_design("A01") and GameState.tech_designing == "A01")
 	var packed_design: String = SaveManager.pack(GameState.to_save())
 	GameState.tech_designing = ""
 	var design_data: Dictionary = SaveManager.unpack(packed_design)
 	check("design_load", GameState.from_save(design_data) and GameState.tech_designing == "A01", GameState.tech_designing)
+
+
+func check_tiles() -> void:
+	GameState.new_game()
+	var liu := _named_unit("刘平部")
+	check("liu", not liu.is_empty(), "missing 刘平部")
+	if liu.is_empty():
+		return
+	GameState.selected_uid = int(liu.uid)
+	var info := Pathfinder.reachable(liu)
+	var cost: Dictionary = info.get("cost", {})
+	var parent: Dictionary = info.get("parent", {})
+	var saw_move := false
+	for h_v in cost.keys():
+		var h: Vector2i = h_v
+		if not GameState.unit_at(h).is_empty():
+			continue
+		if not DataDB.city_at_hex(h.x, h.y).is_empty():
+			continue
+		var plan := TileActions.plan_reach(h, int(liu.uid), cost, parent)
+		if bool(plan.get("direct", false)):
+			var head := str(plan.get("head", ""))
+			var n := TileActions.enabled_cmds(plan).size()
+			check("tile_direct", head.begins_with("移动") and not head.begins_with("移动并") and n == 1, head)
+			saw_move = true
+			break
+	check("tile_direct_found", saw_move, str(cost.size()))
+	var enemy := _named_unit("铁鹞子")
+	if enemy.is_empty():
+		for u_v in GameState.units:
+			var cand: Dictionary = u_v
+			if DataDB.hostile("song", str(cand.faction)) and int(cand.hp) > 0:
+				enemy = cand
+				break
+	check("tile_enemy", not enemy.is_empty(), "")
+	if enemy.is_empty():
+		return
+	var saved_q := int(enemy.q)
+	var saved_r := int(enemy.r)
+	var home := Vector2i(int(liu.q), int(liu.r))
+	var spot := home
+	for d in HexGrid.DIRS:
+		var cand_h: Vector2i = home + d
+		if not DataDB.in_bounds(cand_h.x, cand_h.y):
+			continue
+		var occ := GameState.unit_at(cand_h)
+		if occ.is_empty() or int(occ.uid) == int(enemy.uid):
+			spot = cand_h
+			break
+	enemy.q = spot.x
+	enemy.r = spot.y
+	var q0 := int(liu.q)
+	var r0 := int(liu.r)
+	var mp0 := int(liu.mp)
+	var atk := TileActions.plan(spot, int(liu.uid))
+	var ahead := str(atk.get("head", ""))
+	check("tile_attack", not bool(atk.get("direct", false)) and (ahead.begins_with("攻击") or ahead.begins_with("远程攻击")), ahead)
+	check("tile_pure", int(liu.q) == q0 and int(liu.r) == r0 and int(liu.mp) == mp0, "%d,%d mp %d" % [int(liu.q), int(liu.r), int(liu.mp)])
+	enemy.q = saved_q
+	enemy.r = saved_r
+	var far := TileActions.plan(Vector2i(saved_q, saved_r), int(liu.uid))
+	check("tile_pure_far", int(liu.q) == q0 and int(liu.r) == r0 and int(liu.mp) == mp0, str(far.get("head", "")))
+	var lake := Vector2i(999999, 0)
+	for row in DataDB.height:
+		for col in DataDB.width:
+			var ax := HexGrid.axial_from_offset(col, row)
+			if not GameState.unit_at(ax).is_empty():
+				continue
+			var terr := DataDB.terrain(DataDB.terrain_id(ax.x, ax.y))
+			if bool(terr.get("passable", true)):
+				continue
+			lake = ax
+			if str(terr.get("name", "")) == "湖泊":
+				break
+		if lake.x < 999999 and str(DataDB.terrain(DataDB.terrain_id(lake.x, lake.y)).get("name", "")) == "湖泊":
+			break
+	var blocked := TileActions.plan(lake, int(liu.uid))
+	check("tile_block", lake.x < 999999 and TileActions.enabled_cmds(blocked).size() == 0 and str(blocked.get("head", "")).find("不可通行") >= 0, str(blocked.get("head", "")))
+	liu.mp = 0
+	liu["undo"] = {"q": int(liu.q) + 1, "r": int(liu.r), "mp": 2}
+	var self_hex := Vector2i(int(liu.q), int(liu.r))
+	var self_plan := TileActions.plan(self_hex, int(liu.uid))
+	var fort := {}
+	var undo := {}
+	for a_v in self_plan.get("actions", []):
+		var action: Dictionary = a_v
+		if str(action.get("id", "")) == "fortify":
+			fort = action
+		if str(action.get("id", "")) == "undo":
+			undo = action
+	check("tile_fortify", not fort.is_empty() and not bool(fort.get("enabled", true)) and str(fort.get("reason", "")) == "本月已行动", str(fort))
+	check("tile_undo", not undo.is_empty() and bool(undo.get("enabled", false)), str(undo))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1040
+	var bad := 0
+	var held := 0
+	for _i in 100:
+		for radius in [15.0, 42.0, 105.0]:
+			var anchor := Vector2(rng.randf_range(0.0, 1280.0), rng.randf_range(0.0, 720.0))
+			var card := Vector2(232, 188)
+			var placed: Dictionary = TileActions.place_card(anchor, radius, card)
+			held += 1
+			if bool(placed.get("nudge", false)):
+				continue
+			var pos: Vector2 = placed.get("pos", Vector2.ZERO)
+			var rect := Rect2(pos, card)
+			var safe := Rect2(16, 60, 1248, 644)
+			var pad := float(radius) + 8.0
+			var hex := Rect2(anchor - Vector2(pad, pad), Vector2(pad * 2.0, pad * 2.0))
+			if not safe.encloses(rect) or rect.intersects(hex):
+				bad += 1
+	check("tile_place", bad == 0, "bad %d of %d" % [bad, held])
+	var packed: String = SaveManager.pack(GameState.to_save())
+	var data: Dictionary = SaveManager.unpack(packed)
+	check("tile_undo_save", GameState.from_save(data))
+	var restored := _named_unit("刘平部")
+	var snap: Dictionary = restored.get("undo", {})
+	check("tile_undo_load", int(snap.get("mp", -1)) == 2, str(snap))
+
+
+func _named_unit(unit_name: String) -> Dictionary:
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		if str(u.get("name", "")) == unit_name:
+			return u
+	return {}
 
 
 func _walk_tech_font(node: Node, small: Array) -> void:

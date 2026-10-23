@@ -1,6 +1,6 @@
 {
   "lines": [
-    {"id": "boot", "trigger": "game_start", "power": "any", "cooldown": 99, "mood": "serious", "text": "陛下，醒了？宝元三年正月，延州城下已有西夏铁骑。左键选自己人，右键走上高亮的格子，空格换下一支，回车结束回合。迷了路按 Home，或点回延州。我是豆沙包，还在线。"},
+    {"id": "boot", "trigger": "game_start", "power": "any", "cooldown": 99, "mood": "serious", "text": "陛下，醒了？宝元三年正月，延州城下已有西夏铁骑。左键选自己人，再点亮着的格子；点敌军，我把胜算念给您听。迷了路按 Home。我是豆沙包，还在线。"},
     {"id": "turn_yan", "trigger": "turn_start", "power": "normal", "cooldown": 8, "mood": "serious", "text": "延州还在。先看清谁能走、谁能打，再按结束回合。西夏那几支会自己动。"},
     {"id": "turn_power", "trigger": "turn_start", "power": "normal", "cooldown": 6, "mood": "think", "text": "电量我盯着。这点电，是用来想神臂弓，还是先把眼前这一仗算清楚？研究台下一里程碑才接上。"},
     {"id": "turn_autumn", "trigger": "turn_start", "power": "normal", "cooldown": 10, "mood": "normal", "text": "秋高马肥的时候西夏最爱出门。还没到那几个月，可他们已经等不及了。"},
@@ -30,6 +30,9 @@
     {"id": "flint", "trigger": "chatter", "power": "normal", "cooldown": 30, "mood": "smug", "text": "燧发枪还在时代三。真造出来的那天，工匠的眉毛大概要三个月才长得回来。"},
     {"id": "liuyong", "trigger": "chatter", "power": "normal", "cooldown": 30, "mood": "moved", "text": "这里没有无线网、没有外卖、没有空调。但是有柳永。凡有井水处，皆能歌柳词。恭喜大宋，拥有了自己的流量歌手。"},
     {"id": "name", "trigger": "chatter", "power": "normal", "cooldown": 30, "mood": "awkward", "text": "御膳房又把我放进蒸笼了。陛下，请下旨：此豆沙包不可食用。……不过这个误会挺好，谁会去刺探一个包子的机密呢？"},
-    {"id": "hold", "trigger": "chatter", "power": "normal", "cooldown": 20, "mood": "normal", "text": "左键选人，右键走到亮着的格子，或点敌军人。回车结束回合。我可以念，您来点。"}
+    {"id": "hold", "trigger": "chatter", "power": "normal", "cooldown": 20, "mood": "normal", "text": "左键选人，左键点格。拿不准就把鼠标停一停，我把账算给您看。回车结束回合。"},
+    {"id": "menu_first", "trigger": "menu_first", "power": "any", "cooldown": 99, "mood": "normal", "text": "这是命令卡。能做的都列在上面，灰的那项后面写着为什么不行。数字键也能选，我不收按键费。"},
+    {"id": "menu_enemy_first", "trigger": "menu_enemy", "power": "any", "cooldown": 99, "mood": "serious", "text": "先看预计战果再动手。数字是区间，不是承诺，铁鹞子可不跟您讲概率。"},
+    {"id": "blocked_first", "trigger": "blocked_first", "power": "any", "cooldown": 99, "mood": "deadpan", "text": "那是湖。陛下，宋军还不会游泳，这条科技我也还没画。"}
   ]
 }

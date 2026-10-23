@@ -1,4 +1,4 @@
-[gd_resource type="Theme" load_steps=277 format=3]
+[gd_resource type="Theme" load_steps=299 format=3]
 [ext_resource type="Texture2D" path="res://ui/components/png/btn_secondary_normal.png" id="1_btn_secondary_norm"]
 [ext_resource type="Texture2D" path="res://ui/components/png/btn_secondary_hover.png" id="2_btn_secondary_hove"]
 [ext_resource type="Texture2D" path="res://ui/components/png/btn_secondary_pressed.png" id="3_btn_secondary_pres"]
@@ -143,6 +143,19 @@
 [ext_resource type="Texture2D" path="res://ui/components/png/divider_cloud.png" id="138_divider_cloud"]
 [ext_resource type="Texture2D" path="res://ui/components/png/btn_close_normal.png" id="139_btn_close_normal"]
 [ext_resource type="Texture2D" path="res://ui/components/png/btn_close_pressed.png" id="140_btn_close_pressed"]
+
+
+[ext_resource type="Texture2D" path="res://ui/components/png/menu_card.png" id="200_menu_card"]
+[ext_resource type="Texture2D" path="res://ui/components/png/menu_forecast.png" id="201_menu_forecast"]
+[ext_resource type="Texture2D" path="res://ui/components/png/keycap_normal.png" id="202_keycap_normal"]
+[ext_resource type="Texture2D" path="res://ui/components/png/keycap_active.png" id="203_keycap_active"]
+[ext_resource type="Texture2D" path="res://ui/components/png/tooltip_map.png" id="204_tooltip_map"]
+[ext_resource type="Texture2D" path="res://ui/components/png/menu_row_normal.png" id="205_menu_row_normal"]
+[ext_resource type="Texture2D" path="res://ui/components/png/menu_row_hover.png" id="206_menu_row_hover"]
+[ext_resource type="Texture2D" path="res://ui/components/png/menu_row_pressed.png" id="207_menu_row_pressed"]
+[ext_resource type="Texture2D" path="res://ui/components/png/menu_row_disabled.png" id="208_menu_row_disabled"]
+[ext_resource type="Texture2D" path="res://ui/components/png/menu_row_default.png" id="209_menu_row_default"]
+[ext_resource type="Texture2D" path="res://ui/components/png/menu_row_reason.png" id="210_menu_row_reason"]
 
 [sub_resource type="StyleBoxTexture" id="sb_1_btn_secondary_normal"]
 content_margin_left = 14.0
@@ -1496,6 +1509,128 @@ texture_margin_top = 26.0
 texture_margin_right = 26.0
 texture_margin_bottom = 28.0
 
+
+[sub_resource type="StyleBoxTexture" id="sb_200_menu_card"]
+content_margin_left = 8.0
+content_margin_top = 8.0
+content_margin_right = 8.0
+content_margin_bottom = 10.0
+texture = ExtResource("200_menu_card")
+texture_margin_left = 14.0
+texture_margin_top = 14.0
+texture_margin_right = 14.0
+texture_margin_bottom = 16.0
+
+[sub_resource type="StyleBoxTexture" id="sb_201_menu_forecast"]
+content_margin_left = 10.0
+content_margin_top = 6.0
+content_margin_right = 10.0
+content_margin_bottom = 6.0
+texture = ExtResource("201_menu_forecast")
+texture_margin_left = 8.0
+texture_margin_top = 8.0
+texture_margin_right = 8.0
+texture_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxTexture" id="sb_202_keycap_normal"]
+content_margin_left = 4.0
+content_margin_top = 1.0
+content_margin_right = 4.0
+content_margin_bottom = 2.0
+texture = ExtResource("202_keycap_normal")
+texture_margin_left = 5.0
+texture_margin_top = 5.0
+texture_margin_right = 5.0
+texture_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxTexture" id="sb_203_keycap_active"]
+content_margin_left = 4.0
+content_margin_top = 1.0
+content_margin_right = 4.0
+content_margin_bottom = 2.0
+texture = ExtResource("203_keycap_active")
+texture_margin_left = 5.0
+texture_margin_top = 5.0
+texture_margin_right = 5.0
+texture_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxTexture" id="sb_204_tooltip_map"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 10.0
+texture = ExtResource("204_tooltip_map")
+texture_margin_left = 10.0
+texture_margin_top = 10.0
+texture_margin_right = 10.0
+texture_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxTexture" id="sb_205_menu_row_normal"]
+content_margin_left = 10.0
+content_margin_top = 4.0
+content_margin_right = 10.0
+content_margin_bottom = 4.0
+texture = ExtResource("205_menu_row_normal")
+texture_margin_left = 10.0
+texture_margin_top = 8.0
+texture_margin_right = 10.0
+texture_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxTexture" id="sb_206_menu_row_hover"]
+content_margin_left = 10.0
+content_margin_top = 4.0
+content_margin_right = 10.0
+content_margin_bottom = 4.0
+texture = ExtResource("206_menu_row_hover")
+texture_margin_left = 10.0
+texture_margin_top = 8.0
+texture_margin_right = 10.0
+texture_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxTexture" id="sb_207_menu_row_pressed"]
+content_margin_left = 10.0
+content_margin_top = 4.0
+content_margin_right = 10.0
+content_margin_bottom = 4.0
+texture = ExtResource("207_menu_row_pressed")
+texture_margin_left = 10.0
+texture_margin_top = 8.0
+texture_margin_right = 10.0
+texture_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxTexture" id="sb_208_menu_row_disabled"]
+content_margin_left = 10.0
+content_margin_top = 4.0
+content_margin_right = 10.0
+content_margin_bottom = 4.0
+texture = ExtResource("208_menu_row_disabled")
+texture_margin_left = 10.0
+texture_margin_top = 8.0
+texture_margin_right = 10.0
+texture_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxTexture" id="sb_209_menu_row_default"]
+content_margin_left = 10.0
+content_margin_top = 4.0
+content_margin_right = 10.0
+content_margin_bottom = 4.0
+texture = ExtResource("209_menu_row_default")
+texture_margin_left = 10.0
+texture_margin_top = 8.0
+texture_margin_right = 10.0
+texture_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxTexture" id="sb_210_menu_row_reason"]
+content_margin_left = 10.0
+content_margin_top = 4.0
+content_margin_right = 10.0
+content_margin_bottom = 4.0
+texture = ExtResource("210_menu_row_reason")
+texture_margin_left = 10.0
+texture_margin_top = 8.0
+texture_margin_right = 10.0
+texture_margin_bottom = 8.0
+
 [resource]
 default_font = ExtResource("f2")
 default_font_size = 15
@@ -2148,3 +2283,79 @@ Window/constants/title_height = 40
 Window/icons/close = ExtResource("139_btn_close_normal")
 Window/icons/close_pressed = ExtResource("140_btn_close_pressed")
 AcceptDialog/styles/panel = SubResource("sb_19_panel_paper")
+
+MenuCard/base_type = &"PanelContainer"
+MenuCard/styles/panel = SubResource("sb_200_menu_card")
+MenuForecast/base_type = &"PanelContainer"
+MenuForecast/styles/panel = SubResource("sb_201_menu_forecast")
+Keycap/base_type = &"PanelContainer"
+Keycap/styles/panel = SubResource("sb_202_keycap_normal")
+KeycapActive/base_type = &"PanelContainer"
+KeycapActive/styles/panel = SubResource("sb_203_keycap_active")
+TooltipMap/base_type = &"PanelContainer"
+TooltipMap/styles/panel = SubResource("sb_204_tooltip_map")
+MenuRow/base_type = &"Button"
+MenuRow/styles/normal = SubResource("sb_205_menu_row_normal")
+MenuRow/styles/hover = SubResource("sb_206_menu_row_hover")
+MenuRow/styles/pressed = SubResource("sb_207_menu_row_pressed")
+MenuRow/styles/disabled = SubResource("sb_208_menu_row_disabled")
+MenuRow/styles/hover_pressed = SubResource("sb_207_menu_row_pressed")
+MenuRow/styles/focus = SubResource("sb_focus")
+MenuRow/colors/font_color = Color(0.953, 0.914, 0.824, 1)
+MenuRow/colors/font_hover_color = Color(1, 1, 1, 1)
+MenuRow/colors/font_pressed_color = Color(0.953, 0.914, 0.824, 1)
+MenuRow/colors/font_disabled_color = Color(0.639, 0.580, 0.510, 1)
+MenuRow/colors/font_focus_color = Color(0.953, 0.914, 0.824, 1)
+MenuRow/fonts/font = ExtResource("f1")
+MenuRow/font_sizes/font_size = 16
+MenuRow/constants/icon_max_width = 24
+MenuRow/constants/h_separation = 8
+MenuRowDefault/base_type = &"Button"
+MenuRowDefault/styles/normal = SubResource("sb_209_menu_row_default")
+MenuRowDefault/styles/hover = SubResource("sb_206_menu_row_hover")
+MenuRowDefault/styles/pressed = SubResource("sb_207_menu_row_pressed")
+MenuRowDefault/styles/disabled = SubResource("sb_208_menu_row_disabled")
+MenuRowDefault/styles/hover_pressed = SubResource("sb_207_menu_row_pressed")
+MenuRowDefault/styles/focus = SubResource("sb_focus")
+MenuRowDefault/colors/font_color = Color(0.910, 0.796, 0.486, 1)
+MenuRowDefault/colors/font_hover_color = Color(1, 1, 1, 1)
+MenuRowDefault/colors/font_pressed_color = Color(0.953, 0.914, 0.824, 1)
+MenuRowDefault/colors/font_disabled_color = Color(0.639, 0.580, 0.510, 1)
+MenuRowDefault/colors/font_focus_color = Color(0.910, 0.796, 0.486, 1)
+MenuRowDefault/fonts/font = ExtResource("f1")
+MenuRowDefault/font_sizes/font_size = 16
+MenuRowDefault/constants/icon_max_width = 24
+MenuRowReason/base_type = &"PanelContainer"
+MenuRowReason/styles/panel = SubResource("sb_210_menu_row_reason")
+MenuTitleLabel/base_type = &"Label"
+MenuTitleLabel/colors/font_color = Color(0.953, 0.914, 0.824, 1)
+MenuTitleLabel/fonts/font = ExtResource("f1")
+MenuTitleLabel/font_sizes/font_size = 16
+MenuSubLabel/base_type = &"Label"
+MenuSubLabel/colors/font_color = Color(0.663, 0.710, 0.682, 1)
+MenuSubLabel/fonts/font = ExtResource("f2")
+MenuSubLabel/font_sizes/font_size = 13
+MenuReasonLabel/base_type = &"Label"
+MenuReasonLabel/colors/font_color = Color(0.663, 0.710, 0.682, 1)
+MenuReasonLabel/fonts/font = ExtResource("f2")
+MenuReasonLabel/font_sizes/font_size = 13
+KeycapLabel/base_type = &"Label"
+KeycapLabel/colors/font_color = Color(0.953, 0.914, 0.824, 1)
+KeycapLabel/fonts/font = ExtResource("f1")
+KeycapLabel/font_sizes/font_size = 13
+ForecastGoodLabel/base_type = &"Label"
+ForecastGoodLabel/colors/font_color = Color(0.624, 0.839, 0.651, 1)
+ForecastGoodLabel/fonts/font = ExtResource("f1")
+ForecastGoodLabel/font_sizes/font_size = 16
+ForecastBadLabel/base_type = &"Label"
+ForecastBadLabel/colors/font_color = Color(0.941, 0.541, 0.471, 1)
+ForecastBadLabel/fonts/font = ExtResource("f1")
+ForecastBadLabel/font_sizes/font_size = 16
+TooltipHeadLabel/base_type = &"Label"
+TooltipHeadLabel/colors/font_color = Color(0.953, 0.914, 0.824, 1)
+TooltipHeadLabel/fonts/font = ExtResource("f1")
+TooltipHeadLabel/font_sizes/font_size = 15
+TooltipDetailLabel/base_type = &"Label"
+TooltipDetailLabel/colors/font_color = Color(0.663, 0.710, 0.682, 1)
+TooltipDetailLabel/fonts/font = ExtResource("f2")
+TooltipDetailLabel/font_sizes/font_size = 13

@@ -32,6 +32,9 @@ var tech_paused := {}
 var tech_target := ""
 var tech_tutorial_done := false
 var tutorial_done := false
+var hint_menu_seen := false
+var hint_enemy_menu_seen := false
+var hint_blocked_seen := false
 var site_turns := {}
 var firmware_done: Array = []
 var edicts_done: Array = []
@@ -74,6 +77,9 @@ func new_game() -> void:
 	apply_power()
 	restore_movement()
 	tutorial_done = false
+	hint_menu_seen = false
+	hint_enemy_menu_seen = false
+	hint_blocked_seen = false
 	AdvisorSystem.say("game_start")
 	playing = true
 	EventBus.state_changed.emit()
@@ -208,6 +214,10 @@ func restore_movement() -> void:
 		var ut := DataDB.unit_type(str(u.def_id))
 		u.mp = int(ut.get("move", 2))
 		u.max_mp = int(ut.get("move", 2))
+		if u.has("undo"):
+			u.erase("undo")
+		if u.has("skip_turn"):
+			u.erase("skip_turn")
 
 
 func finish_turn() -> void:
@@ -315,6 +325,8 @@ func resolve_attack(atk_uid: int, def_uid: int) -> void:
 	if not bool(preview.ranged):
 		atk.hp = int(atk.hp) - dmg.x
 	atk.mp = 0
+	if atk.has("undo"):
+		atk.erase("undo")
 	var atk_name := str(atk.name)
 	var def_name := str(dfd.name)
 	var atk_dead := int(atk.hp) <= 0
@@ -804,6 +816,9 @@ func to_save() -> Dictionary:
 		"tech_target": tech_target,
 		"tech_tutorial_done": tech_tutorial_done,
 		"tutorial_done": tutorial_done,
+		"hint_menu_seen": hint_menu_seen,
+		"hint_enemy_menu_seen": hint_enemy_menu_seen,
+		"hint_blocked_seen": hint_blocked_seen,
 		"site_turns": site_turns.duplicate(),
 		"firmware_done": firmware_done.duplicate(),
 		"edicts_done": edicts_done.duplicate(),
@@ -845,7 +860,7 @@ func from_save(data: Dictionary) -> bool:
 	units = []
 	for u_v in data.get("units", []):
 		var src: Dictionary = u_v
-		units.append({
+		var row := {
 			"uid": int(src.get("uid", 0)),
 			"def_id": str(src.get("def_id", "")),
 			"name": str(src.get("name", "")),
@@ -857,7 +872,13 @@ func from_save(data: Dictionary) -> bool:
 			"max_mp": int(src.get("max_mp", 2)),
 			"general": str(src.get("general", "")),
 			"general_bonus": int(src.get("general_bonus", 0)),
-		})
+		}
+		var snap: Dictionary = src.get("undo", {})
+		if not snap.is_empty():
+			row["undo"] = {"q": int(snap.get("q", 0)), "r": int(snap.get("r", 0)), "mp": int(snap.get("mp", 0))}
+		if bool(src.get("skip_turn", false)):
+			row["skip_turn"] = true
+		units.append(row)
 	rng.state = int(str(data.get("rng_state", "0")))
 	tech_done = _str_list(data.get("tech_done", []))
 	tech_queue = _str_list(data.get("tech_queue", []))
@@ -875,6 +896,9 @@ func from_save(data: Dictionary) -> bool:
 	tech_target = str(data.get("tech_target", ""))
 	tech_tutorial_done = bool(data.get("tech_tutorial_done", false))
 	tutorial_done = bool(data.get("tutorial_done", false))
+	hint_menu_seen = bool(data.get("hint_menu_seen", false))
+	hint_enemy_menu_seen = bool(data.get("hint_enemy_menu_seen", false))
+	hint_blocked_seen = bool(data.get("hint_blocked_seen", false))
 	site_turns = _int_dict(data.get("site_turns", {}))
 	tech_trials = []
 	for trial_v in data.get("tech_trials", []):

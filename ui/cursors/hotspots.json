@@ -1,0 +1,215 @@
+{
+ "_note": "热点以 32px 坐标给出；@2x 版（64px）热点×2。网页导出请用 32px 版（浏览器光标尺寸上限 / Godot set_custom_mouse_cursor 不做 DPI 缩放）。",
+ "cursors": {
+  "cur_default": {
+   "name": "默认（毛笔尖箭头）",
+   "size": [
+    32,
+    32
+   ],
+   "hotspot": [
+    2,
+    2
+   ],
+   "size_2x": [
+    64,
+    64
+   ],
+   "hotspot_2x": [
+    4,
+    4
+   ],
+   "png": "res://ui/cursors/png/cur_default.png",
+   "png_2x": "res://ui/cursors/png/cur_default@2x.png"
+  },
+  "cur_select": {
+   "name": "选择（手）",
+   "size": [
+    32,
+    32
+   ],
+   "hotspot": [
+    10,
+    2
+   ],
+   "size_2x": [
+    64,
+    64
+   ],
+   "hotspot_2x": [
+    20,
+    4
+   ],
+   "png": "res://ui/cursors/png/cur_select.png",
+   "png_2x": "res://ui/cursors/png/cur_select@2x.png"
+  },
+  "cur_move": {
+   "name": "移动（靴）",
+   "size": [
+    32,
+    32
+   ],
+   "hotspot": [
+    16,
+    28
+   ],
+   "size_2x": [
+    64,
+    64
+   ],
+   "hotspot_2x": [
+    32,
+    56
+   ],
+   "png": "res://ui/cursors/png/cur_move.png",
+   "png_2x": "res://ui/cursors/png/cur_move@2x.png"
+  },
+  "cur_move_far": {
+   "name": "本月走不到 / 多回合（靴加沙漏）",
+   "size": [
+    32,
+    32
+   ],
+   "hotspot": [
+    16,
+    28
+   ],
+   "size_2x": [
+    64,
+    64
+   ],
+   "hotspot_2x": [
+    32,
+    56
+   ],
+   "png": "res://ui/cursors/png/cur_move_far.png",
+   "png_2x": "res://ui/cursors/png/cur_move_far@2x.png"
+  },
+  "cur_attack": {
+   "name": "攻击（剑）",
+   "size": [
+    32,
+    32
+   ],
+   "hotspot": [
+    4,
+    4
+   ],
+   "size_2x": [
+    64,
+    64
+   ],
+   "hotspot_2x": [
+    8,
+    8
+   ],
+   "png": "res://ui/cursors/png/cur_attack.png",
+   "png_2x": "res://ui/cursors/png/cur_attack@2x.png"
+  },
+  "cur_ranged": {
+   "name": "远程（准星）",
+   "size": [
+    32,
+    32
+   ],
+   "hotspot": [
+    16,
+    16
+   ],
+   "size_2x": [
+    64,
+    64
+   ],
+   "hotspot_2x": [
+    32,
+    32
+   ],
+   "png": "res://ui/cursors/png/cur_ranged.png",
+   "png_2x": "res://ui/cursors/png/cur_ranged@2x.png"
+  },
+  "cur_no": {
+   "name": "禁止（墨灰，不用朱）",
+   "size": [
+    32,
+    32
+   ],
+   "hotspot": [
+    16,
+    16
+   ],
+   "size_2x": [
+    64,
+    64
+   ],
+   "hotspot_2x": [
+    32,
+    32
+   ],
+   "png": "res://ui/cursors/png/cur_no.png",
+   "png_2x": "res://ui/cursors/png/cur_no@2x.png"
+  },
+  "cur_inspect": {
+   "name": "查看（放大镜）",
+   "size": [
+    32,
+    32
+   ],
+   "hotspot": [
+    12,
+    12
+   ],
+   "size_2x": [
+    64,
+    64
+   ],
+   "hotspot_2x": [
+    24,
+    24
+   ],
+   "png": "res://ui/cursors/png/cur_inspect.png",
+   "png_2x": "res://ui/cursors/png/cur_inspect@2x.png"
+  },
+  "cur_city": {
+   "name": "城（城门）",
+   "size": [
+    32,
+    32
+   ],
+   "hotspot": [
+    16,
+    24
+   ],
+   "size_2x": [
+    64,
+    64
+   ],
+   "hotspot_2x": [
+    32,
+    48
+   ],
+   "png": "res://ui/cursors/png/cur_city.png",
+   "png_2x": "res://ui/cursors/png/cur_city@2x.png"
+  },
+  "cur_drag": {
+   "name": "拖动（抓手，中键拖动）",
+   "size": [
+    32,
+    32
+   ],
+   "hotspot": [
+    16,
+    16
+   ],
+   "size_2x": [
+    64,
+    64
+   ],
+   "hotspot_2x": [
+    32,
+    32
+   ],
+   "png": "res://ui/cursors/png/cur_drag.png",
+   "png_2x": "res://ui/cursors/png/cur_drag@2x.png"
+  }
+ }
+}
