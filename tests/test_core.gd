@@ -237,6 +237,17 @@ func check_save_roundtrip() -> void:
 	check("design_load", GameState.from_save(design_data) and GameState.tech_designing == "A01", GameState.tech_designing)
 
 
+func _walk_tech_font(node: Node, small: Array) -> void:
+	if node is Label or node is Button or node is CheckBox or node is LineEdit or node is OptionButton:
+		var text := str(node.text).strip_edges()
+		if text != "":
+			var sz := (node as Control).get_theme_font_size("font_size")
+			if sz > 0 and sz < 13:
+				small.append("%s:%d" % [text.substr(0, 12), sz])
+	for child in node.get_children():
+		_walk_tech_font(child, small)
+
+
 func check_tech() -> void:
 	GameState.new_game()
 	GameState.load_tech_sample()
@@ -293,6 +304,18 @@ func check_tech() -> void:
 		GameState.load_tech_sample()
 		desk.open("tech")
 		check("tech_focus", desk.mode == "tech" and desk.debug_btns.has("node_E05") and desk.debug_btns.has("tech_accept"))
+		var locked: Button = desk.debug_btns.get("node_I07")
+		var locked_a := locked.modulate.a if locked != null else -1.0
+		check("locked_alpha", locked != null and is_equal_approx(locked_a, 0.65), str(locked_a))
+		var small: Array = []
+		_walk_tech_font(desk, small)
+		check("tech_font", small.is_empty(), ",".join(small))
+		check("caption_global", Settings.theme.get_font_size("font_size", "CaptionLabel") == 12)
+		var path_shader = load("res://shaders/tech_path.gdshader")
+		var path_code := ""
+		if path_shader != null:
+			path_code = str(path_shader.code)
+		check("path_shader", path_code.contains("TIME") and path_code.contains("UV") and not path_code.contains("return"), path_code.substr(0, 60))
 		desk.picked = "E05"
 		desk._fill()
 		check("tech_drawer", desk.debug_btns.has("tech_verb") or desk.debug_btns.has("tech_make_target"))

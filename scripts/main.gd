@@ -310,6 +310,11 @@ func _poll_tech_cmd() -> void:
 		desk.picked = cmd.substr(5)
 		if desk.mode == "tech":
 			desk._fill()
+		return
+	if cmd.begins_with("hover:"):
+		desk.tech_hover = cmd.substr(6)
+		if desk.mode == "tech":
+			desk._fill()
 
 
 func _show_tech(desk: Desk) -> void:

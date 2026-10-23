@@ -16,6 +16,17 @@ const NODE_W := 136.0
 const NODE_H := 42.0
 const ROW_H := 96.0
 const COL_W := 146.0
+const LOCKED_A := 0.65
+const TALENT_PID := {
+	"燕肃": "yan_su",
+	"毕昇": "bi_sheng",
+	"种世衡": "zhong_shiheng",
+	"冶铁匠师": "artisan_iron",
+	"窑工匠师": "artisan_kiln",
+	"船匠匠师": "artisan_ship",
+	"曾公亮": "zeng_gongliang",
+	"苏颂": "su_song",
+}
 
 var desk: Desk
 var graph: Graph
@@ -30,6 +41,7 @@ var tutorial_key := ""
 
 func build() -> void:
 	theme = Settings.theme
+	_floor_theme()
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	offset_left = 0.0
 	offset_top = 0.0
@@ -104,7 +116,11 @@ func _build_header(header_h: float) -> void:
 	row.add_child(close)
 	desk.debug_btns["desk_close"] = close
 	if desk.tech_view == "overview":
-		name_banner = Kit.label("悬停节点看全名", "BodyLabel")
+		var banner := "悬停节点看全名"
+		if desk.tech_hover != "":
+			var hovered: Dictionary = DataDB.tech_by_id.get(desk.tech_hover, {})
+			banner = "%s    %s" % [str(hovered.get("name", desk.tech_hover)), PLAN.status_text(desk.tech_hover)]
+		name_banner = Kit.label(banner, "BodyLabel")
 		name_banner.add_theme_color_override("font_color", CREAM)
 		name_banner.position = Vector2(16, 52)
 		name_banner.size = Vector2(1100, 28)
@@ -298,7 +314,16 @@ func _left(box: VBoxContainer) -> void:
 		if who != "":
 			line += "  " + who
 		var brow := _link_row(line, "workshop")
-		trials.add_child(brow)
+		var face := _talent_face(who)
+		if face != null:
+			var wrap := HBoxContainer.new()
+			wrap.add_theme_constant_override("separation", 6)
+			wrap.alignment = BoxContainer.ALIGNMENT_CENTER
+			wrap.add_child(face)
+			wrap.add_child(brow)
+			trials.add_child(wrap)
+		else:
+			trials.add_child(brow)
 		var tbar := ProgressBar.new()
 		tbar.theme_type_variation = "NodeBarTrial"
 		tbar.max_value = float(maxi(1, int(trial.get("need", 1))))
@@ -482,6 +507,9 @@ func _build_drawer(x: float, y: float, w: float, h: float) -> void:
 	head.add_theme_constant_override("separation", 8)
 	box.add_child(head)
 	head.add_child(Kit.icon_rect("tech_%s" % id, 36))
+	var talent_face := _talent_face(str(tech.get("talent", "")))
+	if talent_face != null:
+		head.add_child(talent_face)
 	var titles := VBoxContainer.new()
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(titles)
@@ -706,7 +734,7 @@ func _place_node(id: String, pos: Vector2, tile: bool) -> void:
 		sl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		sub.add_child(sl)
 	if state == "locked":
-		b.modulate.a = 0.5
+		b.modulate.a = LOCKED_A
 	nodes[id] = b
 	graph.spots[id] = Rect2(pos, wh)
 	desk.debug_btns["node_" + id] = b
@@ -750,7 +778,7 @@ func _paint_fade() -> void:
 		var filtered := not PLAN.passes_filter(id, desk.tech_branch, desk.tech_only_ready, desk.tech_practice, desk.tech_query)
 		var alpha := 1.0
 		if state == "locked":
-			alpha = 0.5
+			alpha = LOCKED_A
 		if fade or filtered:
 			alpha = 0.3
 		b.modulate = Color(1, 1, 1, alpha)
@@ -1132,6 +1160,33 @@ func _branch_stage(tech: Dictionary) -> String:
 	return "%s · %s" % [branch, stage]
 
 
+func branch_of(id: String) -> String:
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	return str(tech.get("branch", ""))
+
+
+func _floor_theme() -> void:
+	if theme == null:
+		return
+	var local := theme.duplicate()
+	local.set_font_size("font_size", "CaptionLabel", 13)
+	theme = local
+
+
+func _talent_face(who: String) -> TextureRect:
+	var pid := str(TALENT_PID.get(who, ""))
+	if pid == "":
+		return null
+	var rect := TextureRect.new()
+	rect.custom_minimum_size = Vector2(26, 26)
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	rect.texture = Kit.portrait_head(pid, "normal")
+	return rect
+
+
 func _branch_row(id: String) -> int:
 	var row := 0
 	for b_v in DataDB.branches:
@@ -1161,11 +1216,8 @@ func _icon_state(state: String) -> String:
 	return state
 
 
-func _fit_size(text: String, width: float) -> int:
-	var size := 13
-	while size > 9 and float(text.length() * size) > width:
-		size -= 1
-	return size
+func _fit_size(_text: String, _width: float) -> int:
+	return 13
 
 
 func _lock_head(era: int) -> String:
@@ -1461,14 +1513,16 @@ class Face extends Control:
 			draw_line(pts[i], pts[(i + 1) % pts.size()], border, 1.6, true)
 
 	func _badge(at: Vector2) -> void:
-		draw_circle(at + Vector2(7, 7), 7, Color("1f7f8c"))
+		var center := at + Vector2(9, 9)
+		draw_circle(center, 9, Color("1f7f8c"))
 		var font := get_theme_font("font", "Label")
 		if font:
-			draw_string(font, at + Vector2(4, 12), str(queue_n), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("fbf5e6"))
+			draw_string(font, center + Vector2(-9, 5), str(queue_n), HORIZONTAL_ALIGNMENT_CENTER, 18, 13, Color("fbf5e6"))
 
 
 class Graph extends Control:
 	const PLAN = preload("res://scripts/ui/tech_plan.gd")
+	const Ink = preload("res://scripts/ui/tech_path_ink.gd")
 	const GOLD := Color("b8893a")
 	const CYAN := Color("1f7f8c")
 	const CINNABAR := Color("c23b2a")
@@ -1476,26 +1530,27 @@ class Graph extends Control:
 	var spots := {}
 	var edges: Array = []
 	var need := Vector2(400, 400)
+	var ink: Control
 
-	func _process(_delta: float) -> void:
-		if _has_path():
-			queue_redraw()
-
-	func _has_path() -> bool:
-		for edge_v in edges:
-			var edge: Dictionary = edge_v
-			if str(edge.get("kind", "")) == "path":
-				return true
-		return false
+	func _ready() -> void:
+		ink = Ink.new()
+		ink.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(ink)
 
 	func _draw() -> void:
 		var focus := ""
+		var hover_id := ""
+		var pick_id := ""
+		var overview := false
 		if board and board.desk:
-			focus = board.desk.picked if board.desk.picked != "" else board.desk.tech_hover
+			hover_id = str(board.desk.tech_hover)
+			pick_id = str(board.desk.picked)
+			focus = pick_id if pick_id != "" else hover_id
+			overview = board.desk.tech_view == "overview"
 		var rel := {}
 		if focus != "":
 			rel = PLAN.related(focus)
-		var phase := float(Time.get_ticks_msec() % 800) / 800.0
+		var paths: Array = []
 		for edge_v in edges:
 			var edge: Dictionary = edge_v
 			var a_id := str(edge.get("from", ""))
@@ -1507,6 +1562,9 @@ class Graph extends Control:
 				continue
 			var fade := focus != "" and not rel.has(a_id) and not rel.has(b_id) and kind != "path"
 			var alpha := 0.3 if fade else 1.0
+			if overview and kind != "path" and _lane_dim(a_id, b_id):
+				var hot := (hover_id != "" and (hover_id == a_id or hover_id == b_id)) or (pick_id != "" and (pick_id == a_id or pick_id == b_id))
+				alpha = 1.0 if hot else 0.3
 			var ra: Rect2 = spots[a_id]
 			var rb: Rect2 = spots[b_id]
 			var a := _port(ra, rb.get_center())
@@ -1516,13 +1574,30 @@ class Graph extends Control:
 			elif kind == "sheet":
 				_dash_line(a, b, CYAN, 1.6, alpha, PackedFloat32Array([8, 3, 2, 3]), 0.0)
 			elif kind == "path":
-				_dash_line(a, b, CYAN, 3.0, alpha, PackedFloat32Array([10, 6]), phase)
-				_arrow(a, b, CYAN, alpha)
+				paths.append({"a": a, "b": b, "color": CYAN, "alpha": alpha, "width": 3.0})
 			else:
 				_dash_line(a, b, CINNABAR, 1.5, alpha, PackedFloat32Array([4, 3]), 0.0)
 				var mid := (a + b) * 0.5
 				draw_line(mid + Vector2(-4, -4), mid + Vector2(4, 4), Color(CINNABAR, alpha), 1.6, true)
 				draw_line(mid + Vector2(-4, 4), mid + Vector2(4, -4), Color(CINNABAR, alpha), 1.6, true)
+		_sync_paths(paths)
+
+	func _lane_dim(a_id: String, b_id: String) -> bool:
+		if board == null:
+			return false
+		var ba := str(board.branch_of(a_id))
+		var bb := str(board.branch_of(b_id))
+		return ba == "gong" or ba == "xie" or bb == "gong" or bb == "xie"
+
+	func _sync_paths(paths: Array) -> void:
+		if ink == null:
+			ink = Ink.new()
+			ink.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			add_child(ink)
+			move_child(ink, 0)
+		ink.position = Vector2.ZERO
+		ink.size = size
+		ink.set_segs(paths)
 
 	func _port(rect: Rect2, toward: Vector2) -> Vector2:
 		var c := rect.get_center()
@@ -1554,18 +1629,6 @@ class Graph extends Control:
 			t = t2
 			on = not on
 			pi += 1
-
-	func _arrow(a: Vector2, b: Vector2, color: Color, alpha: float) -> void:
-		var dir := b - a
-		if dir.length() < 8.0:
-			return
-		dir = dir.normalized()
-		var side := Vector2(-dir.y, dir.x)
-		var tip := b
-		var p1 := tip - dir * 10.0 + side * 5.0
-		var p2 := tip - dir * 10.0 - side * 5.0
-		draw_colored_polygon(PackedVector2Array([tip, p1, p2]), Color(color, alpha))
-
 
 class Shade extends Control:
 	var hole := Rect2()
