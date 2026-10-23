@@ -2,6 +2,8 @@ extends Node
 
 const TechPlan = preload("res://scripts/ui/tech_plan.gd")
 
+const Kit = preload("res://scripts/ui/kit.gd")
+
 var title_layer: CanvasLayer
 var title: TitleScreen
 var game_root: Node2D
@@ -9,6 +11,10 @@ var world: WorldMap
 var ui: GameUI
 var ready_flag := false
 var _tech_cmd := ""
+var boot_layer: CanvasLayer
+var boot_title: Label
+var boot_step: Label
+var boot_fill: ColorRect
 
 func _ready() -> void:
 	title_layer = CanvasLayer.new()
@@ -19,6 +25,11 @@ func _ready() -> void:
 	title_layer.add_child(title)
 	title.new_button.pressed.connect(_on_new)
 	title.continue_button.pressed.connect(_on_continue)
+	title.new_button.disabled = true
+	title.continue_button.disabled = true
+	_build_boot()
+	EventBus.map_boot.connect(_on_map_boot)
+	EventBus.map_ready.connect(_on_map_ready)
 	game_root = Node2D.new()
 	game_root.name = "Game"
 	add_child(game_root)
@@ -44,11 +55,77 @@ func _ready() -> void:
 		get_tree().quit(failed)
 
 
+func _build_boot() -> void:
+	boot_layer = CanvasLayer.new()
+	boot_layer.name = "MapBoot"
+	boot_layer.layer = 40
+	add_child(boot_layer)
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	boot_layer.add_child(root)
+	var bg := ColorRect.new()
+	bg.color = Color("1a140c")
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(bg)
+	var face := TextureRect.new()
+	face.texture = Kit.doushabao_frame("thinking")
+	face.position = Vector2(560, 150)
+	face.size = Vector2(160, 160)
+	face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(face)
+	boot_title = Kit.label("豆沙包正在铺延州…", "H2Label")
+	boot_title.position = Vector2(240, 330)
+	boot_title.size = Vector2(800, 48)
+	boot_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	boot_title.add_theme_color_override("font_color", Color("f3e9d2"))
+	root.add_child(boot_title)
+	boot_step = Kit.label("正在展开卷宗", "BodyLabel")
+	boot_step.position = Vector2(240, 386)
+	boot_step.size = Vector2(800, 32)
+	boot_step.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	boot_step.add_theme_color_override("font_color", Color("e7c98a"))
+	root.add_child(boot_step)
+	var track := ColorRect.new()
+	track.color = Color("2a241c")
+	track.position = Vector2(390, 440)
+	track.size = Vector2(500, 10)
+	track.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(track)
+	boot_fill = ColorRect.new()
+	boot_fill.color = Color("e7c98a")
+	boot_fill.position = Vector2.ZERO
+	boot_fill.size = Vector2(8, 10)
+	boot_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	track.add_child(boot_fill)
+
+
+func _on_map_boot(step: int, total: int, text: String) -> void:
+	if boot_step:
+		boot_step.text = text
+	if boot_fill and total > 0:
+		var width := 500.0 * clampf(float(step) / float(total), 0.08, 1.0)
+		boot_fill.size = Vector2(width, 10)
+
+
+func _on_map_ready() -> void:
+	if boot_layer:
+		boot_layer.visible = false
+	if title:
+		title.new_button.disabled = false
+		title.refresh_continue()
+
+
 func _on_new() -> void:
 	GameState.new_game()
 	SaveManager.save_slot(0, true)
 	_enter_game()
 	world.focus_city(str(DataDB.scenario.get("focus_city", "yanzhou")))
+	if not GameState.tutorial_done:
+		ui.start_tutorial()
 
 
 func _on_continue() -> void:
@@ -59,6 +136,8 @@ func _on_continue() -> void:
 		return
 	_enter_game()
 	world.focus_after_load()
+	if not GameState.tutorial_done:
+		ui.start_tutorial()
 
 
 func _enter_game() -> void:
@@ -149,6 +228,10 @@ func _process(_delta: float) -> void:
 		"tech_legend": ui.desk.tech_show_legend,
 		"tech_parts": ui.desk.tech_show_parts,
 		"tech_bar": ui.desk.tech_legend_bar,
+		"tutorial_active": ui.tutorial_active(),
+		"tutorial_step": ui.tutorial_step(),
+		"tutorial_dim": [ui.tutorial_dim().x, ui.tutorial_dim().y],
+		"tutorial_done": GameState.tutorial_done,
 	})
 
 

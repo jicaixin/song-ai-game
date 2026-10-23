@@ -921,8 +921,15 @@ func _build_tutorial() -> void:
 	var shade := Shade.new()
 	shade.hole = hole
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.offset_left = 0.0
+	shade.offset_top = 0.0
+	shade.offset_right = 0.0
+	shade.offset_bottom = 0.0
+	shade.custom_minimum_size = Vector2(1280, 720)
+	shade.size = Vector2(1280, 720)
 	shade.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(shade)
+	shade.queue_redraw()
 	tutorial_shade = shade
 	var bubble := PanelContainer.new()
 	var bx := minf(hole.end.x + 16.0, 760.0)
@@ -1563,9 +1570,26 @@ class Graph extends Control:
 class Shade extends Control:
 	var hole := Rect2()
 
+	func _ready() -> void:
+		resized.connect(queue_redraw)
+		call_deferred("_fit")
+
+	func _fit() -> void:
+		if size.x < 2.0 or size.y < 2.0:
+			var vp := get_viewport_rect().size
+			if vp.x < 2.0:
+				vp = Vector2(1280, 720)
+			size = vp
+			custom_minimum_size = vp
+		queue_redraw()
+
 	func _draw() -> void:
 		var dim := Color(0, 0, 0, 0.6)
 		var s := size
+		if s.x < 2.0 or s.y < 2.0:
+			s = get_viewport_rect().size
+			if s.x < 2.0:
+				s = Vector2(1280, 720)
 		draw_rect(Rect2(0, 0, s.x, maxf(0.0, hole.position.y)), dim, true)
 		draw_rect(Rect2(0, hole.end.y, s.x, maxf(0.0, s.y - hole.end.y)), dim, true)
 		draw_rect(Rect2(0, hole.position.y, maxf(0.0, hole.position.x), hole.size.y), dim, true)

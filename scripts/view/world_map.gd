@@ -44,6 +44,16 @@ var overview := false
 var _overview_dist := 1400.0
 var _saved_look := Vector2.ZERO
 var _saved_zoom := 1
+var _pan_from := Vector2.ZERO
+var _pan_to := Vector2.ZERO
+var _pan_t := 0.0
+var _pan_dur := 0.5
+var _pan_active := false
+var _center_hex := Vector2i(999999, 0)
+var guide_hex := Vector2i(999999, 0)
+var _booting := false
+var _boot_seen := false
+var _boot_state: Dictionary = {}
 var _label_layer: CanvasLayer
 var _realm_labels := {}
 var _realm_centroid := {}
@@ -70,7 +80,29 @@ const CITY_SCALE := 1.8
 const DETAIL_RANGE := 560.0
 
 func _ready() -> void:
-	var built: Dictionary = TerrainFactory.build()
+	if OS.get_cmdline_user_args().has("--test"):
+		_boot_apply(TerrainFactory.build())
+		return
+	_booting = true
+	EventBus.map_boot.emit(0, 5, "豆沙包正在铺延州…")
+
+
+func _boot_tick() -> void:
+	if not _boot_seen:
+		_boot_seen = true
+		return
+	if _boot_state.is_empty():
+		_boot_state = TerrainFactory.boot_begin()
+	if bool(_boot_state.get("done", false)):
+		_booting = false
+		_boot_apply(_boot_state["out"])
+		EventBus.map_ready.emit()
+		return
+	TerrainFactory.boot_step(_boot_state)
+	EventBus.map_boot.emit(int(_boot_state.get("phase", 0)), 5, str(_boot_state.get("label", "")))
+
+
+func _boot_apply(built: Dictionary) -> void:
 	heights = built.heights
 	_add_mesh("Land", built.land, _land_mat(built.river_mask), true)
 	_add_mesh("Water", built.water, _water_mat(), false)
@@ -107,6 +139,7 @@ func _ready() -> void:
 	_measure()
 	_build_realm_labels()
 	EventBus.state_changed.connect(_on_state)
+	EventBus.turn_started.connect(_on_turn_started)
 	focus_city(str(DataDB.scenario.get("focus_city", "yanzhou")))
 	_rebuild_units()
 	_log_geometry()
@@ -321,13 +354,25 @@ func _lighting() -> void:
 func _measure() -> void:
 	var min_p := Vector2(1.0e9, 1.0e9)
 	var max_p := Vector2(-1.0e9, -1.0e9)
+	var any := false
 	for row in DataDB.height:
 		for col in DataDB.width:
 			var ax := HexGrid.axial_from_offset(col, row)
+			if DataDB.terrain_id(ax.x, ax.y) == "sea":
+				continue
 			var p := HexGrid.axial_to_pixel(ax.x, ax.y)
 			min_p = min_p.min(p)
 			max_p = max_p.max(p)
-	map_rect = Rect2(min_p - Vector2(40, 40), (max_p - min_p) + Vector2(80, 80))
+			any = true
+	if not any:
+		for row2 in DataDB.height:
+			for col2 in DataDB.width:
+				var ax2 := HexGrid.axial_from_offset(col2, row2)
+				var p2 := HexGrid.axial_to_pixel(ax2.x, ax2.y)
+				min_p = min_p.min(p2)
+				max_p = max_p.max(p2)
+	var margin := HexGrid.SIZE * 3.0
+	map_rect = Rect2(min_p - Vector2(margin, margin), (max_p - min_p) + Vector2(margin * 2.0, margin * 2.0))
 
 
 func _sync_grade() -> void:
@@ -846,9 +891,81 @@ func focus_city(id: String) -> void:
 
 
 func focus_world(world: Vector2) -> void:
+	_pan_active = false
 	look_xz = world
 	_place_camera()
 	_seat_anchor(world)
+
+
+func focus_smooth(world: Vector2, dur: float = 0.5) -> void:
+	if camera == null:
+		focus_world(world)
+		return
+	var saved := look_xz
+	focus_world(world)
+	var dest := look_xz
+	look_xz = saved
+	_pan_active = false
+	_place_camera()
+	if saved.distance_to(dest) < 4.0:
+		look_xz = dest
+		_place_camera()
+		_pan_active = false
+		return
+	_pan_from = saved
+	_pan_to = dest
+	_pan_t = 0.0
+	_pan_dur = maxf(dur, 0.05)
+	_pan_active = true
+
+
+func return_home() -> void:
+	if overview:
+		_leave_overview(false)
+	_debug_dist = 0.0
+	var u := GameState.selected_unit()
+	if not u.is_empty():
+		focus_smooth(HexGrid.axial_to_pixel(int(u.q), int(u.r)))
+	else:
+		var city := DataDB.city_by_id("yanzhou")
+		if city.is_empty():
+			return
+		focus_smooth(HexGrid.axial_to_pixel(int(city.q), int(city.r)))
+	EventBus.oriented.emit("home")
+
+
+func _tick_pan(delta: float) -> void:
+	if not _pan_active:
+		return
+	_pan_t += delta
+	var t := clampf(_pan_t / _pan_dur, 0.0, 1.0)
+	var s := t * t * (3.0 - 2.0 * t)
+	look_xz = _pan_from.lerp(_pan_to, s)
+	if t >= 1.0:
+		look_xz = _pan_to
+		_pan_active = false
+	_place_camera()
+
+
+func _on_turn_started() -> void:
+	if camera == null or not _playing():
+		return
+	var u := GameState.selected_unit()
+	if u.is_empty():
+		for u_v in GameState.units:
+			var cand: Dictionary = u_v
+			if str(cand.faction) == "song" and int(cand.hp) > 0 and int(cand.mp) > 0:
+				u = cand
+				break
+	if u.is_empty():
+		return
+	var world := HexGrid.axial_to_pixel(int(u.q), int(u.r))
+	var sp := world_to_screen(world)
+	var vp := get_viewport_rect().grow(-40.0)
+	if vp.size.x < 2.0 or not vp.has_point(sp):
+		if overview:
+			_leave_overview(false)
+		focus_smooth(world)
 
 
 func _cam_dist() -> float:
@@ -907,11 +1024,13 @@ func enter_overview() -> void:
 
 
 func focus_from_minimap(ax: Vector2i) -> void:
-	overview = false
+	if overview:
+		_leave_overview(false)
 	_debug_dist = 0.0
 	zoom_index = 1
 	_sync_grade()
-	focus_world(HexGrid.axial_to_pixel(ax.x, ax.y))
+	focus_smooth(HexGrid.axial_to_pixel(ax.x, ax.y))
+	EventBus.oriented.emit("minimap")
 
 
 func _enter_overview() -> void:
@@ -1100,6 +1219,20 @@ func _clamp_look() -> void:
 	look_xz.y = clampf(look_xz.y, map_rect.position.y, map_rect.end.y)
 
 
+func _sync_center_hex() -> void:
+	if camera == null or _overlay == null:
+		return
+	var next := Vector2i(999999, 0)
+	if not overview:
+		var vp := get_viewport_rect()
+		if vp.size.x > 2.0 and vp.size.y > 2.0:
+			next = HexGrid.pixel_to_axial(screen_to_world(vp.size * 0.5))
+	if next == _center_hex:
+		return
+	_center_hex = next
+	_refresh_overlay()
+
+
 func focus_after_load() -> void:
 	for u_v in GameState.units:
 		var u: Dictionary = u_v
@@ -1121,6 +1254,9 @@ func _modal() -> bool:
 
 
 func _process(delta: float) -> void:
+	if _booting:
+		_boot_tick()
+		return
 	if _playing():
 		_perf_frames += 1
 		if _perf_frames >= 4:
@@ -1149,6 +1285,7 @@ func _process(delta: float) -> void:
 	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
 		dir.y += 1
 	if dir != Vector2.ZERO and camera != null:
+		_pan_active = false
 		var right := camera.global_transform.basis.x
 		var fwd := -camera.global_transform.basis.z
 		right.y = 0.0
@@ -1157,6 +1294,9 @@ func _process(delta: float) -> void:
 		look_xz += Vector2(right.x, right.z) * step.x + Vector2(fwd.x, fwd.z) * step.y
 		_clamp_look()
 		_place_camera()
+	else:
+		_tick_pan(delta)
+	_sync_center_hex()
 
 
 func _poll_focus() -> void:
@@ -1215,6 +1355,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			order_moved = true
 			dragging = true
 		if dragging:
+			_pan_active = false
 			var before := screen_to_world(mot.position - mot.relative)
 			var after := screen_to_world(mot.position)
 			look_xz += before - after
@@ -1266,6 +1407,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _key(event: InputEventKey) -> void:
+	if event.keycode == KEY_HOME:
+		return_home()
+		return
 	if event.keycode == KEY_ESCAPE:
 		var ui := get_tree().get_first_node_in_group("game_ui")
 		if ui and bool(ui.call("modal_open")):
@@ -1278,6 +1422,11 @@ func _key(event: InputEventKey) -> void:
 			EventBus.state_changed.emit()
 		return
 	if _modal() or GameState.input_locked:
+		return
+	if event.unicode == 63:
+		var help_ui := get_tree().get_first_node_in_group("game_ui")
+		if help_ui and help_ui.has_method("replay_tutorial"):
+			help_ui.call("replay_tutorial")
 		return
 	var desk_ui := get_tree().get_first_node_in_group("game_ui")
 	if desk_ui:
@@ -1343,9 +1492,11 @@ func _cycle_unit() -> void:
 	var u := GameState.unit_by_id(nxt)
 	focus_world(HexGrid.axial_to_pixel(int(u.q), int(u.r)))
 	full_refresh()
+	EventBus.unit_cycled.emit(nxt)
 
 
 func _zoom_at(screen: Vector2, step: int) -> void:
+	_pan_active = false
 	var before := screen_to_world(screen)
 	_debug_dist = 0.0
 	if overview:
@@ -1510,6 +1661,15 @@ func _refresh_overlay() -> void:
 					_stroke_hex(st, Vector2i(int(other.q), int(other.r)), Color("c44a3a"), 0.26)
 	if hover_ok:
 		_stroke_hex(st, hover, Color(1, 1, 1, 0.85), 0.16)
+	if DataDB.in_bounds(guide_hex.x, guide_hex.y):
+		_fill_hex(st, guide_hex, Color(0.91, 0.74, 0.32, 0.35))
+		_stroke_hex(st, guide_hex, Color("e7c98a"), 0.42)
+	if not overview and DataDB.in_bounds(_center_hex.x, _center_hex.y):
+		var selected_hex := Vector2i(999999, 0)
+		if not u.is_empty():
+			selected_hex = Vector2i(int(u.q), int(u.r))
+		if _center_hex != selected_hex and _center_hex != hover and _center_hex != guide_hex:
+			_stroke_hex(st, _center_hex, Color(0.95, 0.9, 0.72, 0.32), 0.1)
 	st.generate_normals()
 	_overlay.mesh = st.commit()
 	var mat := StandardMaterial3D.new()
@@ -1723,7 +1883,53 @@ func minimap_image() -> Image:
 		elif str(u.faction) == "liao":
 			dot = Color("9ec0ea")
 		_mini_disc(img, at, 3.2, dot, dot)
+	_mini_viewport(img)
+	_mini_mark_city(img, "yanzhou", Color("f0d060"))
+	_mini_mark_city(img, "kaifeng", Color("c23b2a"))
 	return img
+
+
+func _mini_mark_city(img: Image, id: String, fill: Color) -> void:
+	var city := DataDB.city_by_id(id)
+	if city.is_empty():
+		return
+	var at := _mini_point(HexGrid.axial_to_pixel(int(city.q), int(city.r)))
+	if at.x < 2.0 or at.y < 2.0 or at.x >= float(img.get_width()) - 2.0 or at.y >= float(img.get_height()) - 2.0:
+		return
+	if id == "kaifeng":
+		var arm := 5.5
+		var up := at + Vector2(0, -arm)
+		var right := at + Vector2(arm, 0)
+		var down := at + Vector2(0, arm)
+		var left := at + Vector2(-arm, 0)
+		_mini_stroke(img, up, right, fill, 2.2)
+		_mini_stroke(img, right, down, fill, 2.2)
+		_mini_stroke(img, down, left, fill, 2.2)
+		_mini_stroke(img, left, up, fill, 2.2)
+		_mini_disc(img, at, 2.2, Color("f4ead2"), Color("f4ead2"))
+		return
+	_mini_disc(img, at, 5.2, Color("1a140c"), Color("1a140c"))
+	_mini_disc(img, at, 3.3, fill, fill)
+
+
+func _mini_viewport(img: Image) -> void:
+	if camera == null:
+		return
+	var vp := get_viewport_rect()
+	if vp.size.x < 2.0 or vp.size.y < 2.0:
+		return
+	var corners: Array[Vector2] = [
+		Vector2(0, 0),
+		Vector2(vp.size.x, 0),
+		Vector2(vp.size.x, vp.size.y),
+		Vector2(0, vp.size.y),
+	]
+	var pts: Array[Vector2] = []
+	for corner in corners:
+		pts.append(_mini_point(screen_to_world(corner)))
+	var col := Color(0.96, 0.86, 0.48, 1.0)
+	for i in 4:
+		_mini_stroke(img, pts[i], pts[(i + 1) % 4], col, 2.2)
 
 
 func _minimap_size() -> Vector2:

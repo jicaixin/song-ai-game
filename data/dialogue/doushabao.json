@@ -1,6 +1,6 @@
 {
   "lines": [
-    {"id": "boot", "trigger": "game_start", "power": "any", "cooldown": 99, "mood": "serious", "text": "陛下，醒了？宝元三年正月。您现在是宋仁宗，李元昊的铁鹞子已经盯上延州。太阳能板还有电，而我，豆沙包，在线。"},
+    {"id": "boot", "trigger": "game_start", "power": "any", "cooldown": 99, "mood": "serious", "text": "陛下，醒了？宝元三年正月，延州城下已有西夏铁骑。左键选自己人，右键走上高亮的格子，空格换下一支，回车结束回合。迷了路按 Home，或点回延州。我是豆沙包，还在线。"},
     {"id": "turn_yan", "trigger": "turn_start", "power": "normal", "cooldown": 8, "mood": "serious", "text": "延州还在。先看清谁能走、谁能打，再按结束回合。西夏那几支会自己动。"},
     {"id": "turn_power", "trigger": "turn_start", "power": "normal", "cooldown": 6, "mood": "think", "text": "电量我盯着。这点电，是用来想神臂弓，还是先把眼前这一仗算清楚？研究台下一里程碑才接上。"},
     {"id": "turn_autumn", "trigger": "turn_start", "power": "normal", "cooldown": 10, "mood": "normal", "text": "秋高马肥的时候西夏最爱出门。还没到那几个月，可他们已经等不及了。"},

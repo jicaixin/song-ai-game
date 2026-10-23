@@ -3,6 +3,7 @@ extends Control
 
 const Kit = preload("res://scripts/ui/kit.gd")
 const Desk = preload("res://scripts/ui/desk.gd")
+const Onboarding = preload("res://scripts/ui/onboarding.gd")
 
 const RES_BAR := [
 	["food", "res_food", "HudNumberLabel", Color("6db394")],
@@ -43,6 +44,8 @@ var advisor_label: Label
 var portrait: TextureRect
 var dock: Control
 var end_button: Button
+var home_button: Button
+var key_hint: Label
 var minimap: TextureRect
 var toast: PanelContainer
 var toast_label: Label
@@ -53,6 +56,7 @@ var combat_label: Label
 var fight_button: Button
 var cancel_button: Button
 var desk: Desk
+var tutor: Onboarding
 var btn_map := {}
 var _notice_seen := ""
 
@@ -131,6 +135,12 @@ func _build_top() -> void:
 	_icon_button(row, "events", "ui_report", "时事", "events")
 	_icon_button(row, "save", "ui_save", "存档", "save")
 	_icon_button(row, "load", "ui_load", "读档", "load")
+	var help := Kit.button("？", "RoundButton")
+	help.tooltip_text = "再看开局引导"
+	help.custom_minimum_size = Vector2(36, 36)
+	help.pressed.connect(replay_tutorial)
+	row.add_child(help)
+	btn_map["help"] = help
 
 
 func _icon_button(parent: Node, key: String, icon_name: String, tip: String, screen: String) -> void:
@@ -183,6 +193,11 @@ func _build_unit() -> void:
 
 
 func _build_hover() -> void:
+	key_hint = Kit.label("空格 下一支可动宋军 · Home 回延州", "HudMutedLabel")
+	key_hint.position = Vector2(16, 520)
+	key_hint.size = Vector2(640, 24)
+	key_hint.clip_text = true
+	add_child(key_hint)
 	hover_chip = Kit.label("", "HudMutedLabel")
 	hover_chip.position = Vector2(16, 548)
 	hover_chip.size = Vector2(520, 28)
@@ -237,9 +252,9 @@ func _build_dock() -> void:
 	dock.add_child(end_button)
 	btn_map["end_turn"] = end_button
 	var frame := Kit.panel("MinimapFrame")
-	frame.position = Vector2(12, 94)
-	frame.size = Vector2(232, 168)
-	frame.custom_minimum_size = Vector2(232, 168)
+	frame.position = Vector2(12, 90)
+	frame.size = Vector2(232, 128)
+	frame.custom_minimum_size = Vector2(232, 128)
 	dock.add_child(frame)
 	minimap = TextureRect.new()
 	minimap.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -248,6 +263,14 @@ func _build_dock() -> void:
 	minimap.mouse_filter = Control.MOUSE_FILTER_STOP
 	minimap.gui_input.connect(_on_mini)
 	frame.add_child(minimap)
+	home_button = Kit.button("回延州", "Button")
+	home_button.position = Vector2(12, 224)
+	home_button.size = Vector2(232, 36)
+	home_button.custom_minimum_size = Vector2(232, 36)
+	home_button.tooltip_text = "回到选中的部队；没有选中时回到延州。快捷键 Home。空格换下一支可动宋军。"
+	home_button.pressed.connect(_on_home)
+	dock.add_child(home_button)
+	btn_map["home"] = home_button
 
 
 func _build_toast() -> void:
@@ -305,6 +328,39 @@ func _build_combat() -> void:
 	row.add_child(cancel_button)
 	btn_map["fight"] = fight_button
 	btn_map["cancel"] = cancel_button
+
+
+func start_tutorial() -> void:
+	if tutor != null and tutor.active:
+		return
+	hide_modals()
+	if tutor == null:
+		tutor = Onboarding.new()
+		tutor.name = "Onboarding"
+		add_child(tutor)
+	tutor.begin(self)
+
+
+func replay_tutorial() -> void:
+	if not GameState.playing:
+		return
+	start_tutorial()
+
+
+func tutorial_active() -> bool:
+	return tutor != null and tutor.active
+
+
+func tutorial_step() -> int:
+	if tutor == null or not tutor.active:
+		return -1
+	return tutor.step
+
+
+func tutorial_dim() -> Vector2:
+	if tutor == null or tutor.shade == null:
+		return Vector2.ZERO
+	return tutor.shade.size
 
 
 func open_desk(which: String) -> void:
@@ -379,7 +435,10 @@ func _refresh() -> void:
 	else:
 		end_button.text = "结束回合"
 		end_button.theme_type_variation = "EndTurnAlertButton" if waiting else "EndTurnButton"
-	if map and (minimap.texture == null or Engine.get_process_frames() % 20 == 0):
+	var pace := 20
+	if map and (map._pan_active or map.dragging):
+		pace = 4
+	if map and (minimap.texture == null or Engine.get_process_frames() % pace == 0):
 		minimap.texture = ImageTexture.create_from_image(map.minimap_image())
 
 
@@ -388,6 +447,8 @@ func _set_play_visible(show_hud: bool) -> void:
 	research_card.visible = show_hud
 	advisor_root.visible = show_hud
 	dock.visible = show_hud
+	if key_hint:
+		key_hint.visible = show_hud
 	if not show_hud:
 		unit_card.visible = false
 		hover_chip.visible = false
@@ -552,16 +613,19 @@ func blocks_pointer(screen: Vector2) -> bool:
 	return false
 
 
+func _on_home() -> void:
+	var map := get_tree().get_first_node_in_group("world_map") as WorldMap
+	if map:
+		map.return_home()
+
+
 func _on_mini(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed:
 		var mb := event as InputEventMouseButton
 		if mb.button_index != MOUSE_BUTTON_LEFT:
 			return
 		var map := get_tree().get_first_node_in_group("world_map") as WorldMap
-		if map == null:
-			return
-		if not map.overview:
-			map.enter_overview()
+		if map == null or minimap.size.x < 2.0 or minimap.size.y < 2.0:
 			return
 		var ax := map.minimap_axial(mb.position.x / minimap.size.x, mb.position.y / minimap.size.y)
 		map.focus_from_minimap(ax)

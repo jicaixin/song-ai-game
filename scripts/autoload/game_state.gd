@@ -31,6 +31,7 @@ var tech_trials: Array = []
 var tech_paused := {}
 var tech_target := ""
 var tech_tutorial_done := false
+var tutorial_done := false
 var site_turns := {}
 var firmware_done: Array = []
 var edicts_done: Array = []
@@ -72,6 +73,7 @@ func new_game() -> void:
 	roll_weather()
 	apply_power()
 	restore_movement()
+	tutorial_done = false
 	AdvisorSystem.say("game_start")
 	playing = true
 	EventBus.state_changed.emit()
@@ -801,6 +803,7 @@ func to_save() -> Dictionary:
 		"tech_paused": tech_paused.duplicate(),
 		"tech_target": tech_target,
 		"tech_tutorial_done": tech_tutorial_done,
+		"tutorial_done": tutorial_done,
 		"site_turns": site_turns.duplicate(),
 		"firmware_done": firmware_done.duplicate(),
 		"edicts_done": edicts_done.duplicate(),
@@ -871,6 +874,7 @@ func from_save(data: Dictionary) -> bool:
 	tech_paused = _int_dict(data.get("tech_paused", {}))
 	tech_target = str(data.get("tech_target", ""))
 	tech_tutorial_done = bool(data.get("tech_tutorial_done", false))
+	tutorial_done = bool(data.get("tutorial_done", false))
 	site_turns = _int_dict(data.get("site_turns", {}))
 	tech_trials = []
 	for trial_v in data.get("tech_trials", []):

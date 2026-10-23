@@ -45,49 +45,85 @@ static var _river_courses: Array = []
 
 
 static func build() -> Dictionary:
-	_prepare_rivers()
-	var heights := {}
-	var colors := {}
-	for row in DataDB.height:
-		for col in DataDB.width:
-			var ax := HexGrid.axial_from_offset(col, row)
-			var id := DataDB.terrain_id(ax.x, ax.y)
-			colors[ax] = _tint(id, ax)
-	colors = _smooth_colors(colors)
-	for row in DataDB.height:
-		for col in DataDB.width:
-			var ax2 := HexGrid.axial_from_offset(col, row)
-			var id2 := DataDB.terrain_id(ax2.x, ax2.y)
-			if _water(id2):
-				heights[ax2] = float(HEIGHTS.get(id2, -1.0))
-			else:
-				var center := HexGrid.axial_to_pixel(ax2.x, ax2.y)
-				heights[ax2] = _surface_height(center)
-	var land := _land_mesh(heights, colors)
-	var water := _water_mesh()
-	var river_mask := _river_mask()
-	var realm := _realm_meshes()
-	var woods := _tree_lists(heights)
+	var state := boot_begin()
+	while not bool(state.get("done", false)):
+		boot_step(state)
+	return state["out"]
+
+
+static func boot_begin() -> Dictionary:
 	return {
-		"land": land,
-		"water": water,
-		"river_mask": river_mask,
-		"border_stroke": realm.stroke,
-		"border_wash": realm.wash,
-		"realm_fill": realm.fill,
-		"heights": heights,
-		"pine_trunk": _trunk_mesh(),
-		"pine_leaf": _pine_leaf(),
-		"broad_trunk": _trunk_mesh(),
-		"broad_leaf": _broad_leaf(),
-		"pines": woods.pines,
-		"broads": woods.broads,
-		"tufts": woods.tufts,
-		"rocks": woods.rocks,
-		"tuft_mesh": _tuft_mesh(),
-		"rock_mesh": _rock_mesh(),
-		"features": _feature_list(heights),
+		"phase": 0,
+		"done": false,
+		"label": "正在铺黄土与河床",
 	}
+
+
+static func boot_step(state: Dictionary) -> void:
+	var phase := int(state.get("phase", 0))
+	if phase == 0:
+		_prepare_rivers()
+		var colors := {}
+		for row in DataDB.height:
+			for col in DataDB.width:
+				var ax := HexGrid.axial_from_offset(col, row)
+				var id := DataDB.terrain_id(ax.x, ax.y)
+				colors[ax] = _tint(id, ax)
+		state["colors"] = _smooth_colors(colors)
+		state["phase"] = 1
+		state["label"] = "正在织地面"
+	elif phase == 1:
+		var colors: Dictionary = state["colors"]
+		var heights := {}
+		for row2 in DataDB.height:
+			for col2 in DataDB.width:
+				var ax2 := HexGrid.axial_from_offset(col2, row2)
+				var id2 := DataDB.terrain_id(ax2.x, ax2.y)
+				if _water(id2):
+					heights[ax2] = float(HEIGHTS.get(id2, -1.0))
+				else:
+					var center := HexGrid.axial_to_pixel(ax2.x, ax2.y)
+					heights[ax2] = _surface_height(center)
+		state["heights"] = heights
+		state["land"] = _land_mesh(heights, colors)
+		state["phase"] = 2
+		state["label"] = "正在引水"
+	elif phase == 2:
+		state["water"] = _water_mesh()
+		state["river_mask"] = _river_mask()
+		state["phase"] = 3
+		state["label"] = "正在描疆界"
+	elif phase == 3:
+		state["realm"] = _realm_meshes()
+		state["phase"] = 4
+		state["label"] = "正在安城郭与林木"
+	else:
+		var heights2: Dictionary = state["heights"]
+		var realm: Dictionary = state["realm"]
+		var woods := _tree_lists(heights2)
+		state["out"] = {
+			"land": state["land"],
+			"water": state["water"],
+			"river_mask": state["river_mask"],
+			"border_stroke": realm.stroke,
+			"border_wash": realm.wash,
+			"realm_fill": realm.fill,
+			"heights": heights2,
+			"pine_trunk": _trunk_mesh(),
+			"pine_leaf": _pine_leaf(),
+			"broad_trunk": _trunk_mesh(),
+			"broad_leaf": _broad_leaf(),
+			"pines": woods.pines,
+			"broads": woods.broads,
+			"tufts": woods.tufts,
+			"rocks": woods.rocks,
+			"tuft_mesh": _tuft_mesh(),
+			"rock_mesh": _rock_mesh(),
+			"features": _feature_list(heights2),
+		}
+		state["phase"] = 5
+		state["done"] = true
+		state["label"] = "延州铺好了"
 
 
 static func _water(id: String) -> bool:

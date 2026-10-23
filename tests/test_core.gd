@@ -228,6 +228,8 @@ func check_save_roundtrip() -> void:
 	GameState.year = 999
 	check("load", GameState.from_save(data) and GameState.year == year and GameState.turn == turn)
 	check("advisor", GameState.advisor_text.find("豆沙包") >= 0, GameState.advisor_text)
+	check("controls_line", text.find("空格") >= 0 and text.find("右键") >= 0, text)
+	check("tutorial_flag", data.has("tutorial_done") and not bool(data.get("tutorial_done")))
 	check("design", GameState.start_design("A01") and GameState.tech_designing == "A01")
 	var packed_design: String = SaveManager.pack(GameState.to_save())
 	GameState.tech_designing = ""

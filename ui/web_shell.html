@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+		<title>$GODOT_PROJECT_NAME</title>
+		<style>
+html, body, #canvas {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+body {
+	color: #f3e9d2;
+	background-color: #1a140c;
+	overflow: hidden;
+	touch-action: none;
+	font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", "Noto Serif CJK SC", Palatino, "Times New Roman", serif;
+}
+
+#canvas {
+	display: block;
+}
+
+#canvas:focus {
+	outline: none;
+}
+
+#status, #status-splash, #status-progress {
+	position: absolute;
+	left: 0;
+	right: 0;
+}
+
+#status, #status-splash {
+	top: 0;
+	bottom: 0;
+}
+
+#status {
+	background-color: #1a140c;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	visibility: visible;
+	z-index: 2;
+}
+
+#status-splash {
+	position: static;
+	width: 96px;
+	height: 96px;
+	max-height: 96px;
+	max-width: 96px;
+	margin: 0 auto 18px;
+	object-fit: contain;
+	border-radius: 8px;
+}
+
+#status-splash.show-image--false {
+	display: none;
+}
+
+#status-splash.fullsize--true {
+	height: 96px;
+	width: 96px;
+	object-fit: contain;
+}
+
+#status-splash.use-filter--false {
+	image-rendering: pixelated;
+}
+
+#status-progress {
+	display: none !important;
+}
+
+#song-load {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	width: min(640px, 92vw);
+	text-align: center;
+}
+
+#song-mark {
+	letter-spacing: 0.35em;
+	font-size: 13px;
+	color: #b8893a;
+	margin-bottom: 8px;
+}
+
+#song-title {
+	font-size: 32px;
+	line-height: 1.25;
+	color: #fbf5e6;
+	margin: 0 0 18px;
+}
+
+#song-phase {
+	font-size: 18px;
+	color: #e7c98a;
+	min-height: 1.4em;
+	margin-bottom: 16px;
+}
+
+#song-track {
+	width: 100%;
+	height: 8px;
+	background: #2a241c;
+	border: 1px solid #8a4e22;
+	overflow: hidden;
+	position: relative;
+}
+
+#song-bar {
+	height: 100%;
+	width: 0%;
+	background: #e7c98a;
+}
+
+#song-bar.indeterminate {
+	width: 36%;
+	animation: song-slide 1.35s ease-in-out infinite;
+}
+
+@keyframes song-slide {
+	0% { transform: translateX(-120%); }
+	100% { transform: translateX(320%); }
+}
+
+#song-count {
+	margin-top: 12px;
+	font-size: 15px;
+	color: #f3e9d2;
+	font-variant-numeric: tabular-nums;
+}
+
+#song-tip {
+	margin-top: 22px;
+	min-height: 3.2em;
+	font-size: 16px;
+	line-height: 1.6;
+	color: #cbbfa6;
+}
+
+#status-notice {
+	display: none;
+	background-color: #3a221c;
+	border-radius: 0.4rem;
+	border: 1px solid #c23b2a;
+	color: #fbf5e6;
+	font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Palatino, serif;
+	font-size: 18px;
+	line-height: 1.55;
+	margin: 1.5rem 2rem 0;
+	max-width: 640px;
+	overflow: auto;
+	padding: 1.2rem 1.4rem;
+	text-align: left;
+	white-space: pre-wrap;
+	z-index: 3;
+}
+		</style>
+		$GODOT_HEAD_INCLUDE
+	</head>
+	<body>
+		<canvas id="canvas">
+			您的浏览器打不开这块画布。
+		</canvas>
+
+		<noscript>
+			这一页要靠脚本才能把延州铺开。请允许 JavaScript 后再试。
+		</noscript>
+
+		<div id="status">
+			<img id="status-splash" class="$GODOT_SPLASH_CLASSES" src="$GODOT_SPLASH" alt="">
+			<div id="song-load">
+				<div id="song-mark">宝元三年</div>
+				<div id="song-title">我带着AI穿越大宋</div>
+				<div id="song-phase">正在展开卷宗</div>
+				<div id="song-track"><div id="song-bar" class="indeterminate"></div></div>
+				<div id="song-count">已下载 0.0 / … MB · 0%</div>
+				<div id="song-tip">延州的风比奏疏诚实。</div>
+			</div>
+			<progress id="status-progress"></progress>
+			<div id="status-notice"></div>
+		</div>
+
+		<script src="$GODOT_URL"></script>
+		<script>
+const GODOT_CONFIG = $GODOT_CONFIG;
+const GODOT_THREADS_ENABLED = $GODOT_THREADS_ENABLED;
+const engine = new Engine(GODOT_CONFIG);
+
+(function () {
+	const statusOverlay = document.getElementById('status');
+	const statusProgress = document.getElementById('status-progress');
+	const statusNotice = document.getElementById('status-notice');
+	const songLoad = document.getElementById('song-load');
+	const songPhase = document.getElementById('song-phase');
+	const songCount = document.getElementById('song-count');
+	const songBar = document.getElementById('song-bar');
+	const songTip = document.getElementById('song-tip');
+
+	const TIPS = [
+		'延州的风比奏疏诚实。',
+		'豆沙包曰：卷宗很大，人先坐下。',
+		'太阳能板还在充电，您先看这页。',
+		'铁鹞子不会因为您刷新页面就多等一刻。',
+		'这一页不是汴京的门神，只是把地图从卷里拖出来。',
+		'左键选自己人，右键走上亮着的格子。先记着。',
+	];
+	let tipIndex = 0;
+	setInterval(function () {
+		tipIndex = (tipIndex + 1) % TIPS.length;
+		songTip.textContent = TIPS[tipIndex];
+	}, 4500);
+
+	let initializing = true;
+	let statusMode = '';
+	let compiling = false;
+
+	function megabytes(n) {
+		return (n / (1024 * 1024)).toFixed(1);
+	}
+
+	function knownBytes() {
+		const sizes = GODOT_CONFIG.fileSizes || {};
+		let sum = 0;
+		Object.keys(sizes).forEach(function (key) {
+			sum += Number(sizes[key]) || 0;
+		});
+		return sum;
+	}
+
+	function setStatusMode(mode) {
+		if (statusMode === mode || !initializing) {
+			return;
+		}
+		if (mode === 'hidden') {
+			statusOverlay.remove();
+			initializing = false;
+			return;
+		}
+		statusOverlay.style.visibility = 'visible';
+		statusProgress.style.display = 'none';
+		if (mode === 'notice') {
+			songLoad.style.display = 'none';
+			statusNotice.style.display = 'block';
+		} else {
+			songLoad.style.display = 'flex';
+			statusNotice.style.display = 'none';
+		}
+		statusMode = mode;
+	}
+
+	function setStatusNotice(text) {
+		while (statusNotice.lastChild) {
+			statusNotice.removeChild(statusNotice.lastChild);
+		}
+		const lines = text.split('\n');
+		lines.forEach((line) => {
+			statusNotice.appendChild(document.createTextNode(line));
+			statusNotice.appendChild(document.createElement('br'));
+		});
+	}
+
+	function displayFailureNotice(err) {
+		console.error(err);
+		let detail = '这一页没有铺开。';
+		if (err instanceof Error) {
+			detail += '\n' + err.message;
+		} else if (typeof err === 'string') {
+			detail += '\n' + err;
+		} else {
+			detail += '\n遇到一个说不清的错误。';
+		}
+		setStatusNotice(detail);
+		setStatusMode('notice');
+		initializing = false;
+	}
+
+	function showCompile() {
+		if (compiling) {
+			return;
+		}
+		compiling = true;
+		songPhase.textContent = '引擎装订中…';
+		songCount.textContent = '引擎装订中，请稍候。进度条不再往前走，是在把引擎缝进这一页。';
+		songBar.classList.add('indeterminate');
+		songBar.style.width = '';
+	}
+
+	function showDownload(current, total) {
+		if (compiling) {
+			return;
+		}
+		const y = total > 0 ? total : knownBytes();
+		const x = current > 0 ? current : 0;
+		if (y <= 0) {
+			songPhase.textContent = '正在展开卷宗';
+			songCount.textContent = '已下载 0.0 / … MB · 0%';
+			songBar.classList.add('indeterminate');
+			return;
+		}
+		const pct = Math.max(0, Math.min(100, Math.floor((x / y) * 100)));
+		songPhase.textContent = '正在把卷宗拖进这一页';
+		songCount.textContent = '已下载 ' + megabytes(x) + ' / ' + megabytes(y) + ' MB · ' + pct + '%';
+		songBar.classList.remove('indeterminate');
+		songBar.style.width = pct + '%';
+		if (x >= y) {
+			showCompile();
+		}
+	}
+
+	const missing = Engine.getMissingFeatures({
+		threads: GODOT_THREADS_ENABLED,
+	});
+
+	if (missing.length !== 0) {
+		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
+			let serviceWorkerRegistrationPromise;
+			try {
+				serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration();
+			} catch (err) {
+				serviceWorkerRegistrationPromise = Promise.reject(new Error('Service worker registration failed.'));
+			}
+			Promise.race([
+				serviceWorkerRegistrationPromise.then((registration) => {
+					if (registration != null) {
+						return Promise.reject(new Error('Service worker already exists.'));
+					}
+					return registration;
+				}).then(() => engine.installServiceWorker()),
+				new Promise((resolve) => {
+					setTimeout(() => resolve(), 2000);
+				}),
+			]).then(() => {
+				window.location.reload();
+			}).catch((err) => {
+				console.error('Error while registering service worker:', err);
+			});
+		} else {
+			const missingMsg = '这一页缺了几样东西，暂时铺不开：\n';
+			displayFailureNotice(missingMsg + missing.join('\n'));
+		}
+	} else {
+		setStatusMode('progress');
+		showDownload(0, knownBytes());
+		engine.startGame({
+			'onProgress': function (current, total) {
+				if (current > 0 && total > 0) {
+					statusProgress.value = current;
+					statusProgress.max = total;
+				} else {
+					statusProgress.removeAttribute('value');
+					statusProgress.removeAttribute('max');
+				}
+				showDownload(current, total);
+			},
+		}).then(() => {
+			setStatusMode('hidden');
+		}, displayFailureNotice);
+	}
+}());
+		</script>
+	</body>
+</html>
