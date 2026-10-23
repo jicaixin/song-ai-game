@@ -403,6 +403,13 @@ func tutorial_dim() -> Vector2:
 	return tutor.shade.size
 
 
+func tutorial_hole() -> Array:
+	if tutor == null or not tutor.active:
+		return []
+	var hole := tutor.hole_global
+	return [hole.position.x, hole.position.y, hole.size.x, hole.size.y]
+
+
 func open_desk(which: String) -> void:
 	close_tile_menu()
 	hide_combat()

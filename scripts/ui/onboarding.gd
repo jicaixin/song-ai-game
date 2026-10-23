@@ -13,7 +13,6 @@ const LINES := [
 var active := false
 var step := 0
 var host: GameUI
-var dim_layer: CanvasLayer
 var shade: Control
 var dim_top: ColorRect
 var dim_bottom: ColorRect
@@ -69,19 +68,11 @@ func _wire() -> void:
 func _ensure() -> void:
 	if shade != null:
 		return
-	dim_layer = CanvasLayer.new()
-	dim_layer.name = "TutorialDim"
-	dim_layer.layer = 12
-	add_child(dim_layer)
 	shade = Control.new()
 	shade.name = "TutorialShade"
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	shade.offset_left = 0.0
-	shade.offset_top = 0.0
-	shade.offset_right = 0.0
-	shade.offset_bottom = 0.0
-	dim_layer.add_child(shade)
+	shade.z_index = 1
+	add_child(shade)
 	dim_top = _dim_piece()
 	dim_bottom = _dim_piece()
 	dim_left = _dim_piece()
@@ -89,7 +80,7 @@ func _ensure() -> void:
 	dim_frame = HoleFrame.new()
 	dim_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	dim_frame.z_index = 1
-	shade.add_child(dim_frame)
+	add_child(dim_frame)
 	bubble = PanelContainer.new()
 	bubble.name = "TutorialBubble"
 	bubble.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -97,7 +88,7 @@ func _ensure() -> void:
 	bubble.position = Vector2(300, 78)
 	bubble.size = Vector2(620, 188)
 	bubble.add_theme_stylebox_override("panel", _panel_style())
-	dim_layer.add_child(bubble)
+	add_child(bubble)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 6)
 	bubble.add_child(box)
@@ -212,8 +203,6 @@ func _place() -> void:
 	var vp := get_viewport_rect().size
 	if vp.x < 2.0:
 		vp = Vector2(1280, 720)
-	if dim_layer:
-		dim_layer.visible = true
 	shade.visible = true
 	shade.position = Vector2.ZERO
 	shade.size = vp
@@ -224,7 +213,7 @@ func _place() -> void:
 	_fill_dim(dim_left, Rect2(0, hole.position.y, maxf(0.0, hole.position.x), maxf(0.0, hole.size.y)))
 	_fill_dim(dim_right, Rect2(hole.end.x, hole.position.y, maxf(0.0, vp.x - hole.end.x), maxf(0.0, hole.size.y)))
 	if dim_frame != null:
-		dim_frame.position = hole.position
+		dim_frame.position = hole.position - global_position
 		dim_frame.size = hole.size
 		dim_frame.queue_redraw()
 
@@ -299,8 +288,6 @@ func _advance() -> void:
 func _finish() -> void:
 	active = false
 	visible = false
-	if dim_layer:
-		dim_layer.visible = false
 	if shade:
 		shade.visible = false
 	guide = Vector2i(999999, 0)
@@ -397,14 +384,15 @@ func _dim_piece() -> ColorRect:
 	var rect := ColorRect.new()
 	rect.color = Color(0, 0, 0, 0.62)
 	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	shade.add_child(rect)
+	rect.z_index = 0
+	add_child(rect)
 	return rect
 
 
 func _fill_dim(rect: ColorRect, area: Rect2) -> void:
 	if rect == null:
 		return
-	rect.position = area.position
+	rect.position = area.position - global_position
 	rect.size = Vector2(maxf(0.0, area.size.x), maxf(0.0, area.size.y))
 	rect.visible = area.size.x > 1.0 and area.size.y > 1.0
 
