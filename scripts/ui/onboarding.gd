@@ -167,6 +167,10 @@ func _process(_delta: float) -> void:
 
 func _place() -> void:
 	hole_global = _hole_for_step()
+	if bubble != null:
+		bubble.position = Vector2(280, 64)
+		bubble.size = Vector2(640, 176)
+		bubble.custom_minimum_size = Vector2(640, 176)
 	if shade == null:
 		return
 	shade.position = Vector2.ZERO
@@ -298,9 +302,11 @@ func _input(event: InputEvent) -> void:
 		if mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN or mb.button_index == MOUSE_BUTTON_MIDDLE:
 			get_viewport().set_input_as_handled()
 			return
-		if bubble != null and bubble.get_global_rect().has_point(mb.position):
+		var at := mb.position
+		var hole_hit := _passes(at) or _passes(mb.global_position)
+		if hole_hit:
 			return
-		if hole_global.has_point(mb.position):
+		if bubble != null and bubble.get_global_rect().has_point(at):
 			return
 		get_viewport().set_input_as_handled()
 		return
@@ -309,6 +315,21 @@ func _input(event: InputEvent) -> void:
 		if _key_ok(key):
 			return
 		get_viewport().set_input_as_handled()
+
+
+func _passes(at: Vector2) -> bool:
+	if hole_global.has_point(at):
+		return true
+	if shade != null:
+		var local := at - shade.global_position
+		if shade.hole.has_point(local):
+			return true
+	var map := _map()
+	if map != null and map.camera != null and DataDB.in_bounds(guide.x, guide.y):
+		var sp := map.world_to_screen(HexGrid.axial_to_pixel(guide.x, guide.y))
+		if at.distance_to(sp) <= 72.0:
+			return true
+	return false
 
 
 func _key_ok(key: InputEventKey) -> bool:
