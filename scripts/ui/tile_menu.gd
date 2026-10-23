@@ -187,9 +187,7 @@ func _rebuild() -> void:
 		box.add_child(row.panel)
 		rows.append(row)
 		i += 1
-	_fit_width(box)
-	var tall := box.get_combined_minimum_size().y + 20.0
-	card.custom_minimum_size.y = tall
+	_fit_card(box)
 	var placed: Dictionary = Actions.place_card(anchor, radius, card.custom_minimum_size, Rect2())
 	if bool(placed.nudge):
 		pass
@@ -199,16 +197,48 @@ func _rebuild() -> void:
 	_paint_focus()
 
 
-func _fit_width(box: VBoxContainer) -> void:
-	var width := 232.0
+func _fit_card(box: VBoxContainer) -> void:
+	var width := 248.0
 	for child in box.get_children():
-		if child is Control:
-			width = maxf(width, (child as Control).get_combined_minimum_size().x + 8.0)
+		var node := child as Control
+		if node == null:
+			continue
+		if node is Label:
+			(node as Label).autowrap_mode = TextServer.AUTOWRAP_OFF
+			width = maxf(width, (node as Label).get_minimum_size().x + 28.0)
+		else:
+			width = maxf(width, node.get_combined_minimum_size().x + 12.0)
 	width = minf(width, 420.0)
-	card.custom_minimum_size = Vector2(width, 0)
+	var inner := width - 16.0
+	var tall := 6.0
 	for child in box.get_children():
-		if child is Control:
-			(child as Control).custom_minimum_size.x = width - 16.0
+		var node := child as Control
+		if node == null:
+			continue
+		node.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		if node is RowChrome:
+			var row := node as RowChrome
+			row.clip_contents = true
+			row.custom_minimum_size = Vector2(inner, row.row_h)
+			tall += row.row_h
+		elif node is Label:
+			var lab := node as Label
+			var text_w := lab.get_minimum_size().x
+			var lines := 1
+			if text_w > inner and inner > 20.0:
+				lines = mini(3, int(ceili(text_w / inner)))
+				lab.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			var line_h := 22.0 * float(lines)
+			lab.custom_minimum_size = Vector2(inner, line_h)
+			tall += line_h
+		else:
+			var block := node.get_combined_minimum_size().y
+			if block < 8.0:
+				block = 52.0
+			block = minf(block, 84.0)
+			node.custom_minimum_size = Vector2(inner, block)
+			tall += block
+	card.custom_minimum_size = Vector2(width, tall + 14.0)
 
 
 func _row(action: Dictionary, _index: int) -> Dictionary:
