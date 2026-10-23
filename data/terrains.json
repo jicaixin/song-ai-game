@@ -1,0 +1,17 @@
+{
+  "terrains": [
+    {"id": "plain", "name": "平原", "move": 1, "defense": 0, "color": "6f7348", "passable": true},
+    {"id": "grass", "name": "草原", "move": 1, "defense": 0, "color": "8a7d58", "passable": true},
+    {"id": "hill", "name": "丘陵", "move": 2, "defense": 3, "color": "7a6248", "passable": true},
+    {"id": "mountain", "name": "山地", "move": 3, "defense": 5, "color": "5c574f", "passable": true},
+    {"id": "alpine", "name": "高山", "move": -1, "defense": 0, "color": "6c766c", "passable": false},
+    {"id": "loess", "name": "黄土塬", "move": 2, "defense": 4, "color": "a48462", "passable": true},
+    {"id": "forest", "name": "森林", "move": 2, "defense": 3, "color": "3d6844", "passable": true},
+    {"id": "marsh", "name": "沼泽", "move": 3, "defense": 2, "color": "4e6e5a", "passable": true},
+    {"id": "desert", "name": "荒漠", "move": 2, "defense": 0, "color": "c6b79a", "passable": true},
+    {"id": "erg", "name": "沙漠", "move": 3, "defense": -2, "color": "d0c2a4", "passable": true},
+    {"id": "rice", "name": "稻作平原", "move": 1, "defense": 0, "color": "4a7644", "passable": true},
+    {"id": "lake", "name": "湖泊", "move": -1, "defense": 0, "color": "3a6878", "passable": false},
+    {"id": "sea", "name": "海洋", "move": -1, "defense": 0, "color": "1c4664", "passable": false}
+  ]
+}

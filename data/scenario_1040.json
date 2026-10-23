@@ -1,0 +1,23 @@
+{
+  "id": "sanchuankou",
+  "name": "三川口前夜",
+  "seed": 104001,
+  "focus_city": "yanzhou",
+  "year": 1040,
+  "month": 1,
+  "resources": {"food": 1200, "money": 3500, "craft": 180, "iron": 40, "wood": 60, "horse": 8, "copper": 10, "coal": 12, "saltpeter": 4},
+  "morale": 62,
+  "prestige": 55,
+  "secrecy": 70,
+  "units": [
+    {"def": "song_xiangjun", "name": "延州守军", "city": "yanzhou", "dq": 0, "dr": 0},
+    {"def": "song_spear", "name": "刘平部", "city": "yanzhou", "dq": 1, "dr": -1, "general": "刘平", "general_bonus": 2},
+    {"def": "song_archer", "name": "石元孙部", "city": "yanzhou", "dq": 1, "dr": 0, "general": "石元孙", "general_bonus": 2},
+    {"def": "song_xiangjun", "name": "庆州厢军", "city": "qingyang", "dq": 0, "dr": 0},
+    {"def": "song_spear", "name": "殿前司", "city": "kaifeng", "dq": 1, "dr": 0},
+    {"def": "xia_tieyaozi", "name": "铁鹞子", "city": "yanzhou", "dq": -2, "dr": 0},
+    {"def": "xia_buba", "name": "步跋子", "city": "yanzhou", "dq": -1, "dr": 1},
+    {"def": "xia_tribal", "name": "部族骑兵", "city": "yanzhou", "dq": -1, "dr": -1},
+    {"def": "liao_pishi", "name": "皮室军", "city": "youzhou", "dq": 0, "dr": -1}
+  ]
+}

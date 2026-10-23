@@ -1,0 +1,11 @@
+.godot/
+*.translation
+export.cfg
+.DS_Store
+__pycache__/
+*.pyc
+uploads/
+agent-tools/
+
+# Web export (wasm/pck) is rebuilt locally and is not part of history.
+build/web/

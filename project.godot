@@ -1,0 +1,53 @@
+; Godot 4.3+ project. Window title is set at runtime.
+config_version=5
+
+[application]
+
+config/name="我带着AI穿越大宋"
+config/description="2030 年的旅人与顾问豆沙包，在庆历前后的大宋棋盘上走路。"
+config/version="0.1.0"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.3", "4.7", "GL Compatibility")
+config/icon="res://icon.png"
+
+[autoload]
+
+Settings="*res://scripts/autoload/settings.gd"
+DebugBridge="*res://scripts/autoload/debug_bridge.gd"
+EventBus="*res://scripts/autoload/event_bus.gd"
+AudioManager="*res://scripts/autoload/audio_manager.gd"
+DataDB="*res://scripts/autoload/data_db.gd"
+GameState="*res://scripts/autoload/game_state.gd"
+SaveManager="*res://scripts/autoload/save_manager.gd"
+TurnManager="*res://scripts/autoload/turn_manager.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+window/stretch/scale_mode="fractional"
+window/dpi/allow_hidpi=true
+window/handheld/orientation=0
+
+[gui]
+
+theme/custom="res://ui/theme.tres"
+theme/custom_font="res://ui/fonts/NotoSerifSC-Regular.subset.ttf"
+
+[debug]
+
+gdscript/warnings/inference_on_variant=0
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=3
+anti_aliasing/quality/msaa_3d=2
+environment/defaults/default_clear_color=Color(0.109804, 0.086275, 0.070588, 1)
+2d/snap/snap_2d_transforms_to_pixel=false
+2d/snap/snap_2d_vertices_to_pixel=false
