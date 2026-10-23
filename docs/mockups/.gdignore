@@ -1,0 +1,2 @@
+# Design mockups stay in the repo for review. Godot must not import or pack them:
+# the web export budget is pck+wasm ≤ 60 MiB, and these PNGs are not runtime assets.
