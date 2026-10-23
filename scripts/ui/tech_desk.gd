@@ -23,6 +23,9 @@ var scroll: ScrollContainer
 var name_banner: Label
 var anchors := {}
 var nodes := {}
+var tutorial_shade: Shade
+var tutorial_bubble: Control
+var tutorial_key := ""
 
 
 func build() -> void:
@@ -913,18 +916,14 @@ func _build_tutorial() -> void:
 	var step := clampi(desk.tech_tutorial, 0, steps.size() - 1)
 	var pair: Array = steps[step]
 	var key := str(pair[0])
-	var hole := Rect2(16, 70, 280, 120)
-	if anchors.has(key) and anchors[key] is Control:
-		var ctl: Control = anchors[key]
-		hole = ctl.get_global_rect()
-		if get_global_rect().position != Vector2.ZERO:
-			hole.position -= get_global_rect().position
-		hole = hole.grow(6)
+	tutorial_key = key
+	var hole := _tutorial_hole(key)
 	var shade := Shade.new()
 	shade.hole = hole
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
 	shade.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(shade)
+	tutorial_shade = shade
 	var bubble := PanelContainer.new()
 	var bx := minf(hole.end.x + 16.0, 760.0)
 	var by := clampf(hole.position.y, 80.0, 460.0)
@@ -971,6 +970,32 @@ func _build_tutorial() -> void:
 	nxt.pressed.connect(_next_tutorial)
 	foot.add_child(nxt)
 	desk.debug_btns["tech_next"] = nxt
+	tutorial_bubble = bubble
+	call_deferred("_place_tutorial")
+
+
+func _tutorial_hole(key: String) -> Rect2:
+	var hole := Rect2(12, 68, 286, 220)
+	if anchors.has(key) and anchors[key] is Control:
+		var ctl: Control = anchors[key]
+		var got := ctl.get_global_rect()
+		got.position -= get_global_rect().position
+		if got.size.x > 20.0 and got.size.y > 20.0:
+			hole = got.grow(8)
+	return hole
+
+
+func _place_tutorial() -> void:
+	if tutorial_shade == null or tutorial_bubble == null:
+		return
+	if not is_instance_valid(tutorial_shade) or not is_instance_valid(tutorial_bubble):
+		return
+	var hole := _tutorial_hole(tutorial_key)
+	tutorial_shade.hole = hole
+	tutorial_shade.queue_redraw()
+	var bx := minf(hole.end.x + 16.0, 760.0)
+	var by := clampf(hole.position.y, 80.0, 460.0)
+	tutorial_bubble.position = Vector2(bx, by)
 
 
 func _era_rails(host: HBoxContainer, height: float) -> void:
