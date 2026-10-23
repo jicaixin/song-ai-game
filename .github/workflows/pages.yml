@@ -1,0 +1,100 @@
+name: Deploy web
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  GODOT_VERSION: "4.7.2"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Cache Godot and export templates
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/godot-dl
+          key: godot-${{ env.GODOT_VERSION }}-stable-linux-x86_64-web-nothreads
+
+      - name: Install Godot 4.7.2 and the nothreads web template
+        run: |
+          set -euo pipefail
+          ver="${GODOT_VERSION}"
+          dl="${RUNNER_TEMP}/godot-dl"
+          mkdir -p "$dl" /tmp/godot
+          engine_zip="$dl/Godot_v${ver}-stable_linux.x86_64.zip"
+          templates_tpz="$dl/Godot_v${ver}-stable_export_templates.tpz"
+          base="https://github.com/godotengine/godot/releases/download/${ver}-stable"
+          if [ ! -s "$engine_zip" ]; then
+            curl -fL --retry 3 -o "$engine_zip" "$base/Godot_v${ver}-stable_linux.x86_64.zip"
+          fi
+          if [ ! -s "$templates_tpz" ]; then
+            curl -fL --retry 3 -o "$templates_tpz" "$base/Godot_v${ver}-stable_export_templates.tpz"
+          fi
+          unzip -qo "$engine_zip" -d "$dl/engine"
+          install -m 0755 "$dl/engine/Godot_v${ver}-stable_linux.x86_64" /tmp/godot/godot
+          dest="${HOME}/.local/share/godot/export_templates/${ver}.stable"
+          mkdir -p "$dest"
+          unzip -qo "$templates_tpz" "templates/version.txt" "templates/web_nothreads_release.zip" -d "$dl/templates"
+          cp "$dl/templates/templates/version.txt" "$dest/version.txt"
+          cp "$dl/templates/templates/web_nothreads_release.zip" "$dest/web_nothreads_release.zip"
+          test "$(tr -d '[:space:]' < "$dest/version.txt")" = "${ver}.stable"
+          /tmp/godot/godot --version
+
+      - name: Export the single-thread web build
+        env:
+          GODOT: /tmp/godot/godot
+        run: |
+          set -euo pipefail
+          # GitHub Pages cannot set COOP/COEP. The Web preset must stay single-threaded
+          # and must not turn on Godot's cross-origin-isolation service worker.
+          grep -qx 'variant/thread_support=false' export_presets.cfg
+          grep -qx 'progressive_web_app/ensure_cross_origin_isolation_headers=false' export_presets.cfg
+          bash tools/export_web.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          html = Path("build/web/index.html").read_text()
+          if "const GODOT_THREADS_ENABLED = false;" not in html:
+              raise SystemExit("web export enabled threads; GitHub Pages cannot send COOP/COEP")
+          if '"ensureCrossOriginIsolationHeaders":false' not in html:
+              raise SystemExit("web export expects cross-origin isolation headers")
+          pck = Path("build/web/index.pck").stat().st_size
+          wasm = Path("build/web/index.wasm").stat().st_size
+          total = pck + wasm
+          print(f"pck={pck} wasm={wasm} sum={total} mib={total/1024/1024:.2f}")
+          if total > 60 * 1024 * 1024:
+              raise SystemExit("pck+wasm exceeds 60 MiB")
+          PY
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
