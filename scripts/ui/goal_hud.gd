@@ -22,6 +22,10 @@ var _card_left := 0.0
 var _sig := ""
 var _flights: Array = []
 var fly_time := 1.0
+var _seal: Label
+var _seal_left := 0.0
+var _rating: Control
+var _rating_hold := false
 
 
 func setup(owner) -> void:
@@ -31,6 +35,7 @@ func setup(owner) -> void:
 	_build_bar()
 	_build_card()
 	_build_flyers()
+	_build_rating()
 
 
 func blocking() -> bool:
@@ -42,6 +47,10 @@ func tick(delta: float) -> void:
 		_card_left -= delta
 		if _card_left <= 0.0:
 			dismiss_card()
+	if _seal_left > 0.0:
+		_seal_left -= delta
+		if _seal_left <= 0.0 and _seal:
+			_seal.visible = false
 	_advance_flights(delta)
 
 
@@ -63,6 +72,11 @@ func sync() -> void:
 		_bar.visible = false
 	else:
 		z_index = 50
+	if _rating:
+		_rating.visible = GameState.demo_over and not blocking() and not _rating_hold
+		if _rating.visible:
+			_fill_rating()
+			z_index = 90
 	if _bar.visible:
 		_sync_bar()
 
@@ -156,7 +170,7 @@ func _paint_orders() -> void:
 	var omen := Omen.current()
 	if not omen.is_empty():
 		_rows.add_child(_omen_card(omen))
-	if GameState.orders.is_empty():
+	if GameState.orders.is_empty() and GameState.shelved.is_empty():
 		var empty := Label.new()
 		empty.text = "本月无急务，可直接结束回合"
 		empty.add_theme_font_size_override("font_size", 14)
@@ -170,6 +184,9 @@ func _paint_orders() -> void:
 		var item: Dictionary = item_v
 		_rows.add_child(_order_row(item, index))
 		index += 1
+	for shelved_v in GameState.shelved:
+		var shelved: Dictionary = shelved_v
+		_rows.add_child(_shelved_row(shelved))
 
 
 func _order_row(item: Dictionary, index: int) -> Control:
@@ -211,6 +228,7 @@ func _order_row(item: Dictionary, index: int) -> Control:
 	hit.focus_mode = Control.FOCUS_NONE
 	hit.set_anchors_preset(Control.PRESET_FULL_RECT)
 	hit.pressed.connect(_activate_order.bind(str(item.get("id", ""))))
+	hit.gui_input.connect(_shelve_click.bind(str(item.get("id", ""))))
 	row.add_child(hit)
 	if host:
 		host.btn_map["goal_%d" % index] = hit
@@ -360,6 +378,10 @@ func _activate_order(id: String) -> void:
 	if id == "G11":
 		GameState.sell_grain()
 		return
+	if id == "G30":
+		GameState.recover_army()
+		_show_seal()
+		return
 	if id == "G12":
 		host.open_desk("tech")
 		return
@@ -432,7 +454,19 @@ func _show_card(token: String) -> void:
 		host.hold_toast()
 	var ending := token.begins_with("end:")
 	var cid := token.trim_prefix("end:") if ending else token.trim_prefix("start:")
-	var ch: Dictionary = DataDB.chapter_by_id.get(cid, {})
+	var ch: Dictionary = {}
+	if token == "epilogue":
+		ch = {
+			"label": "尾声",
+			"name": "三胜之后",
+			"years": "打到第八十六回合",
+			"lead": "三件事都有了着落。后面的月份还在，评级不会因此往下掉。",
+			"main": "从容打完这一局",
+			"sides": ["西平", "北定", "靖内"],
+			"art": "chapter_06_beizhou_xingqing",
+		}
+	else:
+		ch = DataDB.chapter_by_id.get(cid, {})
 	var art := ""
 	if not ch.is_empty():
 		art = str(ch.get("art", ""))
@@ -559,6 +593,160 @@ func _focus_city(city: String) -> void:
 		map.call("focus_city", city)
 
 
+func _shelve_click(event: InputEvent, id: String) -> void:
+	if not (event is InputEventMouseButton):
+		return
+	var mouse := event as InputEventMouseButton
+	if not mouse.pressed or mouse.button_index != MOUSE_BUTTON_RIGHT:
+		return
+	GoalSystem.shelve(id)
+	mouse.button_index = MOUSE_BUTTON_NONE
+
+
+func _shelved_row(item: Dictionary) -> Control:
+	var row := Control.new()
+	row.custom_minimum_size = Vector2(288, 36)
+	var plate := Panel.new()
+	plate.set_anchors_preset(Control.PRESET_FULL_RECT)
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color("e7dcc6")
+	box.border_color = Color("b3a894")
+	box.set_border_width_all(1)
+	box.set_corner_radius_all(4)
+	plate.add_theme_stylebox_override("panel", box)
+	row.add_child(plate)
+	var title := Label.new()
+	title.text = "搁置 · %s" % str(item.get("text", ""))
+	title.position = Vector2(10, 6)
+	title.size = Vector2(260, 22)
+	title.add_theme_font_size_override("font_size", 14)
+	title.add_theme_color_override("font_color", Color("6b5b48"))
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(title)
+	var hit := Button.new()
+	hit.flat = true
+	hit.focus_mode = Control.FOCUS_NONE
+	hit.set_anchors_preset(Control.PRESET_FULL_RECT)
+	hit.pressed.connect(GoalSystem.restore.bind(str(item.get("id", ""))))
+	row.add_child(hit)
+	return row
+
+
+func _reward_icon(text: String) -> String:
+	if text.find("粮") >= 0:
+		return "res_food"
+	if text.find("钱") >= 0:
+		return "res_gold"
+	if text.find("匠") >= 0:
+		return "res_craft"
+	if text.find("电") >= 0:
+		return "res_power"
+	if text.find("皇威") >= 0:
+		return "res_prestige"
+	if text.find("生命") >= 0:
+		return "res_strength"
+	return ""
+
+
+func _build_rating() -> void:
+	_rating = Control.new()
+	_rating.visible = false
+	_rating.mouse_filter = Control.MOUSE_FILTER_STOP
+	_rating.position = Vector2.ZERO
+	_rating.size = Vector2(1280, 720)
+	add_child(_rating)
+	var back := ColorRect.new()
+	back.color = Color("1a140e")
+	back.position = Vector2.ZERO
+	back.size = Vector2(1280, 720)
+	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_rating.add_child(back)
+	var art := TextureRect.new()
+	art.name = "Art"
+	art.position = Vector2.ZERO
+	art.size = Vector2(1280, 720)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	art.modulate = Color(0.45, 0.42, 0.38)
+	art.texture = Kit.tex("res://ui/art/chapters/chapter_06_beizhou_xingqing.png")
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_rating.add_child(art)
+	_rate_label(_rating, "Kicker", Vector2(0, 150), 22, Color("e8cb7c"), "第八十六回合 · 史官")
+	_rate_label(_rating, "Rank", Vector2(0, 200), 48, Color("f3ead6"), "")
+	_rate_label(_rating, "Line", Vector2(200, 280), 18, Color("f7f1e4"), "")
+	var line: Label = _rating.get_node("Line")
+	line.size = Vector2(880, 64)
+	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var paper := ColorRect.new()
+	paper.color = Color("f3ead6")
+	paper.position = Vector2(340, 380)
+	paper.size = Vector2(600, 120)
+	paper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_rating.add_child(paper)
+	_rate_label(_rating, "Stats", Vector2(360, 396), 16, Color("2a2118"), "")
+	var stats: Label = _rating.get_node("Stats")
+	stats.size = Vector2(560, 90)
+	stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	stats.add_theme_constant_override("outline_size", 0)
+	var close := Button.new()
+	close.text = "合上史册"
+	close.position = Vector2(540, 540)
+	close.size = Vector2(200, 40)
+	close.add_theme_font_size_override("font_size", 16)
+	close.pressed.connect(_close_rating)
+	_rating.add_child(close)
+
+
+func _rate_label(parent: Control, node_name: String, pos: Vector2, size: int, color: Color, text: String) -> void:
+	var lab := Label.new()
+	lab.name = node_name
+	lab.text = text
+	lab.position = pos
+	lab.size = Vector2(1280 if pos.x == 0 else 560, size + 16)
+	if pos.x == 0:
+		lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lab.add_theme_font_size_override("font_size", size)
+	lab.add_theme_color_override("font_color", color)
+	lab.add_theme_constant_override("outline_size", 6)
+	lab.add_theme_color_override("font_outline_color", Color(0.1, 0.08, 0.05, 0.85))
+	lab.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(lab)
+
+
+func _fill_rating() -> void:
+	if _rating == null:
+		return
+	var page := GoalSystem.verdict()
+	var rank: Label = _rating.get_node("Rank")
+	rank.text = str(page.get("rank", ""))
+	var line: Label = _rating.get_node("Line")
+	line.text = str(page.get("line", ""))
+	var stats: Label = _rating.get_node("Stats")
+	stats.text = "西平 %d    北定 %d    靖内 %d\n皇威 %d    粮 %d    钱 %d\n%s" % [
+		GoalSystem.xiping(),
+		GoalSystem.beiding(),
+		GoalSystem.jingnei(),
+		GameState.morale,
+		int(GameState.resources.get("food", 0)),
+		int(GameState.resources.get("money", 0)),
+		Calendar.format_label(GameState.year, GameState.month, GameState.month_span),
+	]
+
+
+func _close_rating() -> void:
+	_rating_hold = true
+	if _rating:
+		_rating.visible = false
+
+
+func _show_seal() -> void:
+	_seal_left = 0.35
+	if _seal:
+		_seal.visible = true
+
+
 func _drain_rewards() -> void:
 	if GameState.reward_queue.is_empty():
 		return
@@ -568,7 +756,10 @@ func _drain_rewards() -> void:
 	var delay := 0.0
 	for item_v in batch:
 		var item: Dictionary = item_v
-		_fly(str(item.get("text", "")), origin, delay, bool(item.get("bad", false)))
+		var bad: bool = bool(item.get("bad", false))
+		_fly(str(item.get("text", "")), origin, delay, bad)
+		if not bad:
+			_show_seal()
 		delay += 0.08
 
 
@@ -585,7 +776,11 @@ func fly_debug() -> Array:
 		if node.get_child_count() > 0 and node.get_child(0) is Label:
 			var inner: Label = node.get_child(0) as Label
 			shown = inner.text
-		marks.append({"t": shown, "x": center.x, "y": center.y, "w": node.size.x, "h": node.size.y})
+		var icon_on := false
+		var icon_node := node.get_node_or_null("Icon")
+		if icon_node != null and icon_node.visible:
+			icon_on = true
+		marks.append({"t": shown, "x": center.x, "y": center.y, "w": node.size.x, "h": node.size.y, "icon": icon_on})
 	return marks
 
 
@@ -611,6 +806,15 @@ func _build_flyers() -> void:
 		lab.add_theme_font_size_override("font_size", 16)
 		lab.add_theme_color_override("font_color", Color("e8cb7c"))
 		chip.add_child(lab)
+		var icon := TextureRect.new()
+		icon.name = "Icon"
+		icon.position = Vector2(4, 4)
+		icon.size = Vector2(24, 24)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon.visible = false
+		chip.add_child(icon)
 		add_child(chip)
 
 
@@ -632,6 +836,19 @@ func _fly(text: String, origin: Vector2, delay: float, bad: bool) -> void:
 		fill.color = Color("8e2a1e") if bad else Color("2a2118")
 	var lab: Label = chip.get_node("Caption") as Label
 	lab.text = text
+	var icon: TextureRect = chip.get_node_or_null("Icon") as TextureRect
+	if icon:
+		var key := _reward_icon(text)
+		if key == "":
+			icon.texture = null
+			icon.visible = false
+			lab.position = Vector2.ZERO
+			lab.size = chip.size
+		else:
+			icon.texture = Kit.icon(key)
+			icon.visible = true
+			lab.position = Vector2(28, 0)
+			lab.size = Vector2(80, 32)
 	var ink := Color("f7f1e4") if bad else Color("e8cb7c")
 	lab.add_theme_color_override("font_color", ink)
 	var dest := Vector2(1100, 26)
@@ -726,6 +943,17 @@ func _build_bar() -> void:
 	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_bar.add_child(pill)
 	_bar.add_child(_count)
+	_seal = Label.new()
+	_seal.text = "已办"
+	_seal.visible = false
+	_seal.position = Vector2(90, 108)
+	_seal.size = Vector2(120, 48)
+	_seal.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_seal.add_theme_font_size_override("font_size", 28)
+	_seal.add_theme_color_override("font_color", Color("8e2a1e"))
+	_seal.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_seal.z_index = 5
+	_bar.add_child(_seal)
 	_body = Control.new()
 	_body.position = Vector2(8, 36)
 	_body.size = Vector2(288, 320)

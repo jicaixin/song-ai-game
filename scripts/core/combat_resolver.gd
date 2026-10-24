@@ -54,6 +54,8 @@ static func assess(atk: Dictionary, dfd: Dictionary) -> Dictionary:
 		var walls := int(city.get("walls", 0))
 		if walls != 0:
 			def_parts.append({"name": "城墙", "value": walls})
+		if str(city.get("id", "")) == "xingqing":
+			def_parts.append({"name": "兴庆", "value": 6})
 	var atk_power := _sum(atk_parts)
 	var def_power := _sum(def_parts)
 	if ranged and str(GameState.weather_id) == "rain":

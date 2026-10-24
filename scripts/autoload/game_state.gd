@@ -82,6 +82,16 @@ var bargain_west := false
 var order_place := {}
 var rest_streak := 0
 var campaign := {}
+var shelved: Array = []
+var power_made := 0
+var power_waste := 0
+var grain_samples := 0
+var grain_le12 := 0
+var epilogue_shown := false
+var rating_floor := 0
+var recovery_until := 0
+var recovery_turn := -1
+var demo_over := false
 
 func _ready() -> void:
 	rng.seed = seed_value
@@ -270,11 +280,54 @@ func apply_power() -> void:
 	var standby := standby_cost()
 	var cap := battery_cap()
 	var gained := battery - standby + last_gen
+	power_made += last_gen
 	if gained > cap:
-		presearch = mini(20, presearch + gained - cap)
+		var overflow := gained - cap
 		battery = cap
+		overflow = _pour_design(overflow)
+		if overflow > 0:
+			var room := maxi(0, 20 - presearch)
+			var kept := mini(overflow, room)
+			presearch = mini(20, presearch + kept)
+			power_waste += overflow - kept
 	else:
 		battery = maxi(0, gained)
+
+
+func _pour_design(overflow: int) -> int:
+	var left := overflow
+	var guard := 0
+	while left > 0 and guard < 8:
+		guard += 1
+		if tech_designing == "":
+			var opened := false
+			for tech_v in DataDB.techs:
+				var tech: Dictionary = tech_v
+				var id := str(tech.get("id", ""))
+				if tech_state(id) == "available":
+					start_design(id)
+					opened = true
+					break
+			if not opened:
+				return left
+		var need := design_need(tech_designing)
+		var room := need - tech_design_prog
+		if room < 0:
+			room = 0
+		var use := mini(left, room)
+		tech_design_prog += use
+		left -= use
+		if tech_design_prog >= need:
+			tech_blueprints.append(tech_designing)
+			var done: Dictionary = DataDB.tech_by_id.get(tech_designing, {})
+			pending_blueprint = str(done.get("name", tech_designing))
+			tech_designing = ""
+			tech_design_prog = 0
+			if not tech_queue.is_empty():
+				var next_id := str(tech_queue[0])
+				tech_queue.remove_at(0)
+				start_design(next_id)
+	return left
 
 
 func power_band() -> String:
@@ -439,12 +492,15 @@ func _economy() -> void:
 	if event_flags.has("zengbi_signed"):
 		money -= int(meters.get("liao_demand", 0)) * 2
 	var next_food := int(resources.get("food", 0)) + food
-	var ceiling := monthly_food() * 18
-	if next_food > ceiling:
-		var loss := int(round(float(next_food - ceiling) * 0.03))
-		if loss > 0:
-			next_food -= loss
+	var year_cap := monthly_food() * 12
+	if next_food > year_cap:
+		var extra := next_food - year_cap
+		money += int(extra * 2 / 5)
+		next_food = year_cap
 	resources["food"] = max(0, next_food)
+	grain_samples += 1
+	if int(resources.get("food", 0)) <= monthly_food() * 12:
+		grain_le12 += 1
 	resources["money"] = max(0, int(resources.get("money", 0)) + money)
 	resources["craft"] = max(0, int(resources.get("craft", 0)) + craft)
 	last_event = "本月结算 粮%s 钱%s 匠%s 发电 %d" % [_signed(food), _signed(money), _signed(craft), last_gen]
@@ -725,11 +781,41 @@ func choose_event(event_id: String, choice_id: String) -> void:
 		relations[key] = int(relations.get(key, 0)) + int(rel[key_v])
 	EventSystem.apply(ev, choice)
 	Campaign.after_choice(event_id, choice_id)
+	if int(choice.get("morale", 0)) <= -4 or _hurts_army(choice):
+		recovery_until = maxi(recovery_until, turn + 10)
 	notice = str(choice.get("result", "已记下"))
 	last_event = notice
 	AdvisorSystem.say("event_post:%s:%s" % [event_id, choice_id])
 	GoalSystem.touch()
 	EventBus.state_changed.emit()
+
+
+func recover_army() -> bool:
+	if turn > recovery_until:
+		return false
+	if recovery_turn == turn:
+		return false
+	morale += 2
+	recovery_turn = turn
+	for u_v in units:
+		var u: Dictionary = u_v
+		if str(u.get("faction", "")) != "song" or int(u.get("hp", 0)) <= 0:
+			continue
+		if int(u.get("hp", 0)) < 100:
+			u["hp"] = mini(100, int(u.get("hp", 0)) + 15)
+	notice = "整军养伤。皇威 +2，伤兵恢复一些。"
+	last_event = notice
+	GoalSystem.touch()
+	EventBus.state_changed.emit()
+	return true
+
+
+func _hurts_army(choice: Dictionary) -> bool:
+	for effect_v in choice.get("effects", []):
+		var effect: Dictionary = effect_v
+		if str(effect.get("type", "")) == "hurt_named":
+			return true
+	return false
 
 
 func _afford_choice(event_id: String, choice_id: String) -> bool:
@@ -1211,6 +1297,16 @@ func to_save() -> Dictionary:
 		"order_place": order_place.duplicate(),
 		"rest_streak": rest_streak,
 		"campaign": campaign.duplicate(true),
+		"shelved": shelved.duplicate(true),
+		"power_made": power_made,
+		"power_waste": power_waste,
+		"grain_samples": grain_samples,
+		"grain_le12": grain_le12,
+		"epilogue_shown": epilogue_shown,
+		"rating_floor": rating_floor,
+		"recovery_until": recovery_until,
+		"recovery_turn": recovery_turn,
+		"demo_over": demo_over,
 	}
 
 
@@ -1346,6 +1442,18 @@ func from_save(data: Dictionary) -> bool:
 	var raw_campaign: Dictionary = data.get("campaign", {})
 	for camp_key_v in raw_campaign.keys():
 		campaign[str(camp_key_v)] = raw_campaign[camp_key_v]
+	shelved = data.get("shelved", [])
+	if typeof(shelved) != TYPE_ARRAY:
+		shelved = []
+	power_made = int(data.get("power_made", 0))
+	power_waste = int(data.get("power_waste", 0))
+	grain_samples = int(data.get("grain_samples", 0))
+	grain_le12 = int(data.get("grain_le12", 0))
+	epilogue_shown = bool(data.get("epilogue_shown", false))
+	rating_floor = int(data.get("rating_floor", 0))
+	recovery_until = int(data.get("recovery_until", 0))
+	recovery_turn = int(data.get("recovery_turn", -1))
+	demo_over = bool(data.get("demo_over", false))
 	if orders.is_empty():
 		GoalSystem.on_turn()
 	EventSystem.scan()

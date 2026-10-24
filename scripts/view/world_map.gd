@@ -27,6 +27,8 @@ var map_rect := Rect2()
 var heights := {}
 var sprites := {}
 var banners: Array[Node3D] = []
+var _order_flags: Array = []
+var _flag_sig := ""
 var _overlay: MeshInstance3D
 var _focus_applied := ""
 var _unit_kinds := {}
@@ -966,6 +968,41 @@ func _rebuild_units() -> void:
 		sprites[int(u.uid)] = root
 
 
+func _sync_order_flags() -> void:
+	var sig := ""
+	for item_v in GameState.orders:
+		var item: Dictionary = item_v
+		sig += str(item.get("place", "")) + "|"
+	if sig == _flag_sig:
+		return
+	_flag_sig = sig
+	for node_v in _order_flags:
+		var old: Node = node_v
+		if is_instance_valid(old):
+			old.queue_free()
+	_order_flags.clear()
+	for item_v2 in GameState.orders:
+		var row: Dictionary = item_v2
+		var place := str(row.get("place", ""))
+		if place == "":
+			continue
+		var city := DataDB.city_by_id(place)
+		if city.is_empty():
+			continue
+		var lab := Label3D.new()
+		lab.text = "令"
+		lab.font_size = 56
+		lab.pixel_size = 0.04
+		lab.modulate = Color("8e2a1e")
+		lab.outline_size = 8
+		lab.outline_modulate = Color("f7f1e4")
+		lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		lab.position = _unit_pos(Vector2i(int(city.q), int(city.r))) + Vector3(1.6, 3.2, 0)
+		lab.visible = not overview
+		add_child(lab)
+		_order_flags.append(lab)
+
+
 func _unit_pos(ax: Vector2i) -> Vector3:
 	var p := HexGrid.axial_to_pixel(ax.x, ax.y)
 	return Vector3(p.x, _height_of(ax) + 0.05, p.y)
@@ -1459,6 +1496,8 @@ func _process(delta: float) -> void:
 		_place_realm_labels()
 	if Engine.get_process_frames() % 12 == 0:
 		_cull_banners()
+		if _playing():
+			_sync_order_flags()
 	if not _playing():
 		return
 	var dir := Vector2.ZERO

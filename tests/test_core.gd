@@ -554,6 +554,8 @@ func check_goals() -> void:
 	check("bargain_again", GameState.pending_events.has("zengbi"))
 	Bargain.commit(["refuse"])
 	check("bargain_refuse", GameState.event_flags.has("zengbi_refuse"))
+	Campaign.on_turn()
+	check("liao_spawn", Campaign.alive("liao_south") == 3 and not Campaign.full_push(), str(Campaign.alive("liao_south")))
 	GameState.turn = 33
 	EventSystem.scan()
 	Bargain.settle()
@@ -575,10 +577,69 @@ func check_goals() -> void:
 	check("grain_sell", sold and int(GameState.resources.get("food", 0)) == 4700 and int(GameState.resources.get("money", 0)) >= 120)
 	check("grain_once", not GameState.sell_grain())
 	GameState.battery = GameState.battery_cap()
+	GameState.tech_designing = ""
+	GameState.tech_design_prog = 0
+	var prints_before := GameState.tech_blueprints.size()
 	GameState.apply_power()
-	check("presearch", GameState.presearch > 0, str(GameState.presearch))
+	var sunk: bool = GameState.presearch > 0 or GameState.tech_design_prog > 0 or GameState.tech_blueprints.size() > prints_before
+	check("presearch", sunk, "pre %d prog %d" % [GameState.presearch, GameState.tech_design_prog])
 	GameState.turn = 12
 	check("omen_hao", str(Omen.current().get("title", "")) == "好水川")
+	GameState.new_game()
+	GameState.finish_turn()
+	var chip := Calendar.apply_turn(GameState.turn)
+	check("date_chip", GameState.year == chip.x and GameState.month == chip.y and GameState.month_span == chip.z)
+	check("grain_cap", int(GameState.resources.get("food", 0)) <= GameState.monthly_food() * 12)
+	var morale_before := GameState.morale
+	GameState.choose_event("sanchuan", "march")
+	check("recovery_window", GameState.recovery_until >= GameState.turn + 10)
+	GoalSystem.on_turn()
+	var saw_heal := false
+	for order_v in GameState.orders:
+		var order: Dictionary = order_v
+		if str(order.get("id", "")) == "G30":
+			saw_heal = true
+	check("recovery_order", saw_heal)
+	var healed := 0
+	while healed < 4 and GameState.morale < morale_before:
+		healed += 1
+		GameState.recover_army()
+		GameState.finish_turn()
+	check("recovery_back", GameState.morale >= morale_before, str(GameState.morale))
+	GameState.new_game()
+	GoalSystem.on_turn()
+	if not GameState.orders.is_empty():
+		var first: Dictionary = GameState.orders[0]
+		var shelved_id := str(first.get("id", ""))
+		GoalSystem.shelve(shelved_id)
+		var held := false
+		for shelved_v in GameState.shelved:
+			var shelved: Dictionary = shelved_v
+			if str(shelved.get("id", "")) == shelved_id:
+				held = true
+		check("shelve", held)
+	else:
+		check("shelve", false, "no order")
+	GameState.rating_floor = 3
+	GameState.morale = 10
+	check("rating_floor", int(GoalSystem.verdict().get("score", 0)) == 3)
+	var probe_atk: Dictionary = {}
+	var probe_def: Dictionary = {}
+	for unit_v in GameState.units:
+		var unit: Dictionary = unit_v
+		if probe_atk.is_empty() and str(unit.get("faction", "")) == "song":
+			probe_atk = unit
+		if probe_def.is_empty() and str(unit.get("faction", "")) == "xia":
+			probe_def = unit
+	probe_def["q"] = 14
+	probe_def["r"] = 22
+	var xing := CombatResolver.assess(probe_atk, probe_def)
+	var xing_bonus := false
+	for part_v in xing.get("def_parts", []):
+		var part: Dictionary = part_v
+		if str(part.get("name", "")) == "兴庆" and int(part.get("value", 0)) == 6:
+			xing_bonus = true
+	check("xingqing_bonus", xing_bonus)
 	GameState.new_game()
 
 

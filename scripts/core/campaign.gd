@@ -37,6 +37,8 @@ static func after_choice(event_id: String, choice_id: String) -> void:
 
 
 static func on_turn() -> void:
+	press_liao()
+	_hequ_shift()
 	if _live("wangze") and not GameState.campaign.has("wangze_spawned"):
 		_ensure("wangze", 2, "rebel_infantry", "贝州叛军", 27, 25, "beizhou")
 		GameState.campaign["wangze_spawned"] = GameState.turn
@@ -55,6 +57,87 @@ static func on_turn() -> void:
 			if not GameState.campaign.has(key):
 				_ensure(key, 1, "rebel_bandit", "山贼", 15, 28, "yanzhou")
 				GameState.campaign[key] = true
+
+
+static func press_liao() -> void:
+	if GameState.campaign.has("liao_spawned"):
+		return
+	if not GameState.event_flags.has("zengbi_refuse"):
+		return
+	_spawn_one("liao_south", "liao_pishi", "南皮室", 30, 21)
+	_spawn_one("liao_south", "liao_subject", "属国骑", 30, 20)
+	_spawn_one("liao_south", "liao_bow", "辽弓骑", 31, 20)
+	GameState.campaign["liao_spawned"] = GameState.turn
+	GameState.notice = "辽军压到雄州。"
+
+
+static func muster() -> Vector2i:
+	var city := DataDB.city_by_id("xiongzhou")
+	if city.is_empty():
+		return Vector2i(29, 21)
+	return Vector2i(int(city.get("q", 29)), int(city.get("r", 21)))
+
+
+static func full_push() -> bool:
+	var song := 0
+	var liao := 0
+	var xia_near := false
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		if int(u.get("hp", 0)) <= 0:
+			continue
+		var melee := int(DataDB.unit_type(str(u.get("def_id", ""))).get("melee", 0))
+		var fac := str(u.get("faction", ""))
+		if fac == "song":
+			song += melee
+		elif fac == "liao" and str(u.get("tag", "")) == "liao_south":
+			liao += melee
+		elif fac == "xia":
+			var here := Vector2i(int(u.get("q", 0)), int(u.get("r", 0)))
+			if _near_song_city(here, 3):
+				xia_near = true
+	if liao > 0 and song * 10 < liao * 8:
+		return true
+	var rebels := alive("wanglun") + alive("zhanghai") + alive("wangze")
+	return rebels > 0 and xia_near
+
+
+static func _hequ_shift() -> void:
+	if GameState.turn < 52 or not GameState.campaign.has("liao_spawned"):
+		return
+	if GameState.campaign.has("hequ_shift") or full_push():
+		return
+	if alive("liao_south") <= 0:
+		return
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		if str(u.get("tag", "")) == "liao_south" and int(u.get("hp", 0)) > 0:
+			u["hp"] = 0
+			break
+	GameState._remove_dead()
+	GameState.campaign["hequ_shift"] = true
+	GameState.notice = "河曲开战，辽军西调了一支。"
+
+
+static func _near_song_city(h: Vector2i, limit: int) -> bool:
+	for city_v in DataDB.cities:
+		var city: Dictionary = city_v
+		if str(city.get("faction", "")) != "song":
+			continue
+		var there := Vector2i(int(city.get("q", 0)), int(city.get("r", 0)))
+		if HexGrid.distance(h, there) <= limit:
+			return true
+	return false
+
+
+static func _spawn_one(tag: String, def_id: String, base: String, q: int, r: int) -> void:
+	var uid := GameState.add_unit(def_id, base, q, r)
+	var unit := GameState.unit_by_id(uid)
+	if unit.is_empty():
+		return
+	unit["tag"] = tag
+	unit["march"] = "xiongzhou"
+	unit["born"] = GameState.turn
 
 
 static func _live(event_id: String) -> bool:

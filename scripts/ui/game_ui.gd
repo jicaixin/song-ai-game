@@ -531,7 +531,7 @@ func _refresh() -> void:
 	_refresh_advisor()
 	_refresh_toast()
 	var waiting := _song_waiting()
-	end_button.disabled = GameState.input_locked or modal_open() or not GameState.playing
+	end_button.disabled = GameState.input_locked or modal_open() or not GameState.playing or GameState.turn > 86
 	if GameState.input_locked:
 		_enemy_dots = int(Time.get_ticks_msec() / 350) % 4
 		var dots := ""
@@ -656,6 +656,10 @@ func _refresh_toast() -> void:
 		toast.visible = false
 		_notice_seen = GameState.notice
 		return
+	# The enemy banner occupies y=60–104. A notice already on screen has to
+	# drop with it; the early return below would otherwise leave it overlapping.
+	if toast.visible:
+		toast.position = Vector2(390, 120 if _banner_open() else 80)
 	if GameState.notice == "" or GameState.notice == _notice_seen:
 		return
 	_notice_seen = GameState.notice
@@ -664,8 +668,13 @@ func _refresh_toast() -> void:
 	var tall := 28.0 + float(rows) * 26.0
 	toast.size = Vector2(520, maxf(64.0, tall))
 	toast.custom_minimum_size = toast.size
+	toast.position = Vector2(390, 120 if _banner_open() else 80)
 	toast.visible = true
 	toast_left = 4.0
+
+
+func _banner_open() -> bool:
+	return pacing != null and pacing.banner_open
 
 
 func _song_waiting() -> bool:

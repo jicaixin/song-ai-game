@@ -2,6 +2,7 @@ class_name FactionAI
 extends RefCounted
 
 const EnemyPace = preload("res://scripts/core/enemy_pace.gd")
+const Campaign = preload("res://scripts/core/campaign.gd")
 
 static func acting_count() -> int:
 	return _actors().size()
@@ -26,6 +27,9 @@ static func run() -> void:
 			continue
 		if str(unit.get("faction", "")) == "rebel":
 			await _rebel_act(unit)
+			continue
+		if str(unit.get("faction", "")) == "liao":
+			await _liao_act(unit)
 			continue
 		if int(unit.hp) < 35:
 			await _step_toward(unit, _capital("xingqing"))
@@ -56,14 +60,40 @@ static func run() -> void:
 
 static func _actors() -> Array:
 	var rows: Array = []
-	var factions: Array[String] = ["xia", "rebel"]
-	var names: Dictionary = {"xia": "西夏", "rebel": "叛军"}
+	var factions: Array[String] = ["xia", "rebel", "liao"]
+	var names: Dictionary = {"xia": "西夏", "rebel": "叛军", "liao": "辽"}
 	for fac in factions:
 		for u_v in GameState.units:
 			var u: Dictionary = u_v
-			if str(u.get("faction", "")) == fac and int(u.get("hp", 0)) > 0:
-				rows.append({"uid": int(u.get("uid", -1)), "name": str(names.get(fac, "西夏"))})
+			if str(u.get("faction", "")) != fac or int(u.get("hp", 0)) <= 0:
+				continue
+			if fac == "liao" and str(u.get("tag", "")) != "liao_south":
+				continue
+			rows.append({"uid": int(u.get("uid", -1)), "name": str(names.get(fac, "西夏"))})
 	return rows
+
+
+static func _liao_act(unit: Dictionary) -> void:
+	var prey := _best_attack(unit)
+	if not prey.is_empty() and _score(unit, prey) >= -8:
+		await _present_attack(unit, prey)
+		GameState.resolve_attack(int(unit.uid), int(prey.uid))
+		var tree := Engine.get_main_loop() as SceneTree
+		if tree:
+			await tree.process_frame
+		return
+	var press: bool = Campaign.full_push()
+	var home := Campaign.muster()
+	var here := Vector2i(int(unit.q), int(unit.r))
+	if not press and HexGrid.distance(here, home) <= 2:
+		return
+	var dest := home
+	if press:
+		var nearest := _nearest_song(unit)
+		if nearest.is_empty():
+			return
+		dest = Vector2i(int(nearest.q), int(nearest.r))
+	await _step_toward(unit, dest)
 
 
 static func _rebel_act(unit: Dictionary) -> void:

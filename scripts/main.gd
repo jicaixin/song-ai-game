@@ -207,6 +207,7 @@ func _process(_delta: float) -> void:
 		"date_label": ui.date_label.text if ui.date_label else "",
 		"orders": _order_texts(),
 		"chapter": str(GoalSystem.current_chapter().get("name", "")),
+		"chapter_label": str(GoalSystem.current_chapter().get("label", "")),
 		"chapter_open": ui.goals.blocking() if ui.goals else false,
 		"chapter_art": [ui.goals.art_size().x, ui.goals.art_size().y] if ui.goals else [0, 0],
 		"omen": ui.goals.omen_title() if ui.goals else "",
@@ -259,6 +260,9 @@ func _process(_delta: float) -> void:
 		"research_title": ui.research_title.text if ui.research_title else "",
 		"research_body": ui.research_body.text if ui.research_body else "",
 		"toast": ui.toast_label.text if ui.toast and ui.toast.visible else "",
+		"toast_y": ui.toast.position.y if ui.toast else -1,
+		"rating_open": ui.goals._rating.visible if ui.goals and ui.goals._rating else false,
+		"rating_rank": ui.goals._rating.get_node("Rank").text if ui.goals and ui.goals._rating and ui.goals._rating.visible else "",
 		"event_open": ui.pacing.event_open if ui.pacing else false,
 		"event_title": ui.pacing._title.text if ui.pacing and ui.pacing.event_open else "",
 		"banner": ui.pacing.banner_open if ui.pacing else false,
@@ -268,6 +272,14 @@ func _process(_delta: float) -> void:
 		"unread": GameState.pending_events.size(),
 		"tutorial_bubble": ui.tutorial_bubble_rect() if ui.has_method("tutorial_bubble_rect") else [],
 	})
+
+
+func _debug_turn(at: int) -> void:
+	GameState.turn = at
+	var date := Calendar.apply_turn(at)
+	GameState.year = date.x
+	GameState.month = date.y
+	GameState.month_span = date.z
 
 
 func _order_texts() -> Array:
@@ -343,7 +355,7 @@ func _poll_tech_cmd() -> void:
 	if cmd == "shot_omen":
 		GameState.tutorial_done = true
 		GameState.input_locked = false
-		GameState.turn = 12
+		_debug_turn(12)
 		ui.end_enemy_phase()
 		if ui.pacing and ui.pacing.event_open:
 			ui.pacing._close_event()
@@ -354,10 +366,24 @@ func _poll_tech_cmd() -> void:
 			ui.goals.show_tab("month")
 			ui.goals.sync()
 		return
+	if cmd == "shot_rating":
+		GameState.tutorial_done = true
+		GameState.input_locked = false
+		_debug_turn(87)
+		ui.end_enemy_phase()
+		if ui.pacing and ui.pacing.event_open:
+			ui.pacing._close_event()
+		if ui.goals and ui.goals.blocking():
+			ui.goals.dismiss_card()
+		GameState.demo_over = true
+		if ui.goals:
+			ui.goals._rating_hold = false
+			ui.goals.sync()
+		return
 	if cmd == "shot_bargain":
 		GameState.tutorial_done = true
 		GameState.input_locked = false
-		GameState.turn = 27
+		_debug_turn(27)
 		GameState.meters["liao_demand"] = 20
 		ui.end_enemy_phase()
 		if ui.goals and ui.goals.blocking():

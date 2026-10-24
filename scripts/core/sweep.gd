@@ -2,6 +2,7 @@ extends RefCounted
 
 const EventSystem = preload("res://scripts/core/event_system.gd")
 const GoalSystem = preload("res://scripts/core/goal_system.gd")
+const Hunt = preload("res://scripts/core/hunt.gd")
 
 const CORE := {
 	"E01": "sanchuan",
@@ -25,6 +26,12 @@ func run() -> int:
 	var a1_fail := 0
 	var a2_fail := 0
 	var a4_fail := 0
+	var caught := 0
+	var reached := 0
+	var grain_ok := 0
+	var grain_n := 0
+	var made := 0
+	var wasted := 0
 	var seeds := 0
 	while seeds < 100:
 		seeds += 1
@@ -37,6 +44,7 @@ func run() -> int:
 		GameState.order_place = {}
 		GameState.rest_streak = 0
 		GoalSystem.on_turn()
+		_spend_power()
 		var flags: Array[bool] = []
 		var first := {}
 		if not _record(flags, first):
@@ -47,6 +55,8 @@ func run() -> int:
 			GameState.finish_turn()
 			EventSystem.scan()
 			GoalSystem.on_turn()
+			_spend_power()
+			Hunt.step()
 			if not _record(flags, first):
 				a2_fail += 1
 		var i := 0
@@ -55,6 +65,14 @@ func run() -> int:
 				a1_fail += 1
 				i = flags.size()
 			i += 1
+		if GameState.event_flags.has("wanglun_caught"):
+			caught += 1
+		if GameState.event_flags.has("wanglun_at_yangzhou"):
+			reached += 1
+		grain_ok += GameState.grain_le12
+		grain_n += GameState.grain_samples
+		made += GameState.power_made
+		wasted += GameState.power_waste
 		for code in CORE.keys():
 			var id := str(CORE[code])
 			var seen := int(first.get(id, 999))
@@ -69,11 +87,35 @@ func run() -> int:
 	print("A1 %s failures %d" % ["PASS" if a1_ok else "FAIL", a1_fail])
 	print("A2 %s failures %d" % ["PASS" if a2_ok else "FAIL", a2_fail])
 	print("A4 %s failures %d" % ["PASS" if a4_ok else "FAIL", a4_fail])
+	print("WANG catch %d/100 reached %d/100" % [caught, reached])
+	var grain_pct := 0
+	if grain_n > 0:
+		grain_pct = int(round(float(grain_ok) * 100.0 / float(grain_n)))
+	var waste_pct := 0
+	if made > 0:
+		waste_pct = int(round(float(wasted) * 100.0 / float(made)))
+	print("A9 grain_le12 %d%% samples %d waste %d%% made %d" % [grain_pct, grain_n, waste_pct, made])
 	if a1_ok and a2_ok and a4_ok:
 		print("SWEEP PASSED")
 		return 0
 	print("SWEEP FAILED")
 	return 1
+
+
+func _spend_power() -> void:
+	if GameState.tech_designing == "":
+		for tech_v in DataDB.techs:
+			var tech: Dictionary = tech_v
+			var id := str(tech.get("id", ""))
+			if GameState.tech_state(id) == "available":
+				GameState.start_design(id)
+				break
+	if GameState.tech_trials.size() >= GameState.trial_slots():
+		return
+	var pending: Array = GameState.tech_blueprints.duplicate()
+	for bid_v in pending:
+		if GameState.start_trial(str(bid_v)):
+			return
 
 
 func _record(flags: Array[bool], first: Dictionary) -> bool:

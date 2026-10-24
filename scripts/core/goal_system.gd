@@ -31,14 +31,105 @@ static func reset() -> void:
 	GameState.order_place = {}
 	GameState.rest_streak = 0
 	GameState.campaign = {}
+	GameState.shelved = []
+	GameState.power_made = 0
+	GameState.power_waste = 0
+	GameState.grain_samples = 0
+	GameState.grain_le12 = 0
+	GameState.epilogue_shown = false
+	GameState.rating_floor = 0
+	GameState.recovery_until = 0
+	GameState.recovery_turn = -1
+	GameState.demo_over = false
 
 
 static func on_turn() -> void:
 	_apply_span()
 	_queue_cards()
+	_note_epilogue()
 	_resolve_orders(true)
 	Campaign.on_turn()
 	_fill_orders()
+	var now := _rank()
+	if now > GameState.rating_floor:
+		GameState.rating_floor = now
+	if GameState.turn > 86:
+		GameState.demo_over = true
+
+
+static func _note_epilogue() -> void:
+	if GameState.epilogue_shown:
+		return
+	if GameState.turn > 86:
+		return
+	if not xiping_done():
+		return
+	if beiding_done() == "":
+		return
+	if not jingnei_done():
+		return
+	GameState.epilogue_shown = true
+	GameState.card_queue.append("epilogue")
+
+
+static func _rank() -> int:
+	var north: bool = beiding_done() != ""
+	var quiet: bool = Campaign.alive("wanglun") + Campaign.alive("zhanghai") + Campaign.alive("wangze") == 0
+	var three: bool = xiping_done() and north and jingnei_done()
+	if three and quiet and GameState.morale >= 60:
+		return 3
+	if (xiping_done() or north) and jingnei_done() and GameState.morale >= 50:
+		return 2
+	if _city_song("yanzhou") and _city_song("kaifeng") and int(GameState.resources.get("money", 0)) >= 0:
+		return 1
+	return 0
+
+
+static func verdict() -> Dictionary:
+	var best := maxi(_rank(), GameState.rating_floor)
+	var names: Array[String] = ["平局「如史」", "小胜「守成」", "大胜", "完胜「庆历中兴」"]
+	var lines: Array[String] = [
+		"结果和史书差不多。豆沙包说：恭喜，您完美复刻了历史。",
+		"重镇还在，国库没有见底。",
+		"西平或北定有了着落，内乱也压住了。",
+		"三件事都办完了，皇威还在。这一页可以叫庆历中兴。",
+	]
+	return {
+		"rank": names[clampi(best, 0, 3)],
+		"line": lines[clampi(best, 0, 3)],
+		"score": best,
+	}
+
+
+static func shelve(id: String) -> void:
+	var keep: Array = []
+	for item_v in GameState.orders:
+		var item: Dictionary = item_v
+		if str(item.get("id", "")) == id and GameState.shelved.size() < 3:
+			item["shelved"] = true
+			GameState.shelved.append(item)
+		else:
+			keep.append(item)
+	GameState.orders = keep
+	_fill_orders()
+
+
+static func restore(id: String) -> void:
+	if GameState.orders.size() >= MAX_ORDERS:
+		return
+	var keep: Array = []
+	var moved := false
+	for item_v in GameState.shelved:
+		var item: Dictionary = item_v
+		if not moved and str(item.get("id", "")) == id:
+			item["shelved"] = false
+			item["born"] = GameState.turn
+			GameState.orders.append(item)
+			moved = true
+		else:
+			keep.append(item)
+	GameState.shelved = keep
+	_mark_main()
 
 
 static func touch() -> void:
@@ -231,7 +322,15 @@ static func _fill_orders() -> void:
 		var item: Dictionary = item_v
 		have[str(item.get("id", ""))] = true
 	var started_empty: bool = GameState.orders.is_empty()
+	if GameState.turn <= GameState.recovery_until and not have.has("G30") and GameState.orders.size() >= MAX_ORDERS:
+		GameState.orders.pop_back()
+		have = {}
+		for kept_v in GameState.orders:
+			var kept: Dictionary = kept_v
+			have[str(kept.get("id", ""))] = true
 	var want: Array = []
+	if GameState.turn <= GameState.recovery_until:
+		_push(want, have, "G30", "整军养伤", "", "", 1)
 	var omen := Omen.current()
 	if not omen.is_empty():
 		_push(want, have, "G01", str(omen.get("order", "")), str(omen.get("place", "")), "", int(omen.get("need", 1)))
@@ -415,6 +514,12 @@ static func _order_state(item: Dictionary, by_turn: bool) -> String:
 	var id := str(item.get("id", ""))
 	var age := GameState.turn - int(item.get("born", GameState.turn))
 	var limit := int(item.get("limit", 1))
+	if id == "G30":
+		if GameState.recovery_turn >= int(item.get("born", 0)):
+			return "done"
+		if by_turn and age >= limit:
+			return "overdue"
+		return "open"
 	if id == "G02":
 		if not _city_song("yanzhou"):
 			return "overdue"
