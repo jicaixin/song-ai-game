@@ -4,6 +4,8 @@ const GoalSystem = preload("res://scripts/core/goal_system.gd")
 
 const EventSystem = preload("res://scripts/core/event_system.gd")
 
+const Campaign = preload("res://scripts/core/campaign.gd")
+
 var year := 1040
 var month := 1
 var turn := 1
@@ -69,6 +71,17 @@ var chapter_shown := {}
 var chapter_rewarded := {}
 var reward_queue: Array = []
 var battery_bonus := 0
+var presearch := 0
+var supply_left := 0
+var grain_sold_turn := -1
+var transfer_turn := -1
+var feast_turn := -1
+var bargain_round := 0
+var bargain_used := {}
+var bargain_west := false
+var order_place := {}
+var rest_streak := 0
+var campaign := {}
 
 func _ready() -> void:
 	rng.seed = seed_value
@@ -256,7 +269,12 @@ func apply_power() -> void:
 	last_gen = int(round(float(power.get("base", 36)) * s * w * panel))
 	var standby := standby_cost()
 	var cap := battery_cap()
-	battery = clampi(battery - standby + last_gen, 0, cap)
+	var gained := battery - standby + last_gen
+	if gained > cap:
+		presearch = mini(20, presearch + gained - cap)
+		battery = cap
+	else:
+		battery = maxi(0, gained)
 
 
 func power_band() -> String:
@@ -388,6 +406,7 @@ func _economy() -> void:
 	var food := 0
 	var money := 0
 	var craft := 0
+	var song_pay := 0
 	for c_v in DataDB.cities:
 		var city: Dictionary = c_v
 		if str(city.get("faction", "")) != "song":
@@ -408,12 +427,24 @@ func _economy() -> void:
 		var pay := int(up.get("money", 0))
 		if edicts_done.has("jingbing"):
 			pay = int(round(float(pay) * 0.8))
+		song_pay += pay
 		money -= pay
 	if edicts_done.has("hegu"):
 		money = int(round(float(money) * 0.95))
 	money -= subsidies.size() * 40
 	money += markets.size() * 6
-	resources["food"] = max(0, int(resources.get("food", 0)) + food)
+	if supply_left > 0:
+		money += int(round(float(song_pay) * 0.2))
+		supply_left -= 1
+	if event_flags.has("zengbi_signed"):
+		money -= int(meters.get("liao_demand", 0)) * 2
+	var next_food := int(resources.get("food", 0)) + food
+	var ceiling := monthly_food() * 18
+	if next_food > ceiling:
+		var loss := int(round(float(next_food - ceiling) * 0.03))
+		if loss > 0:
+			next_food -= loss
+	resources["food"] = max(0, next_food)
 	resources["money"] = max(0, int(resources.get("money", 0)) + money)
 	resources["craft"] = max(0, int(resources.get("craft", 0)) + craft)
 	last_event = "本月结算 粮%s 钱%s 匠%s 发电 %d" % [_signed(food), _signed(money), _signed(craft), last_gen]
@@ -423,6 +454,98 @@ func _signed(n: int) -> String:
 	if n > 0:
 		return "+%d" % n
 	return str(n)
+
+
+func monthly_food() -> int:
+	var use := 0
+	for u_v in units:
+		var u: Dictionary = u_v
+		if str(u.get("faction", "")) != "song" or int(u.get("hp", 0)) <= 0:
+			continue
+		var up: Dictionary = DataDB.unit_type(str(u.get("def_id", ""))).get("upkeep", {})
+		use += int(up.get("food", 0))
+	if use < 1:
+		use = 1
+	return use
+
+
+func can_sell_grain() -> bool:
+	if grain_sold_turn == turn:
+		return false
+	if int(resources.get("food", 0)) < 300:
+		return false
+	return int(resources.get("food", 0)) > monthly_food() * 12
+
+
+func sell_grain() -> bool:
+	if grain_sold_turn == turn:
+		notice = "这个月已经出粜过了。"
+		EventBus.state_changed.emit()
+		return false
+	if not can_sell_grain():
+		notice = "粮还没超过十二个月的用量。"
+		EventBus.state_changed.emit()
+		return false
+	resources["food"] = int(resources.get("food", 0)) - 300
+	resources["money"] = int(resources.get("money", 0)) + 120
+	grain_sold_turn = turn
+	notice = "常平仓出粜。粮 −300，钱 +120。"
+	last_event = notice
+	GoalSystem.touch()
+	EventBus.state_changed.emit()
+	return true
+
+
+func transfer_grain() -> bool:
+	if int(resources.get("food", 0)) < 200:
+		notice = "边粮要二百石，仓里不够。"
+		EventBus.state_changed.emit()
+		return false
+	resources["food"] = int(resources.get("food", 0)) - 200
+	supply_left = 3
+	transfer_turn = turn
+	notice = "边粮已发。前线军饷三个月减两成。"
+	last_event = notice
+	GoalSystem.touch()
+	EventBus.state_changed.emit()
+	return true
+
+
+func can_feast() -> bool:
+	if int(resources.get("food", 0)) < 100:
+		return false
+	return not _wounded_song().is_empty()
+
+
+func feast() -> bool:
+	var unit := _wounded_song()
+	if unit.is_empty() or int(resources.get("food", 0)) < 100:
+		notice = "没有该犒的伤兵，或粮不够一百。"
+		EventBus.state_changed.emit()
+		return false
+	resources["food"] = int(resources.get("food", 0)) - 100
+	unit["hp"] = mini(100, int(unit.get("hp", 0)) + 20)
+	feast_turn = turn
+	notice = "%s 加了餐，生命恢复一些。" % str(unit.get("name", "部队"))
+	last_event = notice
+	GoalSystem.touch()
+	EventBus.state_changed.emit()
+	return true
+
+
+func _wounded_song() -> Dictionary:
+	var best: Dictionary = {}
+	var best_hp := 100
+	for u_v in units:
+		var u: Dictionary = u_v
+		if str(u.get("faction", "")) != "song" or int(u.get("hp", 0)) <= 0:
+			continue
+		if int(u.get("hp", 100)) < best_hp:
+			best_hp = int(u.get("hp", 100))
+			best = u
+	if best_hp >= 100:
+		return {}
+	return best
 
 
 func spend_mp(uid: int, cost: int) -> void:
@@ -581,21 +704,42 @@ func choose_event(event_id: String, choice_id: String) -> void:
 			choice = item
 	if choice.is_empty() or not EventSystem.choice_enabled(choice):
 		return
-	event_choice[event_id] = choice_id
+	if not _afford_choice(event_id, choice_id):
+		notice = "粮钱不够，这一条先办不了。"
+		EventBus.state_changed.emit()
+		return
+	var lock := true
+	if event_id == "wanglun" and choice_id == "blame" and not event_flags.has("wanglun_blame"):
+		lock = false
+	if event_id == "wangze" and choice_id == "relief" and not event_flags.has("wangze_relief"):
+		lock = false
+	if lock:
+		event_choice[event_id] = choice_id
+		if not event_log.has(event_id):
+			event_log.append(event_id)
 	pending_events.erase(event_id)
-	if not event_log.has(event_id):
-		event_log.append(event_id)
 	morale += int(choice.get("morale", 0))
 	var rel: Dictionary = choice.get("relation", {})
 	for key_v in rel.keys():
 		var key := str(key_v)
 		relations[key] = int(relations.get(key, 0)) + int(rel[key_v])
 	EventSystem.apply(ev, choice)
+	Campaign.after_choice(event_id, choice_id)
 	notice = str(choice.get("result", "已记下"))
 	last_event = notice
 	AdvisorSystem.say("event_post:%s:%s" % [event_id, choice_id])
 	GoalSystem.touch()
 	EventBus.state_changed.emit()
+
+
+func _afford_choice(event_id: String, choice_id: String) -> bool:
+	if choice_id != "amnesty" and choice_id != "relief":
+		return true
+	if event_id == "wangze" and choice_id == "relief":
+		return int(resources.get("food", 0)) >= 400
+	if choice_id == "amnesty" and (event_id == "wanglun" or event_id == "zhanghai"):
+		return int(resources.get("food", 0)) >= 200 and int(resources.get("money", 0)) >= 200
+	return true
 
 
 func _reset_pacing() -> void:
@@ -727,6 +871,9 @@ func start_design(id: String) -> bool:
 		tech_designing = id
 		tech_design_prog = int(tech_paused.get(id, 0))
 		tech_paused.erase(id)
+		if presearch > 0:
+			tech_design_prog += presearch
+			presearch = 0
 	elif id != tech_designing and not tech_queue.has(id):
 		tech_queue.append(id)
 	EventBus.state_changed.emit()
@@ -1053,6 +1200,17 @@ func to_save() -> Dictionary:
 		"chapter_shown": chapter_shown.duplicate(),
 		"chapter_rewarded": chapter_rewarded.duplicate(),
 		"battery_bonus": battery_bonus,
+		"presearch": presearch,
+		"supply_left": supply_left,
+		"grain_sold_turn": grain_sold_turn,
+		"transfer_turn": transfer_turn,
+		"feast_turn": feast_turn,
+		"bargain_round": bargain_round,
+		"bargain_used": bargain_used.duplicate(),
+		"bargain_west": bargain_west,
+		"order_place": order_place.duplicate(),
+		"rest_streak": rest_streak,
+		"campaign": campaign.duplicate(true),
 	}
 
 
@@ -1106,6 +1264,12 @@ func from_save(data: Dictionary) -> bool:
 			row["undo"] = {"q": int(snap.get("q", 0)), "r": int(snap.get("r", 0)), "mp": int(snap.get("mp", 0))}
 		if bool(src.get("skip_turn", false)):
 			row["skip_turn"] = true
+		if str(src.get("tag", "")) != "":
+			row["tag"] = str(src.get("tag", ""))
+		if str(src.get("march", "")) != "":
+			row["march"] = str(src.get("march", ""))
+		if int(src.get("born", 0)) > 0:
+			row["born"] = int(src.get("born", 0))
 		units.append(row)
 	rng.state = int(str(data.get("rng_state", "0")))
 	tech_done = _str_list(data.get("tech_done", []))
@@ -1168,6 +1332,20 @@ func from_save(data: Dictionary) -> bool:
 	chapter_shown = _flag_dict(data.get("chapter_shown", {}))
 	chapter_rewarded = _str_dict(data.get("chapter_rewarded", {}))
 	battery_bonus = int(data.get("battery_bonus", 0))
+	presearch = int(data.get("presearch", 0))
+	supply_left = int(data.get("supply_left", 0))
+	grain_sold_turn = int(data.get("grain_sold_turn", -1))
+	transfer_turn = int(data.get("transfer_turn", -1))
+	feast_turn = int(data.get("feast_turn", -1))
+	bargain_round = int(data.get("bargain_round", 0))
+	bargain_west = bool(data.get("bargain_west", false))
+	bargain_used = _flag_dict(data.get("bargain_used", {}))
+	order_place = _int_dict(data.get("order_place", {}))
+	rest_streak = int(data.get("rest_streak", 0))
+	campaign = {}
+	var raw_campaign: Dictionary = data.get("campaign", {})
+	for camp_key_v in raw_campaign.keys():
+		campaign[str(camp_key_v)] = raw_campaign[camp_key_v]
 	if orders.is_empty():
 		GoalSystem.on_turn()
 	EventSystem.scan()

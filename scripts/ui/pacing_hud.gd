@@ -3,6 +3,7 @@ extends Control
 
 const EventSystem = preload("res://scripts/core/event_system.gd")
 const EnemyPace = preload("res://scripts/core/enemy_pace.gd")
+const Bargain = preload("res://scripts/core/bargain.gd")
 
 ## Event modal, enemy-turn banner, and battle report. Drawn in the Song palette.
 
@@ -11,6 +12,7 @@ var event_open := false
 var banner_open := false
 var report_open := false
 var _event_id := ""
+var _bargain_pick: Array = []
 var _report_left := 0.0
 var _report_hover := false
 var _banner: Panel
@@ -188,6 +190,13 @@ func _open_event(id: String) -> void:
 	for child in _options.get_children():
 		_options.remove_child(child)
 		child.free()
+	_comment.visible = id != "zengbi"
+	_comment_head.visible = id != "zengbi"
+	if id == "zengbi":
+		_bargain_pick = []
+		_fill_bargain()
+		return
+	_options.position = Vector2(284, 248)
 	var choices: Array = ev.get("choices", [])
 	for choice_v in choices:
 		var choice: Dictionary = choice_v
@@ -204,8 +213,12 @@ func _full_or_bust(pid: String, expr: String) -> Texture2D:
 func _close_event() -> void:
 	event_open = false
 	_event_id = ""
+	_bargain_pick = []
 	_dim.visible = false
 	_card.visible = false
+	_comment.visible = true
+	_comment_head.visible = true
+	_options.position = Vector2(284, 248)
 	_clear_choice_buttons()
 
 
@@ -300,33 +313,32 @@ func _build_banner() -> void:
 	_banner.mouse_filter = Control.MOUSE_FILTER_STOP
 	_banner.add_theme_stylebox_override("panel", _plate(Color("6B3E8E"), 6))
 	add_child(_banner)
-	_banner_title = _cream(16)
-	_banner_title.position = Vector2(12, 10)
-	_banner_title.size = Vector2(188, 26)
+	_banner_title = _cream(15)
+	_banner_title.position = Vector2(10, 10)
+	_banner_title.size = Vector2(150, 26)
 	_banner.add_child(_banner_title)
-	_banner_count = _cream(15)
-	_banner_count.position = Vector2(200, 11)
-	_banner_count.size = Vector2(40, 24)
+	_banner_count = _cream(14)
+	_banner_count.position = Vector2(158, 11)
+	_banner_count.size = Vector2(36, 24)
 	_banner.add_child(_banner_count)
 	_dots = HBoxContainer.new()
-	_dots.position = Vector2(242, 18)
-	_dots.add_theme_constant_override("separation", 3)
+	_dots.position = Vector2(196, 18)
+	_dots.add_theme_constant_override("separation", 2)
 	_dots.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_banner.add_child(_dots)
-	_speed_1 = _tiny("1×")
-	_speed_1.position = Vector2(318, 8)
+	_speed_1 = _tiny("1×", 44)
+	_speed_1.position = Vector2(248, 8)
 	_speed_1.pressed.connect(_set_speed.bind(1.0))
 	_banner.add_child(_speed_1)
-	_speed_2 = _tiny("2×")
-	_speed_2.position = Vector2(364, 8)
+	_speed_2 = _tiny("2×", 44)
+	_speed_2.position = Vector2(296, 8)
 	_speed_2.pressed.connect(_set_speed.bind(2.0))
 	_banner.add_child(_speed_2)
-	_skip = _tiny("跳过")
-	_skip.position = Vector2(410, 8)
-	_skip.custom_minimum_size = Vector2(58, 28)
-	_skip.size = Vector2(58, 28)
+	_skip = _tiny("跳过 Esc", 124)
+	_skip.position = Vector2(344, 8)
 	_skip.pressed.connect(func() -> void: EnemyPace.request_skip())
 	_banner.add_child(_skip)
+	_mark_speed()
 	if host:
 		host.btn_map["enemy_skip"] = _skip
 		host.btn_map["enemy_speed_1"] = _speed_1
@@ -339,12 +351,25 @@ func _set_speed(rate: float) -> void:
 
 
 func _mark_speed() -> void:
-	var on := Color("e8cb7c")
-	var off := Color("f7f1e4")
-	if _speed_1:
-		_speed_1.add_theme_color_override("font_color", on if is_equal_approx(EnemyPace.speed, 1.0) else off)
-	if _speed_2:
-		_speed_2.add_theme_color_override("font_color", on if is_equal_approx(EnemyPace.speed, 2.0) else off)
+	_paint_speed(_speed_1, is_equal_approx(EnemyPace.speed, 1.0))
+	_paint_speed(_speed_2, is_equal_approx(EnemyPace.speed, 2.0))
+
+
+func _paint_speed(btn: Button, active: bool) -> void:
+	if btn == null:
+		return
+	var ink := Color("2a2118")
+	if active:
+		ink = Color("8e2a1e")
+	btn.add_theme_color_override("font_color", ink)
+	btn.add_theme_color_override("font_hover_color", ink)
+	btn.add_theme_color_override("font_pressed_color", ink)
+	btn.add_theme_color_override("font_focus_color", ink)
+	var box := _tiny_box(active)
+	btn.add_theme_stylebox_override("normal", box)
+	btn.add_theme_stylebox_override("hover", box)
+	btn.add_theme_stylebox_override("pressed", box)
+	btn.add_theme_stylebox_override("focus", box)
 
 
 func _paint_dots(done: int, total: int) -> void:
@@ -353,7 +378,7 @@ func _paint_dots(done: int, total: int) -> void:
 	var n := mini(total, 6)
 	for i in n:
 		var dot := ColorRect.new()
-		dot.custom_minimum_size = Vector2(8, 8)
+		dot.custom_minimum_size = Vector2(6, 6)
 		dot.color = Color("f7f1e4") if i < done else Color("f7f1e4", 0.35)
 		dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_dots.add_child(dot)
@@ -575,15 +600,181 @@ func _cream(size: int) -> Label:
 	return lab
 
 
-func _tiny(text: String) -> Button:
+func _tiny(text: String, wide: float) -> Button:
 	var btn := Button.new()
 	btn.text = text
 	btn.focus_mode = Control.FOCUS_NONE
-	btn.custom_minimum_size = Vector2(44, 28)
-	btn.size = Vector2(44, 28)
+	btn.clip_text = false
+	btn.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	btn.custom_minimum_size = Vector2(wide, 28)
+	btn.size = Vector2(wide, 28)
 	btn.add_theme_font_size_override("font_size", 14)
-	btn.add_theme_color_override("font_color", Color("f7f1e4"))
+	var box := _tiny_box(false)
+	btn.add_theme_stylebox_override("normal", box)
+	btn.add_theme_stylebox_override("hover", box)
+	btn.add_theme_stylebox_override("pressed", box)
+	btn.add_theme_stylebox_override("focus", box)
+	btn.add_theme_stylebox_override("disabled", box)
+	btn.add_theme_color_override("font_color", Color("2a2118"))
+	btn.add_theme_color_override("font_hover_color", Color("2a2118"))
+	btn.add_theme_color_override("font_pressed_color", Color("2a2118"))
+	btn.add_theme_color_override("font_focus_color", Color("2a2118"))
 	return btn
+
+
+func _tiny_box(active: bool) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color("f7f1e4")
+	box.border_color = Color("8e2a1e") if active else Color("f7f1e4")
+	box.set_border_width_all(2 if active else 0)
+	box.set_corner_radius_all(4)
+	box.content_margin_left = 4
+	box.content_margin_right = 4
+	box.content_margin_top = 2
+	box.content_margin_bottom = 2
+	return box
+
+
+func _fill_bargain() -> void:
+	Bargain.prepare()
+	_options.position = Vector2(284, 168)
+	_options.size = Vector2(572, 300)
+	var demand := int(GameState.meters.get("liao_demand", 20))
+	if Bargain.settling():
+		_title.text = "庆历增币 · 定议"
+		_body.text = "三轮谈完，按剩下的 %d 档签约。此后每档每个月再出二钱。" % demand
+	else:
+		_title.text = "庆历增币 · 第%s轮" % _round_word(Bargain.round_no())
+		var west := ""
+		if GameState.bargain_west:
+			west = "西线战绩已计入。"
+		_body.text = "辽索求 %d 档。这一轮可以压一两张筹码。%s" % [demand, west]
+	_options.add_child(_tier_bar(demand))
+	if Bargain.settling():
+		_options.add_child(_bargain_button("sign", "按 %d 档签约" % demand, "岁币按档计", true, false))
+		return
+	for row_v in Bargain.chips():
+		var row: Dictionary = row_v
+		var delta := int(row.get("delta", 0))
+		var effect := "加 %d 档" % delta
+		if delta < 0:
+			effect = "减 %d 档" % absi(delta)
+		_options.add_child(_bargain_button(str(row.get("id", "")), "%s  %s" % [str(row.get("label", "")), effect], str(row.get("note", "")), bool(row.get("enabled", false)), bool(row.get("risk", false))))
+	_options.add_child(_bargain_button("ok", "确定", "选好这一轮", true, false))
+
+
+func _round_word(n: int) -> String:
+	if n == 1:
+		return "一"
+	if n == 2:
+		return "二"
+	return "三"
+
+
+func _tier_bar(demand: int) -> Control:
+	var row := Control.new()
+	row.custom_minimum_size = Vector2(560, 44)
+	var caption := Label.new()
+	caption.text = "辽索求 %d 档" % demand
+	caption.position = Vector2(0, 0)
+	caption.size = Vector2(560, 18)
+	caption.add_theme_font_size_override("font_size", 13)
+	caption.add_theme_color_override("font_color", Color("8e2a1e"))
+	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(caption)
+	var cut := 20 - demand
+	if cut < 0:
+		cut = 0
+	if cut > 20:
+		cut = 20
+	var i := 0
+	while i < 20:
+		var cell := ColorRect.new()
+		cell.position = Vector2(i * 28, 20)
+		cell.size = Vector2(24, 18)
+		cell.color = Color("2f6b45") if i < cut else Color("e6d3a1")
+		cell.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(cell)
+		i += 1
+	return row
+
+
+func _bargain_button(id: String, title: String, note: String, enabled: bool, risk: bool) -> Control:
+	var row := Control.new()
+	row.custom_minimum_size = Vector2(560, 36)
+	var picked: bool = _bargain_pick.has(id)
+	var plate := ColorRect.new()
+	plate.position = Vector2.ZERO
+	plate.size = Vector2(560, 34)
+	if not enabled:
+		plate.color = Color("e4dccb")
+	elif risk:
+		plate.color = Color("f3e0d6")
+	elif picked:
+		plate.color = Color("f7e7c4")
+	else:
+		plate.color = Color("f7f1e4")
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(plate)
+	var lab := Label.new()
+	lab.text = title
+	lab.position = Vector2(10, 2)
+	lab.size = Vector2(360, 18)
+	lab.add_theme_font_size_override("font_size", 14)
+	lab.add_theme_color_override("font_color", Color("2a2118") if enabled else Color("8a8175"))
+	lab.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(lab)
+	var sub := Label.new()
+	sub.text = note
+	sub.position = Vector2(10, 18)
+	sub.size = Vector2(400, 14)
+	sub.add_theme_font_size_override("font_size", 13)
+	sub.add_theme_color_override("font_color", Color("8e2a1e") if risk else Color("6b5b48"))
+	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(sub)
+	var hit := Button.new()
+	hit.flat = true
+	hit.focus_mode = Control.FOCUS_NONE
+	hit.position = Vector2.ZERO
+	hit.size = Vector2(560, 34)
+	hit.disabled = not enabled and id != "ok" and id != "sign"
+	if id == "ok":
+		hit.pressed.connect(_bargain_ok)
+	elif id == "sign":
+		hit.pressed.connect(_bargain_sign)
+	elif enabled:
+		hit.pressed.connect(_bargain_toggle.bind(id))
+	row.add_child(hit)
+	if host:
+		host.btn_map["bargain_%s" % id] = hit
+	return row
+
+
+func _bargain_toggle(id: String) -> void:
+	if _bargain_pick.has(id):
+		_bargain_pick.erase(id)
+	elif _bargain_pick.size() < 2:
+		_bargain_pick.append(id)
+	_repaint_bargain()
+
+
+func _repaint_bargain() -> void:
+	var kept: Array = _bargain_pick.duplicate()
+	for child in _options.get_children():
+		_options.remove_child(child)
+		child.free()
+	_bargain_pick = kept
+	_fill_bargain()
+
+
+func _bargain_ok() -> void:
+	if Bargain.commit(_bargain_pick):
+		_close_event()
+
+
+func _bargain_sign() -> void:
+	if Bargain.settle():
+		_close_event()
 
 
 func _plate(bg: Color, radius: int, border: Color = Color(0, 0, 0, 0)) -> StyleBoxFlat:

@@ -4,32 +4,28 @@ extends RefCounted
 const EnemyPace = preload("res://scripts/core/enemy_pace.gd")
 
 static func acting_count() -> int:
-	var n := 0
-	for u_v in GameState.units:
-		var u: Dictionary = u_v
-		if str(u.get("faction", "")) == "xia" and int(u.hp) > 0:
-			n += 1
-	return n
+	return _actors().size()
 
 
 static func run() -> void:
 	var tree := Engine.get_main_loop() as SceneTree
 	EnemyPace.begin()
-	var ids: Array[int] = []
-	for u_v in GameState.units:
-		var u: Dictionary = u_v
-		if str(u.get("faction", "")) == "xia" and int(u.hp) > 0:
-			ids.append(int(u.uid))
-	EnemyPace.total = ids.size()
+	var actors := _actors()
+	EnemyPace.total = actors.size()
 	var step := 0
-	for uid in ids:
+	for actor_v in actors:
+		var actor: Dictionary = actor_v
 		step += 1
-		EnemyPace.enforce_cap(ids.size() >= 6)
+		EnemyPace.enforce_cap(actors.size() >= 6)
 		var ui := _ui()
 		if ui and ui.has_method("set_enemy_progress"):
-			ui.call("set_enemy_progress", step, ids.size(), "西夏")
+			ui.call("set_enemy_progress", step, actors.size(), str(actor.get("name", "西夏")))
+		var uid := int(actor.get("uid", -1))
 		var unit := GameState.unit_by_id(uid)
 		if unit.is_empty():
+			continue
+		if str(unit.get("faction", "")) == "rebel":
+			await _rebel_act(unit)
 			continue
 		if int(unit.hp) < 35:
 			await _step_toward(unit, _capital("xingqing"))
@@ -56,6 +52,41 @@ static func run() -> void:
 	var map := _map()
 	if map:
 		map.clear_pings()
+
+
+static func _actors() -> Array:
+	var rows: Array = []
+	var factions: Array[String] = ["xia", "rebel"]
+	var names: Dictionary = {"xia": "西夏", "rebel": "叛军"}
+	for fac in factions:
+		for u_v in GameState.units:
+			var u: Dictionary = u_v
+			if str(u.get("faction", "")) == fac and int(u.get("hp", 0)) > 0:
+				rows.append({"uid": int(u.get("uid", -1)), "name": str(names.get(fac, "西夏"))})
+	return rows
+
+
+static func _rebel_act(unit: Dictionary) -> void:
+	var prey := _best_attack(unit)
+	if not prey.is_empty() and _score(unit, prey) >= -8:
+		await _present_attack(unit, prey)
+		GameState.resolve_attack(int(unit.uid), int(prey.uid))
+		var tree := Engine.get_main_loop() as SceneTree
+		if tree:
+			await tree.process_frame
+		return
+	var march := str(unit.get("march", "yanzhou"))
+	var dest := _capital(march)
+	if dest == Vector2i.ZERO:
+		dest = _capital("yanzhou")
+	await _step_toward(unit, dest)
+	unit = GameState.unit_by_id(int(unit.get("uid", -1)))
+	if unit.is_empty():
+		return
+	if Vector2i(int(unit.q), int(unit.r)) == dest and str(unit.get("tag", "")) == "wanglun":
+		if not GameState.event_flags.has("wanglun_at_yangzhou"):
+			GameState.event_flags["wanglun_at_yangzhou"] = true
+			GameState.notice = "叛军到了扬州。"
 
 
 static func _present_attack(unit: Dictionary, prey: Dictionary) -> void:

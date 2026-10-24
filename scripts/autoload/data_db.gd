@@ -185,7 +185,7 @@ func hostile(a: String, b: String) -> bool:
 		return false
 	var pair := [a, b]
 	pair.sort()
-	return pair == ["song", "xia"] or pair == ["liao", "song"]
+	return pair == ["song", "xia"] or pair == ["liao", "song"] or pair == ["rebel", "song"]
 
 
 func color_of(hex_str: String) -> Color:

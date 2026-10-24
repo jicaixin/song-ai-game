@@ -488,7 +488,7 @@ func close_city() -> void:
 func _process(delta: float) -> void:
 	if not visible:
 		return
-	if toast_left > 0.0 and not GameState.input_locked:
+	if toast_left > 0.0 and not GameState.input_locked and not _chapter_blocking():
 		toast_left -= delta
 		if toast_left <= 0.0:
 			toast.visible = false
@@ -636,7 +636,22 @@ func _refresh_advisor() -> void:
 	portrait.texture = Kit.doushabao_frame(GameState.advisor_mood)
 
 
+func hold_toast() -> void:
+	if toast.visible and _notice_seen == GameState.notice:
+		_notice_seen = ""
+	toast.visible = false
+
+
+func _chapter_blocking() -> bool:
+	return goals != null and goals.blocking()
+
+
 func _refresh_toast() -> void:
+	if _chapter_blocking():
+		if toast.visible and _notice_seen == GameState.notice:
+			_notice_seen = ""
+		toast.visible = false
+		return
 	if GameState.report_hold:
 		toast.visible = false
 		_notice_seen = GameState.notice

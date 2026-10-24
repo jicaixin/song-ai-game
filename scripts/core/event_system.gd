@@ -1,6 +1,8 @@
 class_name EventSystem
 extends RefCounted
 
+const Bargain = preload("res://scripts/core/bargain.gd")
+
 ## Queues events whose window has opened and applies the choice effects.
 
 static func scan() -> void:
@@ -8,6 +10,10 @@ static func scan() -> void:
 		var ev: Dictionary = ev_v
 		var id := str(ev.get("id", ""))
 		if id == "":
+			continue
+		if id == "zengbi":
+			if Bargain.should_queue():
+				GameState.pending_events.append(id)
 			continue
 		if GameState.event_choice.has(id):
 			continue

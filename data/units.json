@@ -13,6 +13,8 @@
     {"id": "liao_pishi", "name": "皮室军", "faction": "liao", "unit_class": "cavalry", "melee": 30, "ranged": 0, "range": 0, "move": 4, "upkeep": {"money": 3, "food": 2}, "cost": {}, "traits": [{"type": "terrain_power", "terrains": ["plain", "rice"], "bonus": 3}], "sprite": "liao_pishi", "blurb": "平原 +3。本里程碑按兵不动。"},
     {"id": "liao_subject", "name": "属国骑兵", "faction": "liao", "unit_class": "cavalry", "melee": 18, "ranged": 0, "range": 0, "move": 4, "upkeep": {"money": 1, "food": 1}, "cost": {}, "traits": [], "sprite": "liao_pishi", "blurb": "数量多。"},
     {"id": "liao_han", "name": "汉军步兵", "faction": "liao", "unit_class": "infantry", "melee": 16, "ranged": 0, "range": 0, "move": 2, "upkeep": {"money": 1, "food": 1}, "cost": {}, "traits": [], "sprite": "song_spear", "blurb": "守城。"},
-    {"id": "liao_bow", "name": "辽弓骑", "faction": "liao", "unit_class": "cavalry", "melee": 12, "ranged": 18, "range": 2, "move": 4, "upkeep": {"money": 2, "food": 1}, "cost": {}, "traits": [], "sprite": "liao_pishi", "blurb": "可骑射。"}
+    {"id": "liao_bow", "name": "辽弓骑", "faction": "liao", "unit_class": "cavalry", "melee": 12, "ranged": 18, "range": 2, "move": 4, "upkeep": {"money": 2, "food": 1}, "cost": {}, "traits": [], "sprite": "liao_pishi", "blurb": "可骑射。"},
+    {"id": "rebel_infantry", "name": "叛军", "faction": "rebel", "unit_class": "infantry", "melee": 14, "ranged": 0, "range": 0, "move": 2, "upkeep": {"money": 0, "food": 0}, "cost": {}, "traits": [], "sprite": "song_spear", "blurb": "兵变。沿用禁军枪盾的旗，不另做贴图。"},
+    {"id": "rebel_bandit", "name": "山贼", "faction": "rebel", "unit_class": "infantry", "melee": 12, "ranged": 0, "range": 0, "move": 2, "upkeep": {"money": 0, "food": 0}, "cost": {}, "traits": [], "sprite": "xia_buba", "blurb": "山地流窜。沿用步跋子的旗。"}
   ]
 }

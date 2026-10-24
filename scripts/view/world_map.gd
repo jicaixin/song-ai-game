@@ -1612,6 +1612,10 @@ func _key(event: InputEventKey) -> void:
 	var ui := _ui()
 	if ui and ui.has_method("tile_menu_key") and bool(ui.call("tile_menu_key", event)):
 		return
+	if event.keycode == KEY_SPACE and ui and ui.get("goals") != null and ui.goals.blocking():
+		if ui.pacing == null or not ui.pacing.event_open:
+			ui.call("hide_modals")
+			return
 	if event.keycode == KEY_ESCAPE:
 		if ui and bool(ui.call("modal_open")):
 			ui.call("hide_modals")

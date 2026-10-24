@@ -2,6 +2,7 @@ class_name GoalHud
 extends Control
 
 const GoalSystem = preload("res://scripts/core/goal_system.gd")
+const Omen = preload("res://scripts/core/omen.gd")
 
 ## Goal bar, chapter cards, and the reward fly-in. The fly-in ends on 朝堂.
 
@@ -57,6 +58,11 @@ func sync() -> void:
 	GoalSystem.touch()
 	_drain_rewards()
 	_sync_card()
+	if blocking():
+		z_index = 90
+		_bar.visible = false
+	else:
+		z_index = 50
 	if _bar.visible:
 		_sync_bar()
 
@@ -71,6 +77,10 @@ func dismiss_card() -> void:
 	_card_id = ""
 	_card.visible = false
 	_sync_card()
+	if blocking():
+		z_index = 90
+	else:
+		z_index = 50
 
 
 func show_tab(which: String) -> void:
@@ -98,6 +108,7 @@ func _sync_bar() -> void:
 		var item: Dictionary = item_v
 		sig += "|%s|%s" % [str(item.get("text", "")), str(item.get("note", ""))]
 	sig += "|%d|%d|%d" % [GoalSystem.xiping(), GoalSystem.beiding(), GoalSystem.jingnei()]
+	sig += "|" + str(Omen.current().get("title", ""))
 	if sig == _sig:
 		return
 	_sig = sig
@@ -111,6 +122,8 @@ func _layout() -> void:
 		height = 32.0 + 36.0 + 8.0
 		if tab == "month":
 			height += float(maxi(GameState.orders.size(), 1)) * 70.0
+			if not Omen.current().is_empty():
+				height += 68.0
 		elif tab == "chapter":
 			height += 220.0
 		else:
@@ -140,6 +153,9 @@ func _paint() -> void:
 
 
 func _paint_orders() -> void:
+	var omen := Omen.current()
+	if not omen.is_empty():
+		_rows.add_child(_omen_card(omen))
 	if GameState.orders.is_empty():
 		var empty := Label.new()
 		empty.text = "本月无急务，可直接结束回合"
@@ -206,7 +222,17 @@ func _reward_label(item: Dictionary) -> Label:
 	if bool(item.get("main", false)):
 		craft = int(round(float(craft) * 1.5))
 	var lab := Label.new()
-	lab.text = "匠 +%d" % craft if craft > 0 else "皇威"
+	var id := str(item.get("id", ""))
+	if id == "G11":
+		lab.text = "钱 +120"
+	elif id == "G17":
+		lab.text = "饷减两成"
+	elif id == "G18":
+		lab.text = "生命 +20"
+	elif craft > 0:
+		lab.text = "匠 +%d" % craft
+	else:
+		lab.text = "皇威"
 	lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	lab.add_theme_font_size_override("font_size", 13)
 	lab.add_theme_color_override("font_color", Color("8a5a12"))
@@ -331,9 +357,31 @@ func _activate_order(id: String) -> void:
 	if id == "G15":
 		host.open_desk("events")
 		return
+	if id == "G11":
+		GameState.sell_grain()
+		return
+	if id == "G12":
+		host.open_desk("tech")
+		return
+	if id == "G17":
+		GameState.transfer_grain()
+		return
+	if id == "G18":
+		GameState.feast()
+		return
+	if id == "G22":
+		host.open_desk("court")
+		return
 	var city := "yanzhou"
-	if id == "G06":
+	if id == "G06" or id == "G01":
 		city = "zhenrong"
+	for item_v in GameState.orders:
+		var item: Dictionary = item_v
+		if str(item.get("id", "")) != id:
+			continue
+		var place := str(item.get("place", ""))
+		if place != "" and DataDB.city_by_id(place).size() > 0:
+			city = place
 	var map := get_tree().get_first_node_in_group("world_map")
 	if map:
 		map.call("focus_city", city)
@@ -358,10 +406,30 @@ func _sync_card() -> void:
 	_show_card(next)
 
 
+func omen_title() -> String:
+	var row := Omen.current()
+	return str(row.get("title", ""))
+
+
+func art_size() -> Vector2:
+	if _card == null:
+		return Vector2.ZERO
+	var bg: TextureRect = _card.get_node_or_null("Art")
+	if bg == null or bg.texture == null:
+		return Vector2.ZERO
+	return bg.size
+
+
 func _show_card(token: String) -> void:
 	_card_id = token
 	_card_left = 3.0
+	_card.position = Vector2.ZERO
+	_card.size = Vector2(1280, 720)
 	_card.visible = true
+	z_index = 90
+	_bar.visible = false
+	if host and host.has_method("hold_toast"):
+		host.hold_toast()
 	var ending := token.begins_with("end:")
 	var cid := token.trim_prefix("end:") if ending else token.trim_prefix("start:")
 	var ch: Dictionary = DataDB.chapter_by_id.get(cid, {})
@@ -373,27 +441,122 @@ func _show_card(token: String) -> void:
 		tex = Kit.tex("res://ui/art/chapters/%s.png" % art)
 	var bg: TextureRect = _card.get_node("Art")
 	bg.texture = tex
-	bg.modulate = Color(0.45, 0.42, 0.38) if ending else Color.WHITE
-	var state := GoalSystem.chapter_state(ch) if ending else "open"
-	var seal := "章成" if state == "done" else "未竟"
-	if not ending:
-		seal = ""
+	bg.position = Vector2.ZERO
+	bg.size = Vector2(1280, 720)
+	bg.modulate = Color(0.55, 0.52, 0.48) if ending else Color.WHITE
+	var state := "open"
+	if ending:
+		state = GoalSystem.chapter_state(ch)
+	var seal := ""
+	if ending:
+		seal = "章成" if state == "done" else "未竟"
 	_card.get_node("LabelLayer/Kicker").text = str(ch.get("label", ""))
 	_card.get_node("LabelLayer/Name").text = str(ch.get("name", ""))
 	_card.get_node("LabelLayer/Years").text = str(ch.get("years", ""))
-	var lead := str(ch.get("lead", ""))
-	if ending:
-		lead = "主目标：%s" % str(ch.get("main", ""))
-		if seal != "":
-			lead = "%s　%s" % [seal, lead]
-	_card.get_node("LabelLayer/Lead").text = lead
+	_card.get_node("LabelLayer/Lead").text = str(ch.get("lead", ""))
+	var badge: Label = _card.get_node("LabelLayer/Badge")
+	badge.text = "主目标"
 	var main_lab: Label = _card.get_node("LabelLayer/Main")
 	main_lab.text = str(ch.get("main", ""))
-	main_lab.position = Vector2(400, 416)
-	main_lab.size = Vector2(480, 40)
-	main_lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	main_lab.add_theme_constant_override("outline_size", 0)
-	_card.get_node("LabelLayer/Hint").text = "点击继续"
+	main_lab.position = Vector2(468, 408)
+	main_lab.size = Vector2(430, 40)
+	var seal_lab: Label = _card.get_node("LabelLayer/Seal")
+	seal_lab.text = seal
+	_card.get_node("LabelLayer/Hint").text = "点击继续    空格"
+	_fill_sides(ch)
+
+
+func _fill_sides(ch: Dictionary) -> void:
+	var box: HBoxContainer = _card.get_node("LabelLayer/Sides")
+	for child in box.get_children():
+		box.remove_child(child)
+		child.free()
+	var sides: Array = ch.get("sides", [])
+	if sides.is_empty():
+		return
+	var head := Label.new()
+	head.text = "支线"
+	head.add_theme_font_size_override("font_size", 16)
+	head.add_theme_color_override("font_color", Color("f3ead6"))
+	head.add_theme_constant_override("outline_size", 4)
+	head.add_theme_color_override("font_outline_color", Color(0.08, 0.06, 0.04, 0.9))
+	box.add_child(head)
+	for side_v in sides:
+		var chip := Label.new()
+		chip.text = "○  %s" % str(side_v)
+		chip.add_theme_font_size_override("font_size", 16)
+		chip.add_theme_color_override("font_color", Color("f7f1e4"))
+		chip.add_theme_constant_override("outline_size", 4)
+		chip.add_theme_color_override("font_outline_color", Color(0.08, 0.06, 0.04, 0.9))
+		box.add_child(chip)
+
+
+func _omen_card(row: Dictionary) -> Control:
+	var card := Control.new()
+	card.custom_minimum_size = Vector2(288, 60)
+	var plate := Panel.new()
+	plate.set_anchors_preset(Control.PRESET_FULL_RECT)
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color("f7f1e4")
+	var urgent: bool = Omen.urgent(row)
+	box.border_color = Color("8e2a1e") if urgent else Color("d99a2b")
+	box.set_border_width_all(1)
+	box.border_width_left = 3
+	box.set_corner_radius_all(4)
+	plate.add_theme_stylebox_override("panel", box)
+	card.add_child(plate)
+	var icon := TextureRect.new()
+	icon.texture = Kit.icon("omen_beacon")
+	icon.position = Vector2(8, 16)
+	icon.size = Vector2(24, 24)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(icon)
+	var left := Omen.turns_left(row)
+	var when := "下回合" if left <= 1 else "约 %d 回合" % left
+	var title := Label.new()
+	title.text = "%s · %s" % [str(row.get("title", "")), when]
+	title.position = Vector2(40, 6)
+	title.size = Vector2(180, 24)
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override("font_color", Color("2a2118"))
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(title)
+	var sub := Label.new()
+	sub.text = str(row.get("sub", ""))
+	sub.position = Vector2(40, 32)
+	sub.size = Vector2(180, 22)
+	sub.clip_text = true
+	sub.add_theme_font_size_override("font_size", 13)
+	sub.add_theme_color_override("font_color", Color("6b5b48"))
+	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(sub)
+	var look := Label.new()
+	look.text = "查看"
+	look.position = Vector2(228, 18)
+	look.size = Vector2(52, 24)
+	look.add_theme_font_size_override("font_size", 14)
+	look.add_theme_color_override("font_color", Color("8e2a1e"))
+	look.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(look)
+	var hit := Button.new()
+	hit.flat = true
+	hit.focus_mode = Control.FOCUS_NONE
+	hit.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var city := str(row.get("city", "yanzhou"))
+	hit.pressed.connect(_focus_city.bind(city))
+	card.add_child(hit)
+	if host:
+		host.btn_map["goal_omen"] = hit
+	return card
+
+
+func _focus_city(city: String) -> void:
+	var map := get_tree().get_first_node_in_group("world_map")
+	if map:
+		map.call("focus_city", city)
 
 
 func _drain_rewards() -> void:
@@ -616,48 +779,82 @@ func _build_card() -> void:
 	_card = Control.new()
 	_card.visible = false
 	_card.mouse_filter = Control.MOUSE_FILTER_STOP
-	_card.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_card.position = Vector2.ZERO
+	_card.size = Vector2(1280, 720)
 	add_child(_card)
+	var back := ColorRect.new()
+	back.name = "Back"
+	back.color = Color("1a140e")
+	back.position = Vector2.ZERO
+	back.size = Vector2(1280, 720)
+	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_card.add_child(back)
 	var art := TextureRect.new()
 	art.name = "Art"
-	art.set_anchors_preset(Control.PRESET_FULL_RECT)
+	art.position = Vector2.ZERO
+	art.size = Vector2(1280, 720)
 	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_card.add_child(art)
-	var dim := ColorRect.new()
-	dim.color = Color(0.05, 0.04, 0.03, 0.42)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_card.add_child(dim)
-	var veil := ColorRect.new()
-	veil.color = Color(0.12, 0.08, 0.05, 0.62)
-	veil.position = Vector2(280, 96)
-	veil.size = Vector2(720, 250)
-	veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_card.add_child(veil)
 	var layer := Control.new()
 	layer.name = "LabelLayer"
-	layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.position = Vector2.ZERO
+	layer.size = Vector2(1280, 720)
 	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_card.add_child(layer)
-	_card_label(layer, "Kicker", Vector2(0, 120), 28, Color("f7f1e4"))
-	_card_label(layer, "Name", Vector2(0, 168), 48, Color("f3ead6"))
-	_card_label(layer, "Years", Vector2(0, 240), 20, Color("e8cb7c"))
-	_card_label(layer, "Lead", Vector2(180, 300), 18, Color("f7f1e4"))
-	_card_label(layer, "Main", Vector2(180, 420), 20, Color("2a2118"))
-	_card_label(layer, "Hint", Vector2(0, 640), 16, Color("e8cb7c"))
-	var main_bg := ColorRect.new()
-	main_bg.color = Color("f3ead6")
-	main_bg.position = Vector2(380, 408)
-	main_bg.size = Vector2(520, 56)
-	main_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	layer.add_child(main_bg)
-	layer.move_child(main_bg, layer.get_node("Main").get_index())
+	_card_label(layer, "Kicker", Vector2(0, 132), 28, Color("f7f1e4"))
+	_card_label(layer, "Name", Vector2(0, 176), 56, Color("f3ead6"))
+	_card_label(layer, "Years", Vector2(0, 258), 20, Color("e8cb7c"))
+	_card_label(layer, "Lead", Vector2(200, 304), 18, Color("f7f1e4"))
+	var lead: Label = layer.get_node("Lead")
+	lead.size = Vector2(880, 52)
+	lead.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lead.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var paper := ColorRect.new()
+	paper.name = "Paper"
+	paper.color = Color("f3ead6")
+	paper.position = Vector2(360, 392)
+	paper.size = Vector2(560, 72)
+	paper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(paper)
+	var edge := ColorRect.new()
+	edge.color = Color("c6a15b")
+	edge.position = Vector2(360, 392)
+	edge.size = Vector2(560, 3)
+	edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(edge)
+	_card_label(layer, "Badge", Vector2(376, 412), 14, Color("8e2a1e"))
+	var badge: Label = layer.get_node("Badge")
+	badge.size = Vector2(88, 32)
+	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	badge.add_theme_constant_override("outline_size", 0)
+	_card_label(layer, "Main", Vector2(468, 408), 18, Color("2a2118"))
+	var main: Label = layer.get_node("Main")
+	main.size = Vector2(430, 40)
+	main.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	main.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	main.add_theme_constant_override("outline_size", 0)
+	var sides := HBoxContainer.new()
+	sides.name = "Sides"
+	sides.position = Vector2(160, 480)
+	sides.size = Vector2(960, 36)
+	sides.alignment = BoxContainer.ALIGNMENT_CENTER
+	sides.add_theme_constant_override("separation", 18)
+	sides.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(sides)
+	_card_label(layer, "Seal", Vector2(0, 560), 42, Color("8e2a1e"))
+	var seal: Label = layer.get_node("Seal")
+	seal.add_theme_constant_override("outline_size", 0)
+	_card_label(layer, "Hint", Vector2(820, 656), 16, Color("f3ead6"))
+	var hint: Label = layer.get_node("Hint")
+	hint.size = Vector2(420, 28)
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	var hit := Button.new()
 	hit.flat = true
 	hit.focus_mode = Control.FOCUS_NONE
-	hit.set_anchors_preset(Control.PRESET_FULL_RECT)
+	hit.position = Vector2.ZERO
+	hit.size = Vector2(1280, 720)
 	hit.pressed.connect(dismiss_card)
 	_card.add_child(hit)
 	if host:

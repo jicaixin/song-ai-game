@@ -7,6 +7,7 @@
     {"id": "dali", "name": "大理", "ruler": "段氏", "capital": "yangjumie", "player": false, "ai": "hold", "color": "2f7a3e"},
     {"id": "goryeo", "name": "高丽", "ruler": "王氏", "capital": "kaegyeong", "player": false, "ai": "hold", "color": "2c6a62"},
     {"id": "jiaozhi", "name": "交趾", "ruler": "李朝", "capital": "thanglong", "player": false, "ai": "hold", "color": "b0892e"},
-    {"id": "uyghur", "name": "西州回鹘", "ruler": "回鹘", "capital": "xizhou", "player": false, "ai": "hold", "color": "c4a46a"}
+    {"id": "uyghur", "name": "西州回鹘", "ruler": "回鹘", "capital": "xizhou", "player": false, "ai": "hold", "color": "c4a46a"},
+    {"id": "rebel", "name": "叛军", "ruler": "", "capital": "", "player": false, "ai": "aggressive", "color": "4D4540"}
   ]
 }

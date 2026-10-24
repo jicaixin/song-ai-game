@@ -5,6 +5,9 @@ const TileActions = preload("res://scripts/core/tile_actions.gd")
 const EventSystem = preload("res://scripts/core/event_system.gd")
 const EnemyPace = preload("res://scripts/core/enemy_pace.gd")
 const GoalSystem = preload("res://scripts/core/goal_system.gd")
+const Bargain = preload("res://scripts/core/bargain.gd")
+const Omen = preload("res://scripts/core/omen.gd")
+const Campaign = preload("res://scripts/core/campaign.gd")
 
 var failed := 0
 
@@ -536,6 +539,46 @@ func check_goals() -> void:
 	check("beiding_reduced", GoalSystem.beiding_done() == "reduced")
 	GameState.meters["xia_war"] = 10
 	check("xiping_done", GoalSystem.xiping_done() and GoalSystem.xiping() >= 85)
+	check("lines_pool", DataDB.lines.size() >= 250, str(DataDB.lines.size()))
+	check("chapter_art", ResourceLoader.exists("res://ui/art/chapters/chapter_00_sanchuankou.png"))
+	check("rebel_hostile", DataDB.hostile("song", "rebel") and not DataDB.hostile("rebel", "xia"))
+	GameState.new_game()
+	GameState.turn = 27
+	EventSystem.scan()
+	var demand_before := int(GameState.meters.get("liao_demand", 0))
+	var round_ok: bool = Bargain.commit(["fubi"])
+	check("bargain_round", round_ok and GameState.bargain_round == 1 and not GameState.event_choice.has("zengbi"), str(GameState.bargain_round))
+	check("bargain_cut", int(GameState.meters.get("liao_demand", 0)) == demand_before - 3, str(GameState.meters.get("liao_demand", 0)))
+	GameState.turn = 29
+	EventSystem.scan()
+	check("bargain_again", GameState.pending_events.has("zengbi"))
+	Bargain.commit(["refuse"])
+	check("bargain_refuse", GameState.event_flags.has("zengbi_refuse"))
+	GameState.turn = 33
+	EventSystem.scan()
+	Bargain.settle()
+	check("bargain_signed", GameState.event_choice.get("zengbi", "") == "sign" and GameState.event_flags.has("zengbi_signed"))
+	GameState.new_game()
+	GameState.turn = 41
+	var before_units := GameState.units.size()
+	GameState.choose_event("wanglun", "fight")
+	check("rebel_spawn", Campaign.alive("wanglun") == 2 and GameState.units.size() == before_units + 2, str(Campaign.alive("wanglun")))
+	GameState.new_game()
+	GameState.resources["food"] = 10
+	GameState.resources["money"] = 10
+	GameState.turn = 41
+	GameState.choose_event("wanglun", "amnesty")
+	check("amnesty_blocked", not GameState.event_choice.has("wanglun"))
+	GameState.new_game()
+	GameState.resources["food"] = 5000
+	var sold: bool = GameState.sell_grain()
+	check("grain_sell", sold and int(GameState.resources.get("food", 0)) == 4700 and int(GameState.resources.get("money", 0)) >= 120)
+	check("grain_once", not GameState.sell_grain())
+	GameState.battery = GameState.battery_cap()
+	GameState.apply_power()
+	check("presearch", GameState.presearch > 0, str(GameState.presearch))
+	GameState.turn = 12
+	check("omen_hao", str(Omen.current().get("title", "")) == "好水川")
 	GameState.new_game()
 
 

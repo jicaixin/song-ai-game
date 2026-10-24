@@ -55,6 +55,10 @@ func _ready() -> void:
 		var runner = load("res://tests/test_core.gd").new()
 		var failed: int = runner.run_tests()
 		get_tree().quit(failed)
+	if OS.get_cmdline_user_args().has("--sweep"):
+		var sweep = load("res://scripts/core/sweep.gd").new()
+		var sweep_failed: int = sweep.run()
+		get_tree().quit(sweep_failed)
 
 
 func _build_boot() -> void:
@@ -204,6 +208,9 @@ func _process(_delta: float) -> void:
 		"orders": _order_texts(),
 		"chapter": str(GoalSystem.current_chapter().get("name", "")),
 		"chapter_open": ui.goals.blocking() if ui.goals else false,
+		"chapter_art": [ui.goals.art_size().x, ui.goals.art_size().y] if ui.goals else [0, 0],
+		"omen": ui.goals.omen_title() if ui.goals else "",
+		"banner_buttons": [ui.pacing._speed_1.text, ui.pacing._speed_2.text, ui.pacing._skip.text] if ui.pacing and ui.pacing._speed_1 else [],
 		"goal_tab": ui.goals.tab if ui.goals else "",
 		"xiping": GoalSystem.xiping(),
 		"beiding": GoalSystem.beiding(),
@@ -332,6 +339,30 @@ func _poll_tech_cmd() -> void:
 	if cmd == "pace_slow":
 		EnemyPace.pinned = true
 		EnemyPace.speed = 0.35
+		return
+	if cmd == "shot_omen":
+		GameState.tutorial_done = true
+		GameState.input_locked = false
+		GameState.turn = 12
+		ui.end_enemy_phase()
+		if ui.pacing and ui.pacing.event_open:
+			ui.pacing._close_event()
+		if ui.goals:
+			if ui.goals.blocking():
+				ui.goals.dismiss_card()
+			ui.goals.collapsed = false
+			ui.goals.show_tab("month")
+			ui.goals.sync()
+		return
+	if cmd == "shot_bargain":
+		GameState.tutorial_done = true
+		GameState.input_locked = false
+		GameState.turn = 27
+		GameState.meters["liao_demand"] = 20
+		ui.end_enemy_phase()
+		if ui.goals and ui.goals.blocking():
+			ui.goals.dismiss_card()
+		ui.force_event("zengbi")
 		return
 	if cmd == "shot_report":
 		GameState.notice = "延州：步跋子 攻击 延州守军，守方 -40，攻方 -23。"

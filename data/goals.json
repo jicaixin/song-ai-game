@@ -7,6 +7,15 @@
     {"id": "G08", "kind": "craft", "text": "试制一份图纸", "limit": 2, "craft": 10, "morale": 0},
     {"id": "G11", "kind": "prep", "text": "常平仓出粜", "limit": 2, "craft": 0, "morale": 0},
     {"id": "G15", "kind": "chapter", "text": "修筑青涧城", "limit": 3, "craft": 6, "morale": 1},
-    {"id": "G16", "kind": "patrol", "text": "巡视延州边", "limit": 1, "craft": 6, "morale": 1}
+    {"id": "G16", "kind": "patrol", "text": "巡视延州边", "limit": 1, "craft": 6, "morale": 1},
+    {"id": "G01", "kind": "military", "text": "部署镇戎周边", "limit": 3, "craft": 10, "morale": 0},
+    {"id": "G12", "kind": "craft", "text": "把溢电送去设计", "limit": 2, "craft": 8, "morale": 0},
+    {"id": "G17", "kind": "prep", "text": "转输陕西边粮", "limit": 2, "craft": 0, "morale": 0},
+    {"id": "G18", "kind": "prep", "text": "犒赏一支伤兵", "limit": 2, "craft": 0, "morale": 0},
+    {"id": "G22", "kind": "diplomacy", "text": "遣使唃厮啰", "limit": 2, "craft": 6, "morale": 0},
+    {"id": "G24", "kind": "military", "text": "守住边城", "limit": 2, "craft": 8, "morale": 1},
+    {"id": "G25", "kind": "military", "text": "雄州定州驻军", "limit": 3, "craft": 8, "morale": 0},
+    {"id": "G26", "kind": "military", "text": "追击沂州叛军", "limit": 3, "craft": 8, "morale": 0},
+    {"id": "G28", "kind": "patrol", "text": "巡视开封外围", "limit": 1, "craft": 6, "morale": 0}
   ]
 }

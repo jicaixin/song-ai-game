@@ -4,6 +4,9 @@ extends RefCounted
 ## Chapters, monthly orders, and the three victory meters.
 ## Orders are at most three, and each label is at most 14 characters.
 
+const Omen = preload("res://scripts/core/omen.gd")
+const Campaign = preload("res://scripts/core/campaign.gd")
+
 const MAX_ORDERS := 3
 const LABEL_MAX := 14
 
@@ -17,12 +20,24 @@ static func reset() -> void:
 	GameState.reward_queue = []
 	GameState.month_span = 1
 	GameState.battery_bonus = 0
+	GameState.presearch = 0
+	GameState.supply_left = 0
+	GameState.grain_sold_turn = -1
+	GameState.transfer_turn = -1
+	GameState.feast_turn = -1
+	GameState.bargain_round = 0
+	GameState.bargain_used = {}
+	GameState.bargain_west = false
+	GameState.order_place = {}
+	GameState.rest_streak = 0
+	GameState.campaign = {}
 
 
 static func on_turn() -> void:
 	_apply_span()
 	_queue_cards()
 	_resolve_orders(true)
+	Campaign.on_turn()
 	_fill_orders()
 
 
@@ -94,7 +109,7 @@ static func chapter_state(ch: Dictionary) -> String:
 			return "done"
 		return "open"
 	if check == "rebels":
-		if _flag_any("wanglun_fight", "wanglun_amnesty") and _flag_any("zhanghai_fight", "zhanghai_amnesty"):
+		if _pacified("wanglun") and _pacified("zhanghai"):
 			return "done"
 		return "open"
 	if check == "heyi":
@@ -106,7 +121,7 @@ static func chapter_state(ch: Dictionary) -> String:
 			return "done"
 		return "open"
 	if check == "finale":
-		if xiping_done() and _flag_any("wangze_storm", "wangze_tunnel"):
+		if xiping_done() and _pacified("wangze"):
 			return "done"
 		return "open"
 	return "open"
@@ -140,11 +155,11 @@ static func beiding_done() -> String:
 
 static func jingnei_count() -> int:
 	var n := 0
-	if _flag_any("wanglun_fight", "wanglun_amnesty"):
+	if _pacified("wanglun"):
 		n += 1
-	if _flag_any("zhanghai_fight", "zhanghai_amnesty"):
+	if _pacified("zhanghai"):
 		n += 1
-	if _flag_any("wangze_storm", "wangze_tunnel"):
+	if _pacified("wangze"):
 		n += 1
 	return n
 
@@ -215,39 +230,135 @@ static func _fill_orders() -> void:
 	for item_v in GameState.orders:
 		var item: Dictionary = item_v
 		have[str(item.get("id", ""))] = true
-	var want: Array[String] = []
-	if _hostile_near("yanzhou", 3) and _cooled("G02"):
-		want.append("G02")
-	if _wounded_xia() and _cooled("G04"):
-		want.append("G04")
-	if _can_trial() and _cooled("G08"):
-		want.append("G08")
-	elif _can_design() and _cooled("G07"):
-		want.append("G07")
-	var ch := current_chapter()
-	if str(ch.get("id", "")) == "forts" and not GameState.event_flags.has("qingjian_build") and _cooled("G15"):
-		want.append("G15")
-	if GameState.turn >= 11 and GameState.turn <= 14 and _cooled("G06"):
-		want.append("G06")
-	if want.size() < MAX_ORDERS and _can_design() and not want.has("G07"):
-		want.append("G07")
-	if want.size() < MAX_ORDERS and _cooled("G16") and not want.has("G16"):
-		want.append("G16")
-	for id in want:
+	var started_empty: bool = GameState.orders.is_empty()
+	var want: Array = []
+	var omen := Omen.current()
+	if not omen.is_empty():
+		_push(want, have, "G01", str(omen.get("order", "")), str(omen.get("place", "")), "", int(omen.get("need", 1)))
+	var threat := _threat_place()
+	if threat == "yanzhou":
+		_push(want, have, "G02", "守住延州", "yanzhou", "", 1)
+	elif threat != "":
+		var city := DataDB.city_by_id(threat)
+		var label := "守住%s" % str(city.get("short", "边城"))
+		_push(want, have, "G24", label, threat, "", 1)
+	if _wounded_xia():
+		_push(want, have, "G04", "击退城下西夏", "yanzhou", "", 1)
+	_chapter_steps(want, have)
+	if _can_trial():
+		_push(want, have, "G08", "试制一份图纸", "", "", 1)
+	elif _can_design() and not _battery_full():
+		_push(want, have, "G07", "开始一项设计", "", "", 1)
+	if GameState.can_sell_grain():
+		_push(want, have, "G11", "常平仓出粜", "", "", 1)
+	if _battery_full() and _can_design():
+		_push(want, have, "G12", "把溢电送去设计", "", "", 1)
+	elif int(GameState.resources.get("food", 0)) >= 200 and int(GameState.resources.get("food", 0)) > GameState.monthly_food() * 12:
+		_push(want, have, "G17", "转输陕西边粮", "yanzhou", "", 1)
+	if GameState.can_feast():
+		_push(want, have, "G18", "犒赏一支伤兵", "yanzhou", "", 1)
+	if int(GameState.resources.get("money", 0)) >= 80 and int(GameState.envoy_turn.get("gusiluo", -99)) != GameState.turn:
+		_push(want, have, "G22", "遣使唃厮啰", "", "gusiluo", 1)
+	var added_real := false
+	for spec_v in want:
 		if GameState.orders.size() >= MAX_ORDERS:
 			break
+		var spec: Dictionary = spec_v
+		var id := str(spec.get("id", ""))
 		if have.has(id):
 			continue
-		var row := _make(id)
+		var row := _make(id, str(spec.get("text", "")), str(spec.get("place", "")), str(spec.get("envoy", "")), int(spec.get("need", 1)))
 		if row.is_empty():
 			continue
 		GameState.orders.append(row)
 		have[id] = true
+		added_real = true
+		var place := str(spec.get("place", ""))
+		if place != "":
+			GameState.order_place[place] = GameState.turn
+	if GameState.orders.is_empty():
+		_force_fallback()
+		added_real = false
+	if started_empty:
+		if added_real:
+			GameState.rest_streak = 0
+		else:
+			GameState.rest_streak += 1
 	_mark_main()
 	_refresh_notes()
 
 
-static func _make(id: String) -> Dictionary:
+static func _chapter_steps(want: Array, have: Dictionary) -> void:
+	var ch := current_chapter()
+	var cid := str(ch.get("id", ""))
+	if cid == "forts" and not GameState.event_flags.has("qingjian_build"):
+		_push(want, have, "G15", "修筑青涧城", "qingjian", "", 1)
+	if cid == "forts" and GameState.turn >= 11 and GameState.turn <= 14:
+		_push(want, have, "G06", "侦察镇戎军北", "zhenrong", "", 1)
+	if cid == "liao" and not GameState.event_choice.has("zengbi"):
+		_push(want, have, "G25", "雄州定州驻军", "xiongzhou", "", 1)
+	if cid == "qingli" and Campaign.alive("wanglun") > 0:
+		_push(want, have, "G26", "追击沂州叛军", "yizhou", "", 1)
+	elif cid == "qingli" and Campaign.alive("zhanghai") > 0:
+		_push(want, have, "G26", "清剿商山贼", "shang", "", 1)
+
+
+static func _force_fallback() -> void:
+	var id := "G16"
+	var text := "巡视延州边"
+	var place := "yanzhou"
+	if not _place_ok("yanzhou"):
+		id = "G28"
+		text = "巡视开封外围"
+		place = "kaifeng"
+	var row := _make(id, text, place, "", 1)
+	if row.is_empty():
+		return
+	GameState.orders.append(row)
+	GameState.order_place[place] = GameState.turn
+
+
+static func _push(want: Array, have: Dictionary, id: String, text: String, place: String, envoy: String, need: int) -> void:
+	if want.size() >= MAX_ORDERS:
+		return
+	if have.has(id):
+		return
+	if not _cooled(id):
+		return
+	if not _place_ok(place):
+		return
+	if not _startable(id):
+		return
+	for prev_v in want:
+		var prev: Dictionary = prev_v
+		if str(prev.get("id", "")) == id:
+			return
+		if place != "" and str(prev.get("place", "")) == place:
+			return
+	if text.length() > LABEL_MAX:
+		text = text.substr(0, LABEL_MAX)
+	want.append({"id": id, "text": text, "place": place, "envoy": envoy, "need": need})
+
+
+static func _startable(id: String) -> bool:
+	if id == "G07" or id == "G12":
+		return _can_design()
+	if id == "G08":
+		return _can_trial()
+	if id == "G11":
+		return GameState.can_sell_grain()
+	if id == "G17":
+		return int(GameState.resources.get("food", 0)) >= 200
+	if id == "G18":
+		return GameState.can_feast()
+	if id == "G22":
+		return int(GameState.resources.get("money", 0)) >= 80
+	if id == "G04":
+		return _wounded_xia()
+	return true
+
+
+static func _make(id: String, text: String, place: String, envoy: String, need: int) -> Dictionary:
 	var spec := {}
 	for item_v in DataDB.goal_orders:
 		var item: Dictionary = item_v
@@ -255,7 +366,8 @@ static func _make(id: String) -> Dictionary:
 			spec = item
 	if spec.is_empty():
 		return {}
-	var text := str(spec.get("text", ""))
+	if text == "":
+		text = str(spec.get("text", ""))
 	if text.length() > LABEL_MAX:
 		text = text.substr(0, LABEL_MAX)
 	return {
@@ -267,6 +379,9 @@ static func _make(id: String) -> Dictionary:
 		"limit": int(spec.get("limit", 2)),
 		"craft": int(spec.get("craft", 6)),
 		"morale": int(spec.get("morale", 0)),
+		"place": place,
+		"envoy": envoy,
+		"need": need,
 		"main": false,
 	}
 
@@ -342,6 +457,73 @@ static func _order_state(item: Dictionary, by_turn: bool) -> String:
 		if by_turn and age >= limit:
 			return "overdue"
 		return "open"
+	if id == "G28":
+		if _song_moved_near("kaifeng", 2):
+			return "done"
+		if by_turn and age >= limit:
+			return "overdue"
+		return "open"
+	if id == "G01":
+		var need := int(item.get("need", 1))
+		if _song_count_near(str(item.get("place", "")), 2) >= need:
+			return "done"
+		if by_turn and age >= limit:
+			return "overdue"
+		return "open"
+	if id == "G11":
+		if GameState.grain_sold_turn >= int(item.get("born", GameState.turn)):
+			return "done"
+		if by_turn and age >= limit:
+			return "overdue"
+		return "open"
+	if id == "G12":
+		if str(GameState.tech_designing) != "":
+			return "done"
+		if by_turn and age >= limit:
+			return "overdue"
+		return "open"
+	if id == "G17":
+		if GameState.transfer_turn >= int(item.get("born", GameState.turn)):
+			return "done"
+		if by_turn and age >= limit:
+			return "overdue"
+		return "open"
+	if id == "G18":
+		if GameState.feast_turn >= int(item.get("born", GameState.turn)):
+			return "done"
+		if by_turn and age >= limit:
+			return "overdue"
+		return "open"
+	if id == "G22":
+		var envoy := str(item.get("envoy", "gusiluo"))
+		if int(GameState.envoy_turn.get(envoy, -99)) >= int(item.get("born", GameState.turn)):
+			return "done"
+		if by_turn and age >= limit:
+			return "overdue"
+		return "open"
+	if id == "G24":
+		var held := str(item.get("place", ""))
+		if held != "" and not _city_song(held):
+			return "overdue"
+		if by_turn and age >= limit:
+			return "done"
+		return "open"
+	if id == "G25":
+		if _garrison_count() >= 2:
+			return "done"
+		if by_turn and age >= limit:
+			return "overdue"
+		return "open"
+	if id == "G26":
+		var rebels_gone: bool = Campaign.alive("wanglun") == 0 and Campaign.alive("zhanghai") == 0
+		var dealt: bool = _flag_any("wanglun_fight", "wanglun_amnesty") or _flag_any("zhanghai_fight", "zhanghai_amnesty")
+		if rebels_gone and dealt:
+			return "done"
+		if _rebel_contact():
+			return "done"
+		if by_turn and age >= limit:
+			return "overdue"
+		return "open"
 	return "open"
 
 
@@ -371,15 +553,145 @@ static func _refresh_notes() -> void:
 		var left := int(item.get("limit", 1)) - (GameState.turn - int(item.get("born", GameState.turn)))
 		if left < 1:
 			left = 1
-		var place := "延州"
-		var id := str(item.get("id", ""))
-		if id == "G06":
-			place = "镇戎军"
-		elif id == "G07" or id == "G08":
-			place = "开封"
-		elif id == "G15":
-			place = "青涧"
+		var place := _place_name(str(item.get("place", "")), str(item.get("id", "")))
 		item["note"] = "剩 %d 回合 · %s" % [left, place]
+
+
+static func completable(item: Dictionary) -> bool:
+	if int(item.get("limit", 9)) > 3:
+		return false
+	return _startable(str(item.get("id", "")))
+
+
+static func _pacified(tag: String) -> bool:
+	if tag == "wanglun":
+		if not _flag_any("wanglun_fight", "wanglun_amnesty"):
+			return false
+	elif tag == "zhanghai":
+		if not _flag_any("zhanghai_fight", "zhanghai_amnesty"):
+			return false
+	elif tag == "wangze":
+		if not _flag_any("wangze_storm", "wangze_tunnel"):
+			return false
+	else:
+		return false
+	return Campaign.alive(tag) == 0
+
+
+static func _place_ok(place: String) -> bool:
+	if place == "":
+		return true
+	if not GameState.order_place.has(place):
+		return true
+	return GameState.turn - int(GameState.order_place[place]) >= 3
+
+
+static func _battery_full() -> bool:
+	return GameState.battery >= GameState.battery_cap()
+
+
+static func _threat_place() -> String:
+	var best := ""
+	var best_d := 99
+	for city_v in DataDB.cities:
+		var city: Dictionary = city_v
+		if str(city.get("faction", "")) != "song":
+			continue
+		var origin := Vector2i(int(city.get("q", 0)), int(city.get("r", 0)))
+		for u_v in GameState.units:
+			var u: Dictionary = u_v
+			if int(u.get("hp", 0)) <= 0:
+				continue
+			if not DataDB.hostile("song", str(u.get("faction", ""))):
+				continue
+			var d := HexGrid.distance(origin, Vector2i(int(u.get("q", 0)), int(u.get("r", 0))))
+			if d <= 3 and d < best_d:
+				best_d = d
+				best = str(city.get("id", ""))
+	return best
+
+
+static func _song_count_near(place: String, dist: int) -> int:
+	var origin := _place_hex(place)
+	if origin.x > 9000:
+		return 0
+	var n := 0
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		if str(u.get("faction", "")) != "song" or int(u.get("hp", 0)) <= 0:
+			continue
+		if HexGrid.distance(origin, Vector2i(int(u.get("q", 0)), int(u.get("r", 0)))) <= dist:
+			n += 1
+	return n
+
+
+static func _place_hex(place: String) -> Vector2i:
+	if place == "qingjian":
+		return Vector2i(19, 24)
+	if place == "dingchuan" or place == "shang":
+		return Vector2i(16, 28)
+	if place == "qinghai":
+		return Vector2i(8, 30)
+	var city := DataDB.city_by_id(place)
+	if city.is_empty():
+		return Vector2i(99999, 0)
+	return Vector2i(int(city.get("q", 0)), int(city.get("r", 0)))
+
+
+static func _place_name(place: String, id: String) -> String:
+	if place == "qingjian" or id == "G15":
+		return "青涧"
+	if place == "dingchuan" or place == "shang":
+		return "陕西"
+	if place == "qinghai":
+		return "青唐"
+	if place == "":
+		if id == "G07" or id == "G08" or id == "G11" or id == "G12" or id == "G22":
+			return "开封"
+		return "延州"
+	var city := DataDB.city_by_id(place)
+	if city.is_empty():
+		return "延州"
+	var short := str(city.get("short", ""))
+	if short == "":
+		short = str(city.get("name", "延州"))
+	return short
+
+
+static func _garrison_count() -> int:
+	var n := 0
+	if _song_count_near("xiongzhou", 1) > 0:
+		n += 1
+	if _song_count_near("dingzhou", 1) > 0:
+		n += 1
+	if _song_count_near("zhending", 1) > 0:
+		n += 1
+	return n
+
+
+static func _rebel_contact() -> bool:
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		var tag := str(u.get("tag", ""))
+		if tag != "wanglun" and tag != "zhanghai":
+			continue
+		if int(u.get("hp", 0)) <= 0:
+			continue
+		var at := Vector2i(int(u.get("q", 0)), int(u.get("r", 0)))
+		if _song_count_near_hex(at, 2) > 0:
+			return true
+	return false
+
+
+static func _song_count_near_hex(origin: Vector2i, dist: int) -> int:
+	var n := 0
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		if str(u.get("faction", "")) != "song" or int(u.get("hp", 0)) <= 0:
+			continue
+		if HexGrid.distance(origin, Vector2i(int(u.get("q", 0)), int(u.get("r", 0)))) <= dist:
+			n += 1
+	return n
 
 
 static func _cooled(id: String) -> bool:
