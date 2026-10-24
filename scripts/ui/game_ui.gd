@@ -7,6 +7,7 @@ const Onboarding = preload("res://scripts/ui/onboarding.gd")
 const TileMenuSc = preload("res://scripts/ui/tile_menu.gd")
 const TileTipSc = preload("res://scripts/ui/tile_tip.gd")
 const TileMarksSc = preload("res://scripts/ui/tile_marks.gd")
+const PacingHudSc = preload("res://scripts/ui/pacing_hud.gd")
 
 const RES_BAR := [
 	["food", "res_food", "HudNumberLabel", Color("6db394")],
@@ -67,7 +68,9 @@ var fight_button: Button
 var cancel_button: Button
 var desk: Desk
 var tutor: Onboarding
+var pacing
 var btn_map := {}
+var _enemy_dots := 0
 var _notice_seen := ""
 
 
@@ -90,6 +93,11 @@ func _ready() -> void:
 	desk.name = "Desk"
 	desk.z_index = 60
 	add_child(desk)
+	pacing = PacingHudSc.new()
+	pacing.name = "PacingHud"
+	pacing.z_index = 70
+	add_child(pacing)
+	pacing.setup(self)
 	EventBus.state_changed.connect(_refresh)
 	EventBus.advisor_changed.connect(_refresh_advisor)
 	EventBus.camera_moved.connect(_on_camera_moved)
@@ -446,6 +454,8 @@ func open_desk(which: String) -> void:
 	close_tile_menu()
 	hide_combat()
 	clear_hover_tip()
+	if which == "events":
+		GameState.report_unread = false
 	if desk.mode == which:
 		desk.shut()
 		return
@@ -471,10 +481,12 @@ func close_city() -> void:
 func _process(delta: float) -> void:
 	if not visible:
 		return
-	if toast_left > 0.0:
+	if toast_left > 0.0 and not GameState.input_locked:
 		toast_left -= delta
 		if toast_left <= 0.0:
 			toast.visible = false
+	if pacing:
+		pacing.tick(delta)
 	_refresh()
 
 
@@ -513,7 +525,15 @@ func _refresh() -> void:
 	var waiting := _song_waiting()
 	end_button.disabled = GameState.input_locked or modal_open() or not GameState.playing
 	if GameState.input_locked:
-		end_button.text = "西夏行动中"
+		_enemy_dots = int(Time.get_ticks_msec() / 350) % 4
+		var dots := ""
+		if _enemy_dots == 1:
+			dots = "."
+		elif _enemy_dots == 2:
+			dots = ".."
+		elif _enemy_dots == 3:
+			dots = "…"
+		end_button.text = "敌方行动中" + dots
 		end_button.theme_type_variation = "EndTurnButton"
 	else:
 		end_button.text = "结束回合"
@@ -523,6 +543,8 @@ func _refresh() -> void:
 		pace = 4
 	if map and (minimap.texture == null or Engine.get_process_frames() % pace == 0):
 		minimap.texture = ImageTexture.create_from_image(map.minimap_image())
+	if pacing:
+		pacing.sync()
 
 
 func _set_play_visible(show_hud: bool) -> void:
@@ -603,6 +625,10 @@ func _refresh_advisor() -> void:
 
 
 func _refresh_toast() -> void:
+	if GameState.report_hold:
+		toast.visible = false
+		_notice_seen = GameState.notice
+		return
 	if GameState.notice == "" or GameState.notice == _notice_seen:
 		return
 	_notice_seen = GameState.notice
@@ -677,6 +703,11 @@ func _cancel_detail() -> void:
 
 
 func hide_modals() -> void:
+	if pacing and pacing.event_open:
+		return
+	if pacing and pacing.report_open:
+		pacing.dismiss_report()
+		return
 	if combat_panel.visible:
 		_cancel_detail()
 		return
@@ -685,7 +716,37 @@ func hide_modals() -> void:
 
 
 func modal_open() -> bool:
+	if pacing and pacing.event_blocking():
+		return true
 	return combat_panel.visible or (desk != null and desk.is_open())
+
+
+func begin_enemy_phase(total: int) -> void:
+	if pacing:
+		pacing.show_banner(total)
+
+
+func set_enemy_progress(done: int, total: int, faction_name: String) -> void:
+	if pacing:
+		pacing.set_progress(done, total, faction_name)
+
+
+func end_enemy_phase() -> void:
+	if pacing:
+		pacing.hide_banner()
+
+
+func show_battle_report(text: String) -> void:
+	if pacing:
+		pacing.show_report(text)
+
+
+func force_event(id: String) -> void:
+	if tutor and tutor.active:
+		tutor._finish()
+	GameState.tutorial_done = true
+	if pacing:
+		pacing.force_event(id)
 
 
 func blocks_pointer(screen: Vector2) -> bool:

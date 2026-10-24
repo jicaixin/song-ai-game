@@ -240,6 +240,13 @@ func _process(_delta: float) -> void:
 		"research_title": ui.research_title.text if ui.research_title else "",
 		"research_body": ui.research_body.text if ui.research_body else "",
 		"toast": ui.toast_label.text if ui.toast and ui.toast.visible else "",
+		"event_open": ui.pacing.event_open if ui.pacing else false,
+		"event_title": ui.pacing._title.text if ui.pacing and ui.pacing.event_open else "",
+		"banner": ui.pacing.banner_open if ui.pacing else false,
+		"banner_text": ui.pacing._banner_title.text if ui.pacing and ui.pacing.banner_open else "",
+		"report": ui.pacing.report_open if ui.pacing else false,
+		"report_text": ui.pacing._report_label.text if ui.pacing and ui.pacing.report_open else "",
+		"unread": GameState.pending_events.size(),
 		"tutorial_bubble": ui.tutorial_bubble_rect() if ui.has_method("tutorial_bubble_rect") else [],
 	})
 
@@ -269,6 +276,18 @@ func _poll_tech_cmd() -> void:
 		GameState.advisor_text = "图纸画好了：堡寨筑城法。去匠作院试制吧。"
 		GameState.advisor_mood = "smug"
 		EventBus.state_changed.emit()
+		return
+	if cmd == "shot_event":
+		ui.force_event("sanchuan")
+		return
+	if cmd == "shot_banner":
+		GameState.input_locked = true
+		ui.begin_enemy_phase(5)
+		ui.set_enemy_progress(2, 5, "西夏")
+		return
+	if cmd == "shot_report":
+		GameState.notice = "延州：步跋子 攻击 延州守军，守方 -40，攻方 -23。"
+		ui.show_battle_report("庆历元年九月\n延州：步跋子 攻击 延州守军，守方 -40，攻方 -23。\n延州：铁鹞子 攻击 延州守军，守方 -28，攻方 -16。")
 		return
 	if cmd == "shot_idle":
 		GameState.tech_designing = ""

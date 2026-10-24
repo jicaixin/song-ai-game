@@ -2,6 +2,7 @@ class_name Desk
 extends Control
 
 const Kit = preload("res://scripts/ui/kit.gd")
+const EventSystem = preload("res://scripts/core/event_system.gd")
 const TechDesk = preload("res://scripts/ui/tech_desk.gd")
 
 const MAT_NAME := {
@@ -680,10 +681,15 @@ func _page_events(box: VBoxContainer) -> void:
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	list.add_theme_constant_override("separation", 8)
 	scroll.add_child(list)
+	if GameState.last_report != "":
+		var report := Kit.label(GameState.last_report, "BodyLabel")
+		report.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		report.add_theme_font_size_override("font_size", 14)
+		list.add_child(report)
 	var any := false
 	for ev_v in DataDB.events:
 		var ev: Dictionary = ev_v
-		if GameState.turn < int(ev.get("turn", 1)):
+		if not EventSystem.revealed(ev):
 			continue
 		any = true
 		list.add_child(_event_card(ev))
@@ -730,9 +736,14 @@ func _event_card(ev: Dictionary) -> PanelContainer:
 	for choice_v in choices:
 		var choice: Dictionary = choice_v
 		var cid := str(choice.get("id", ""))
-		var act := Kit.button(str(choice.get("label", cid)), "PrimaryButton" if first else "Button")
+		var enabled := EventSystem.choice_enabled(choice)
+		var act := Kit.button(str(choice.get("label", cid)), "PrimaryButton" if first and enabled else "Button")
 		first = false
-		act.pressed.connect(GameState.choose_event.bind(id, cid))
+		act.disabled = not enabled
+		if not enabled:
+			act.text = "%s\n推演功能尚未开放" % str(choice.get("label", cid))
+		else:
+			act.pressed.connect(GameState.choose_event.bind(id, cid))
 		buttons.add_child(act)
 	return card
 

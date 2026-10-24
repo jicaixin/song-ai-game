@@ -2,6 +2,8 @@ extends RefCounted
 
 const TechPlan = preload("res://scripts/ui/tech_plan.gd")
 const TileActions = preload("res://scripts/core/tile_actions.gd")
+const EventSystem = preload("res://scripts/core/event_system.gd")
+const EnemyPace = preload("res://scripts/core/enemy_pace.gd")
 
 var failed := 0
 
@@ -15,6 +17,7 @@ func run_tests() -> int:
 	check_save_roundtrip()
 	check_tiles()
 	check_playtest()
+	check_pacing()
 	check_tech()
 	check_camera()
 	check_font()
@@ -426,6 +429,70 @@ func check_playtest() -> void:
 	for line_v in plan.get("more", []):
 		joined += str(line_v) + "\n"
 	check("city_section", joined.find("城市 · 延州") >= 0, joined)
+
+
+func check_pacing() -> void:
+	GameState.new_game()
+	var placeholder := false
+	for ev_v in DataDB.events:
+		var ev: Dictionary = ev_v
+		if str(ev.get("body", "")).find("占位") >= 0:
+			placeholder = true
+	check("event_count", DataDB.events.size() >= 6, str(DataDB.events.size()))
+	check("event_copy", not placeholder)
+	check("sanchuan_queued", GameState.pending_events.has("sanchuan"))
+	check("shaanxi_waits", not GameState.pending_events.has("shaanxi"))
+	var saved: Dictionary = GameState.to_save()
+	saved.erase("meters")
+	saved.erase("pending_events")
+	saved.erase("line_history")
+	saved.erase("event_flags")
+	check("old_save", GameState.from_save(saved) and int(saved.get("save_version", 0)) == 1)
+	check("old_meters", int(GameState.meters.get("xia_war", 0)) == 70)
+	GameState.new_game()
+	var before := GameState.units.size()
+	var liu := _named_unit("刘平部")
+	check("liu_alive", not liu.is_empty())
+	GameState.choose_event("sanchuan", "simulate")
+	check("simulate_blocked", not GameState.event_choice.has("sanchuan"))
+	GameState.choose_event("sanchuan", "march")
+	liu = _named_unit("刘平部")
+	var ambush := 0
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		if str(u.get("name", "")).find("伏兵") >= 0:
+			ambush += 1
+	check("march_hp", not liu.is_empty() and int(liu.hp) == 60, str(liu.get("hp", -1)))
+	check("march_spawn", ambush == 2 and GameState.units.size() == before + 2, "ambush %d size %d" % [ambush, GameState.units.size()])
+	check("march_flag", GameState.event_flags.has("sanchuan_march"))
+	GameState.new_game()
+	var seen := {}
+	var repeat_id := ""
+	var used := {}
+	for i in 20:
+		GameState.turn = i + 1
+		GameState.month = (i % 12) + 1
+		AdvisorSystem.say_turn()
+		var text := GameState.advisor_text
+		if seen.has(text):
+			repeat_id = text
+		seen[text] = true
+	for item_v in GameState.line_recent:
+		var item: Dictionary = item_v
+		var id := str(item.get("id", ""))
+		if id == "boot" or id == "":
+			continue
+		if used.has(id) and int(item.get("turn", 0)) - int(used[id]) < 30:
+			repeat_id = id
+		used[id] = int(item.get("turn", 0))
+	check("advisor_unique", seen.size() == 20 and repeat_id == "", repeat_id)
+	EnemyPace.begin()
+	check("pace_2x", is_equal_approx(EnemyPace.scale(1.0), 0.5))
+	EnemyPace.request_skip()
+	check("pace_skip", EnemyPace.scale(1.0) == 0.0)
+	EnemyPace.finish()
+	check("pace_idle", is_equal_approx(EnemyPace.scale(0.2), 0.2))
+	GameState.new_game()
 
 
 func _named_unit(unit_name: String) -> Dictionary:

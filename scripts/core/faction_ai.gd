@@ -1,14 +1,33 @@
 class_name FactionAI
 extends RefCounted
 
+const EnemyPace = preload("res://scripts/core/enemy_pace.gd")
+
+static func acting_count() -> int:
+	var n := 0
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		if str(u.get("faction", "")) == "xia" and int(u.hp) > 0:
+			n += 1
+	return n
+
+
 static func run() -> void:
 	var tree := Engine.get_main_loop() as SceneTree
+	EnemyPace.begin()
 	var ids: Array[int] = []
 	for u_v in GameState.units:
 		var u: Dictionary = u_v
 		if str(u.get("faction", "")) == "xia" and int(u.hp) > 0:
 			ids.append(int(u.uid))
+	EnemyPace.total = ids.size()
+	var step := 0
 	for uid in ids:
+		step += 1
+		EnemyPace.enforce_cap(ids.size() >= 6)
+		var ui := _ui()
+		if ui and ui.has_method("set_enemy_progress"):
+			ui.call("set_enemy_progress", step, ids.size(), "西夏")
 		var unit := GameState.unit_by_id(uid)
 		if unit.is_empty():
 			continue
@@ -17,6 +36,7 @@ static func run() -> void:
 			continue
 		var prey := _best_attack(unit)
 		if not prey.is_empty() and _score(unit, prey) >= -8:
+			await _present_attack(unit, prey)
 			GameState.resolve_attack(int(unit.uid), int(prey.uid))
 			await tree.process_frame
 			continue
@@ -29,8 +49,35 @@ static func run() -> void:
 			continue
 		prey = _best_attack(unit)
 		if not prey.is_empty() and _score(unit, prey) >= -8:
+			await _present_attack(unit, prey)
 			GameState.resolve_attack(int(unit.uid), int(prey.uid))
 			await tree.process_frame
+	EnemyPace.finish()
+	var map := _map()
+	if map:
+		map.clear_pings()
+
+
+static func _present_attack(unit: Dictionary, prey: Dictionary) -> void:
+	if EnemyPace.skip:
+		return
+	var map := _map()
+	if map == null:
+		return
+	var world := HexGrid.axial_to_pixel(int(prey.q), int(prey.r))
+	map.focus_smooth(world, EnemyPace.scale(0.45))
+	await _wait(EnemyPace.scale(0.28))
+	await map.animate_strike(int(unit.uid), Vector2i(int(prey.q), int(prey.r)))
+
+
+static func _wait(seconds: float) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return
+	if seconds <= 0.02:
+		await tree.process_frame
+		return
+	await tree.create_timer(seconds).timeout
 
 
 static func _step_toward(unit: Dictionary, target: Vector2i) -> void:
@@ -57,6 +104,11 @@ static func _step_toward(unit: Dictionary, target: Vector2i) -> void:
 	GameState.spend_mp(int(unit.uid), int(cost[best]))
 	GameState.set_pos(int(unit.uid), best)
 	var map := _map()
+	if map and _near_song_city(best, 3) and not EnemyPace.skip_moves():
+		map.focus_smooth(HexGrid.axial_to_pixel(best.x, best.y), EnemyPace.scale(0.35))
+		await _wait(EnemyPace.scale(0.22))
+	elif map:
+		map.ping(best)
 	if map:
 		await map.animate_move(int(unit.uid), path)
 	else:
@@ -120,4 +172,24 @@ static func _capital(id: String) -> Vector2i:
 
 static func _map() -> WorldMap:
 	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return null
 	return tree.get_first_node_in_group("world_map") as WorldMap
+
+
+static func _ui() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return null
+	return tree.get_first_node_in_group("game_ui")
+
+
+static func _near_song_city(h: Vector2i, limit: int) -> bool:
+	for city_v in DataDB.cities:
+		var city: Dictionary = city_v
+		if str(city.get("faction", "")) != "song":
+			continue
+		var there := Vector2i(int(city.get("q", 0)), int(city.get("r", 0)))
+		if HexGrid.distance(h, there) <= limit:
+			return true
+	return false

@@ -298,6 +298,7 @@ func _finish() -> void:
 	GameState.tutorial_done = true
 	if GameState.playing:
 		SaveManager.save_slot(0, true)
+	EventBus.state_changed.emit()
 
 
 func _push_guide() -> void:

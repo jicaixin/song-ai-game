@@ -2,86 +2,841 @@
   "events": [
     {
       "id": "sanchuan",
+      "code": "E01",
       "turn": 1,
+      "window": [1, 1],
+      "guarantee": 1,
       "title": "三川口",
-      "who": "li_yuanhao",
-      "expr": "angry",
-      "name": "李元昊",
-      "body": "元昊的铁鹞子已经盯上延州。刘平、石元孙要出城。照史实走，这一支援军进了埋伏。",
-      "comment": "豆沙包：伏兵我算得出来。人要不要照算的走，是你的事。",
+      "date_label": "宝元三年正月",
+      "who": "liu_ping",
+      "expr": "serious",
+      "portrait": "liu_ping_angry",
+      "name": "刘平",
+      "footer": "推进：序章 · 延州不失",
+      "body": "元昊围住延州，金明寨已经丢了。刘平、石元孙请出城会战。照史书走，这一支援军会走进三川口的埋伏；城门开不开，是您这一句。",
+      "comment": "伏兵我算得出来。人要不要照算的走，是您的事。",
       "choices": [
-        {"id": "hold", "label": "固守延州", "morale": 2, "relation": {"xia": -4}, "result": "城门没开。援军留在城里。"},
-        {"id": "march", "label": "照常进军", "morale": -6, "relation": {"xia": -8}, "result": "人已经出去了。这一仗会很难看。"}
+        {
+          "id": "hold",
+          "label": "固守延州",
+          "note": "两部留城，围三回合",
+          "odds": "稳",
+          "morale": 2,
+          "relation": {"xia": -4},
+          "result": "城门没开。援军留在城里。",
+          "effects": [{"type": "flag", "id": "sanchuan_hold"}]
+        },
+        {
+          "id": "march",
+          "label": "照常进军",
+          "note": "两部各损四十，伏兵出现",
+          "odds": "险",
+          "morale": -6,
+          "relation": {"xia": -8},
+          "result": "人已经出去了。三川口有伏兵。",
+          "effects": [
+            {"type": "flag", "id": "sanchuan_march"},
+            {"type": "move_named", "names": ["刘平部", "石元孙部"], "q": 14, "r": 26},
+            {"type": "hurt_named", "names": ["刘平部", "石元孙部"], "hp": -40},
+            {"type": "spawn", "def": "xia_buba", "name": "三川口伏兵", "q": 13, "r": 26, "count": 2},
+            {"type": "meter", "id": "xia_war", "delta": 6}
+          ]
+        },
+        {
+          "id": "simulate",
+          "label": "推演识破",
+          "note": "推演功能尚未开放",
+          "requires": "feature_simulate",
+          "odds": "稳",
+          "morale": 0,
+          "relation": {},
+          "result": ""
+        }
       ]
     },
     {
       "id": "shaanxi",
-      "turn": 1,
+      "code": "E02",
+      "turn": 5,
+      "window": [5, 6],
+      "guarantee": 6,
       "title": "经略陕西",
+      "date_label": "康定元年五月",
       "who": "fan_zhongyan",
       "expr": "serious",
+      "portrait": "fan_zhongyan_serious",
       "name": "范仲淹",
-      "body": "范仲淹、韩琦赴陕西。种世衡要在青涧筑城。一边是堡寨步步为营，一边是寻战。",
-      "comment": "豆沙包：堡寨不英雄，但英雄名册写得很快。",
+      "footer": "推进：第一章 · 堡寨与好水川",
+      "body": "夏竦为帅，韩琦、范仲淹副之，来经略陕西。一边是堡寨步步向前，一边是找西夏决战。这一步定了，秋天怎么打就跟着变。",
+      "comment": "堡寨不英雄，但英雄名册写得很快。",
       "choices": [
-        {"id": "forts", "label": "堡寨进筑", "morale": 1, "relation": {}, "result": "进筑。城还没动土，主意先定了。"},
-        {"id": "strike", "label": "寻机出击", "morale": -2, "relation": {"xia": -4}, "result": "边将听得见这句话。"}
+        {
+          "id": "forts",
+          "label": "堡寨进筑",
+          "note": "往后按寨推进",
+          "odds": "稳",
+          "morale": 1,
+          "relation": {},
+          "result": "进筑。城还没动土，主意先定了。",
+          "effects": [{"type": "flag", "id": "forts"}, {"type": "meter", "id": "xia_war", "delta": -2}]
+        },
+        {
+          "id": "strike",
+          "label": "寻机出击",
+          "note": "骑军见猎心喜",
+          "odds": "险",
+          "morale": -2,
+          "relation": {"xia": -4},
+          "result": "边将听得见这句话。",
+          "effects": [{"type": "flag", "id": "strike"}, {"type": "meter", "id": "xia_war", "delta": 4}]
+        }
       ]
     },
     {
       "id": "qingjian",
-      "turn": 3,
-      "title": "青涧",
+      "code": "E03",
+      "turn": 6,
+      "window": [6, 8],
+      "guarantee": 8,
+      "title": "青涧城",
+      "date_label": "康定元年六月",
       "who": "zhong_shiheng",
       "expr": "serious",
+      "portrait": "zhong_shiheng_serious",
       "name": "种世衡",
-      "body": "种世衡请筑青涧城，把营寨推到夏人眼前。",
-      "comment": "豆沙包：选址我能算。夯土得靠人。",
+      "footer": "推进：第一章支线 · 青涧城",
+      "body": "种世衡请筑青涧城，把营寨推到夏人眼皮底下。土要一层层夯，人要在那儿守满三个月。准了，这座城才从纸上落到地上。",
+      "comment": "选址我能算。夯土得靠人。",
       "choices": [
-        {"id": "build", "label": "准筑", "morale": 2, "relation": {"xia": -6}, "result": "准了。青涧的土还在图上。"},
-        {"id": "wait", "label": "再议", "morale": -1, "relation": {}, "result": "奏疏压下了。"}
-      ]
-    },
-    {
-      "id": "zengbi",
-      "turn": 27,
-      "title": "庆历增币",
-      "who": "liao_xingzong",
-      "expr": "smug",
-      "name": "辽兴宗",
-      "body": "辽使索关南地。史实是每年再加银十万两、绢十万匹。",
-      "comment": "豆沙包：这叫订阅，而且不能退订。",
-      "choices": [
-        {"id": "pay", "label": "加岁币", "morale": -3, "relation": {"liao": 12}, "result": "银绢加了。北边暂时不点兵。"},
-        {"id": "refuse", "label": "拒绝", "morale": 2, "relation": {"liao": -15}, "result": "话硬了。辽军可以集结。"}
-      ]
-    },
-    {
-      "id": "type",
-      "turn": 36,
-      "title": "活字",
-      "who": "bi_sheng",
-      "expr": "happy",
-      "name": "毕昇",
-      "body": "布衣毕昇带着泥活字来。庆历年间，这东西还没人当真。",
-      "comment": "豆沙包：字是他刻的。防伪和交子，是你后面的事。",
-      "choices": [
-        {"id": "keep", "label": "留下", "morale": 1, "relation": {}, "result": "人留下了。活字还要设计。"},
-        {"id": "later", "label": "以后再说", "morale": 0, "relation": {}, "result": "人走了。字还在他箱子里。"}
+        {
+          "id": "build",
+          "label": "准筑",
+          "note": "支线：青涧城筑成",
+          "odds": "稳",
+          "morale": 2,
+          "relation": {"xia": -6},
+          "result": "准了。青涧的土还在图上，人可以去了。",
+          "effects": [{"type": "flag", "id": "qingjian_build"}]
+        },
+        {
+          "id": "wait",
+          "label": "再议",
+          "note": "六回合后可再提",
+          "odds": "",
+          "morale": -1,
+          "relation": {},
+          "result": "奏疏压下了。",
+          "effects": [{"type": "flag", "id": "qingjian_wait"}]
+        }
       ]
     },
     {
       "id": "censor",
+      "code": "E14",
       "turn": 8,
+      "window": [8, 60],
+      "guarantee": 8,
       "title": "天象",
+      "date_label": "康定元年八月",
       "who": "taijian",
       "expr": "normal",
+      "portrait": "taijian_normal",
       "name": "台谏官",
-      "body": "彗星见。台谏说这是失政，请降诏求言。",
-      "comment": "豆沙包：那是冰和尘。你要是当面说破，机密度会掉。",
+      "footer": "推进：无",
+      "body": "彗星见。台谏说这是失政，请降诏求言。您要是在朝上说破那是冰和尘，机密度会掉；您要是顺着下诏，接下来几个月奏疏会变多。",
+      "comment": "那是冰和尘。您要是当面说破，机密度会掉。",
       "choices": [
-        {"id": "edict", "label": "下诏求言", "morale": -2, "relation": {}, "result": "诏下去了。奏疏会变多。"},
-        {"id": "quiet", "label": "不提", "morale": 1, "relation": {}, "result": "天象当没看见。"}
+        {
+          "id": "edict",
+          "label": "下诏求言",
+          "note": "皇威降，奏疏变多",
+          "odds": "",
+          "morale": -2,
+          "relation": {},
+          "result": "诏下去了。奏疏会变多。",
+          "effects": [{"type": "flag", "id": "censor_edict"}]
+        },
+        {
+          "id": "quiet",
+          "label": "不提",
+          "note": "皇威升，机密度降",
+          "odds": "",
+          "morale": 1,
+          "relation": {},
+          "result": "天象当没看见。",
+          "effects": [{"type": "flag", "id": "censor_quiet"}]
+        }
+      ]
+    },
+    {
+      "id": "haoshui",
+      "code": "E05",
+      "turn": 13,
+      "window": [13, 15],
+      "guarantee": 14,
+      "conditions": {"meter_min": {"xia_war": 40}},
+      "title": "好水川",
+      "date_label": "康定二年二月",
+      "who": "ren_fu",
+      "expr": "angry",
+      "portrait": "ren_fu_angry",
+      "name": "任福",
+      "footer": "推进：第一章主目标 · 好水川",
+      "body": "任福请战。西夏在天都山集结，路边有人放了封口的泥盒子。准他深入，就是史书上那一败；强令持重，伏击落空，台谏会说您畏战。",
+      "comment": "斥候在路边捡到几只封了口的泥盒子。别让人开。里面是鸽子，一开就等于给伏兵报位置。",
+      "choices": [
+        {
+          "id": "advance",
+          "label": "准许深入",
+          "note": "未准备则大败",
+          "odds": "险",
+          "morale": -4,
+          "relation": {"xia": -6},
+          "result": "任福进去了。这一仗会很难看。",
+          "effects": [
+            {"type": "flag", "id": "haoshui_advance"},
+            {"type": "meter", "id": "xia_war", "delta": 10}
+          ]
+        },
+        {
+          "id": "hold",
+          "label": "强令持重",
+          "note": "西夏退兵，皇威降",
+          "odds": "稳",
+          "morale": -2,
+          "relation": {"xia": -2},
+          "result": "伏击落空。西夏退了，台谏在骂。",
+          "effects": [
+            {"type": "flag", "id": "haoshui_hold"},
+            {"type": "meter", "id": "xia_war", "delta": -5}
+          ]
+        },
+        {
+          "id": "simulate",
+          "label": "推演",
+          "note": "推演功能尚未开放",
+          "requires": "feature_simulate",
+          "odds": "稳",
+          "morale": 0,
+          "relation": {},
+          "result": ""
+        }
+      ]
+    },
+    {
+      "id": "fenlu",
+      "code": "E06",
+      "turn": 21,
+      "window": [21, 21],
+      "guarantee": 21,
+      "title": "陕西分路",
+      "date_label": "庆历元年九月",
+      "who": "han_qi",
+      "expr": "serious",
+      "portrait": "han_qi_serious",
+      "name": "韩琦",
+      "footer": "推进：第二章 · 辽使南来",
+      "body": "陕西要不要分成鄜延、环庆、泾原、秦凤四路，各置统帅。分成四路，各城有人负责；维持统一，前线调动快一些，也不多花钱。",
+      "comment": "四个人各管一摊，比四个人抢一支笔强。",
+      "choices": [
+        {
+          "id": "split",
+          "label": "分路置帅",
+          "note": "四城各有将领",
+          "odds": "稳",
+          "morale": 1,
+          "relation": {},
+          "result": "四路分了。各城有了自己的帅。",
+          "effects": [{"type": "flag", "id": "fenlu_split"}]
+        },
+        {
+          "id": "keep",
+          "label": "维持统一",
+          "note": "前线调动方便些",
+          "odds": "",
+          "morale": 0,
+          "relation": {},
+          "result": "还是一支笔。调动倒是快。",
+          "effects": [{"type": "flag", "id": "fenlu_keep"}]
+        }
+      ]
+    },
+    {
+      "id": "suling",
+      "code": "E09",
+      "turn": 25,
+      "window": [25, 28],
+      "guarantee": 28,
+      "title": "苏颂登第",
+      "date_label": "庆历二年",
+      "who": "su_song",
+      "expr": "happy",
+      "portrait": "su_song_happy",
+      "name": "苏颂",
+      "footer": "推进：第二章支线",
+      "body": "苏颂登第。此人后来管过水运仪象、管过医书。现在他刚中进士，您可以把他收进贤才录，也可以让他自己去。",
+      "comment": "机械这门，以后用得上他。现在他只是一个新科进士。",
+      "choices": [
+        {
+          "id": "keep",
+          "label": "招揽",
+          "note": "入贤才录",
+          "odds": "",
+          "morale": 1,
+          "relation": {},
+          "result": "苏颂留下了。机械的事可以找他。",
+          "effects": [{"type": "flag", "id": "suling_kept"}]
+        },
+        {
+          "id": "later",
+          "label": "放任",
+          "note": "人不入录",
+          "odds": "",
+          "morale": 0,
+          "relation": {},
+          "result": "人去赶他的官运了。",
+          "effects": [{"type": "flag", "id": "suling_free"}]
+        }
+      ]
+    },
+    {
+      "id": "zengbi",
+      "code": "E07",
+      "turn": 27,
+      "window": [27, 33],
+      "guarantee": 33,
+      "title": "庆历增币",
+      "date_label": "庆历二年",
+      "who": "fu_bi",
+      "expr": "serious",
+      "portrait": "fu_bi_serious",
+      "name": "富弼",
+      "footer": "推进：第二章主目标 · 索求不高于十档",
+      "body": "辽使萧英、刘六符到了，索关南十县。史书上的价是每年再加银十万两、绢十万匹。富弼能去谈。谈不下来就硬顶，辽人会把兵摆到幽蓟给您看。眼下先定这一轮的口气。",
+      "comment": "幽州那边在点兵。辽人一般不白点兵，点完了要么打仗，要么来要钱。我赌后者。",
+      "choices": [
+        {
+          "id": "pay",
+          "label": "加岁币",
+          "note": "按史实增币",
+          "odds": "稳",
+          "morale": -3,
+          "relation": {"liao": 12},
+          "result": "银绢加了。北边暂时不点兵。",
+          "effects": [
+            {"type": "flag", "id": "zengbi_pay"},
+            {"type": "meter", "id": "liao_demand", "delta": -8}
+          ]
+        },
+        {
+          "id": "refuse",
+          "label": "强硬拒绝",
+          "note": "索求上升，南压会提前",
+          "odds": "险",
+          "morale": 2,
+          "relation": {"liao": -15},
+          "result": "话硬了。辽军可以集结。",
+          "effects": [
+            {"type": "flag", "id": "zengbi_refuse"},
+            {"type": "meter", "id": "liao_demand", "delta": 4}
+          ]
+        },
+        {
+          "id": "simulate",
+          "label": "推演离间",
+          "note": "推演功能尚未开放",
+          "requires": "feature_simulate",
+          "odds": "",
+          "morale": 0,
+          "relation": {},
+          "result": ""
+        }
+      ]
+    },
+    {
+      "id": "dingchuan",
+      "code": "E08",
+      "turn": 32,
+      "window": [32, 34],
+      "guarantee": 33,
+      "conditions": {"meter_min": {"xia_war": 30}},
+      "title": "定川寨",
+      "date_label": "庆历二年九月",
+      "who": "ge_huaimin",
+      "expr": "serious",
+      "portrait": "ge_huaimin_serious",
+      "name": "葛怀敏",
+      "footer": "推进：第二章支线 · 定川寨",
+      "body": "葛怀敏请出寨。西夏三路人马已经聚在定川一带。准他出寨，就是野战；守在堡寨里，有堡寨筑城法时这一仗才稳。",
+      "comment": "出寨是他的胆。回来的人是不是还够，是您的账。",
+      "choices": [
+        {
+          "id": "sortie",
+          "label": "准许出寨",
+          "note": "未准备则大败",
+          "odds": "险",
+          "morale": -4,
+          "relation": {"xia": -4},
+          "result": "人出寨了。这一场不好看。",
+          "effects": [
+            {"type": "flag", "id": "dingchuan_sortie"},
+            {"type": "meter", "id": "xia_war", "delta": 10}
+          ]
+        },
+        {
+          "id": "hold",
+          "label": "坚守堡寨",
+          "note": "有堡寨法时较稳",
+          "odds": "稳",
+          "morale": 1,
+          "relation": {"xia": -2},
+          "result": "寨门关着。西夏在外面转。",
+          "effects": [
+            {"type": "flag", "id": "dingchuan_hold"},
+            {"type": "meter", "id": "xia_war", "delta": -6}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wanglun",
+      "code": "E10",
+      "turn": 40,
+      "window": [40, 42],
+      "guarantee": 41,
+      "title": "王伦兵变",
+      "date_label": "庆历三年五月",
+      "who": "wang_lun",
+      "expr": "angry",
+      "portrait": "wang_lun_angry",
+      "name": "王伦",
+      "footer": "推进：第三章 · 平王伦",
+      "body": "沂州虎翼军兵变，王伦带着人往京东、淮南走。五个回合之内到了扬州，城就不是您的。可以剿，可以花钱招安，也可以先责成地方、把声势压小一号。",
+      "comment": "欠饷加上苛待，兵就会自己找路。路的尽头是扬州。",
+      "choices": [
+        {
+          "id": "fight",
+          "label": "派兵围剿",
+          "note": "平定后邻州民心降",
+          "odds": "五五",
+          "morale": -1,
+          "relation": {},
+          "result": "兵发沂州方向。邻州会抱怨。",
+          "effects": [
+            {"type": "flag", "id": "wanglun_fight"},
+            {"type": "meter", "id": "unrest", "delta": -8}
+          ]
+        },
+        {
+          "id": "amnesty",
+          "label": "招安",
+          "note": "粮钱各二百",
+          "odds": "稳",
+          "morale": 0,
+          "relation": {},
+          "result": "粮和钱送出去了。人可以收编。",
+          "effects": [
+            {"type": "flag", "id": "wanglun_amnesty"},
+            {"type": "meter", "id": "unrest", "delta": -8}
+          ]
+        },
+        {
+          "id": "blame",
+          "label": "追责地方",
+          "note": "皇威降，规模减小",
+          "odds": "",
+          "morale": -3,
+          "relation": {},
+          "result": "地方官被责了。乱子还在，小了一号。",
+          "effects": [{"type": "flag", "id": "wanglun_blame"}]
+        }
+      ]
+    },
+    {
+      "id": "zhanghai",
+      "code": "E11",
+      "turn": 42,
+      "window": [42, 45],
+      "guarantee": 45,
+      "conditions": {"morale_max": 59},
+      "title": "张海郭邈山",
+      "date_label": "庆历三年",
+      "who": "wang_lun",
+      "expr": "normal",
+      "portrait": "wang_lun_normal",
+      "name": "商山来报",
+      "footer": "推进：第三章 · 平山贼",
+      "body": "商山一带，张海、郭邈山聚众。人在山地里钻，六个回合没人去清，就会再多一支。剿或者招安，跟沂州是同一笔账。",
+      "comment": "山里不收税，所以他们喜欢。您要是也喜欢，就再等六个月。",
+      "choices": [
+        {
+          "id": "fight",
+          "label": "进山清剿",
+          "note": "免得坐大",
+          "odds": "五五",
+          "morale": -1,
+          "relation": {},
+          "result": "人进山了。",
+          "effects": [
+            {"type": "flag", "id": "zhanghai_fight"},
+            {"type": "meter", "id": "unrest", "delta": -6}
+          ]
+        },
+        {
+          "id": "amnesty",
+          "label": "招安",
+          "note": "粮钱换一支厢军",
+          "odds": "稳",
+          "morale": 0,
+          "relation": {},
+          "result": "招安的文书送进山了。",
+          "effects": [
+            {"type": "flag", "id": "zhanghai_amnesty"},
+            {"type": "meter", "id": "unrest", "delta": -6}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "xinzheng",
+      "code": "E12",
+      "turn": 45,
+      "window": [45, 45],
+      "guarantee": 45,
+      "title": "庆历新政",
+      "date_label": "庆历三年九月",
+      "who": "fan_zhongyan",
+      "expr": "serious",
+      "portrait": "fan_zhongyan_serious",
+      "name": "范仲淹",
+      "footer": "推进：第三章支线 · 新政",
+      "body": "范仲淹上《答手诏条陈十事》。现成的诏令里，精兵、方田、和雇、保甲都能颁。这一回颁得越多，以后反对的声音也越大。也可以一条都不颁。",
+      "comment": "反对派已经在记账了。您颁一条，他们记一笔。",
+      "choices": [
+        {
+          "id": "one",
+          "label": "先颁一条",
+          "note": "皇威代价较轻",
+          "odds": "",
+          "morale": -1,
+          "relation": {},
+          "result": "颁了一条。账上先记一笔。",
+          "effects": [{"type": "flag", "id": "xinzheng_one"}]
+        },
+        {
+          "id": "none",
+          "label": "暂不颁布",
+          "note": "朝争先按下",
+          "odds": "",
+          "morale": 1,
+          "relation": {},
+          "result": "十事先搁着。",
+          "effects": [{"type": "flag", "id": "xinzheng_none"}]
+        }
+      ]
+    },
+    {
+      "id": "type",
+      "code": "E13",
+      "turn": 46,
+      "window": [46, 50],
+      "guarantee": 50,
+      "title": "活字",
+      "date_label": "庆历年间",
+      "who": "bi_sheng",
+      "expr": "happy",
+      "portrait": "bi_sheng_happy",
+      "name": "毕昇",
+      "footer": "推进：喘息 · 活字",
+      "body": "布衣毕昇带着泥活字来。庆历年间，这东西还没人当真。留下他，活字才进得了贤才录；让他走，十二年后也许还能再遇见。",
+      "comment": "字是他刻的。防伪和交子，是您后面的事。",
+      "choices": [
+        {
+          "id": "keep",
+          "label": "留下",
+          "note": "入贤才录",
+          "odds": "",
+          "morale": 1,
+          "relation": {},
+          "result": "人留下了。活字还要设计。",
+          "effects": [{"type": "flag", "id": "type_keep"}]
+        },
+        {
+          "id": "later",
+          "label": "以后再说",
+          "note": "人先走",
+          "odds": "",
+          "morale": 0,
+          "relation": {},
+          "result": "人走了。字还在他箱子里。",
+          "effects": [{"type": "flag", "id": "type_later"}]
+        }
+      ]
+    },
+    {
+      "id": "hequ",
+      "code": "E16",
+      "turn": 56,
+      "window": [56, 58],
+      "guarantee": 57,
+      "title": "河曲之战",
+      "date_label": "庆历四年",
+      "who": "liao_xingzong",
+      "expr": "angry",
+      "portrait": "liao_xingzong_angry",
+      "name": "辽兴宗",
+      "footer": "推进：第四章支线 · 河曲",
+      "body": "辽兴宗亲征西夏，人马到了河曲。您可以坐观，可以暗里贴辽一笔钱，也可以趁西夏前军被牵制时出兵横山。",
+      "comment": "两家在河曲打。您要是插手，就准备好银子和借口。",
+      "choices": [
+        {
+          "id": "watch",
+          "label": "坐观",
+          "note": "西夏受挫",
+          "odds": "稳",
+          "morale": 0,
+          "relation": {},
+          "result": "两边自己打。西夏先吃了亏。",
+          "effects": [
+            {"type": "flag", "id": "hequ_watch"},
+            {"type": "meter", "id": "xia_war", "delta": -10},
+            {"type": "meter", "id": "liao_demand", "delta": -3}
+          ]
+        },
+        {
+          "id": "aid",
+          "label": "暗助辽",
+          "note": "花一笔钱",
+          "odds": "",
+          "morale": -1,
+          "relation": {"liao": 10},
+          "result": "钱送出去了。辽那边记了一笔情。",
+          "effects": [
+            {"type": "flag", "id": "hequ_aid"},
+            {"type": "meter", "id": "xia_war", "delta": -12}
+          ]
+        },
+        {
+          "id": "hengshan",
+          "label": "出兵横山",
+          "note": "夏人城防松一截",
+          "odds": "五五",
+          "morale": 1,
+          "relation": {"xia": -8},
+          "result": "横山方向动了。",
+          "effects": [
+            {"type": "flag", "id": "hequ_hengshan"},
+            {"type": "meter", "id": "xia_war", "delta": -8}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "heyi",
+      "code": "E15",
+      "turn": 59,
+      "window": [59, 60],
+      "guarantee": 60,
+      "conditions": {"meter_max": {"xia_war": 60}},
+      "title": "庆历和议",
+      "date_label": "庆历四年",
+      "who": "li_yuanhao",
+      "expr": "smug",
+      "portrait": "li_yuanhao_smug",
+      "name": "李元昊",
+      "footer": "推进：第四章主目标 · 和议",
+      "body": "西夏来议和，要册封、要岁赐。史实的价大约是银、绢、茶按年给。西平已经压得很低时，可以要求称臣、岁赐减半。也可以干脆不和，仗继续打。",
+      "comment": "称臣这两个字，元昊写起来比打仗还慢。您要是想看他写，就先把价压住。",
+      "choices": [
+        {
+          "id": "accept",
+          "label": "接受史实条款",
+          "note": "岁赐如旧例，攻势停",
+          "odds": "稳",
+          "morale": -2,
+          "relation": {"xia": 14},
+          "result": "和议按旧例签了。秋天的攻势先停。",
+          "effects": [
+            {"type": "flag", "id": "heyi_accept"},
+            {"type": "meter", "id": "xia_war", "delta": -10}
+          ]
+        },
+        {
+          "id": "cut",
+          "label": "压价称臣",
+          "note": "岁赐减半，西平可成",
+          "odds": "五五",
+          "morale": 2,
+          "relation": {"xia": 6},
+          "result": "称臣，岁赐减半。这一页史书上没有。",
+          "effects": [
+            {"type": "flag", "id": "heyi_cut"},
+            {"type": "meter", "id": "xia_war", "delta": -40}
+          ]
+        },
+        {
+          "id": "refuse",
+          "label": "拒绝和议",
+          "note": "战事继续",
+          "odds": "险",
+          "morale": 1,
+          "relation": {"xia": -10},
+          "result": "和议没签。仗还在。",
+          "effects": [{"type": "flag", "id": "heyi_refuse"}]
+        }
+      ]
+    },
+    {
+      "id": "gusiluo",
+      "code": "E19",
+      "turn": 64,
+      "window": [64, 70],
+      "guarantee": 70,
+      "conditions": {"relation_min": {"gusiluo": 20}},
+      "title": "唃厮啰联兵",
+      "date_label": "庆历五年",
+      "who": "gusiluo",
+      "expr": "normal",
+      "portrait": "gusiluo_normal",
+      "name": "唃厮啰",
+      "footer": "推进：第五章支线",
+      "body": "青唐来使。唃厮啰愿意跟宋军一起牵制西夏，条件是您派一支部队到秦州驻四个回合。马会多一些。也可以婉拒，两边仍照旧例往来。",
+      "comment": "青唐的马比奏疏实在。人派出去，马才会来。",
+      "choices": [
+        {
+          "id": "join",
+          "label": "联兵",
+          "note": "秦州驻军换马",
+          "odds": "稳",
+          "morale": 1,
+          "relation": {"gusiluo": 8, "xia": -4},
+          "result": "联兵定了。秦州得留一支人。",
+          "effects": [
+            {"type": "flag", "id": "gusiluo_join"},
+            {"type": "meter", "id": "xia_war", "delta": -5}
+          ]
+        },
+        {
+          "id": "decline",
+          "label": "婉拒",
+          "note": "照旧往来",
+          "odds": "",
+          "morale": 0,
+          "relation": {},
+          "result": "使节回去了。马的事以后再说。",
+          "effects": [{"type": "flag", "id": "gusiluo_decline"}]
+        }
+      ]
+    },
+    {
+      "id": "wangze",
+      "code": "E20",
+      "turn": 79,
+      "window": [79, 81],
+      "guarantee": 80,
+      "title": "王则起义",
+      "date_label": "庆历七年十一月",
+      "who": "wang_ze",
+      "expr": "smug",
+      "portrait": "wang_ze_smug",
+      "name": "王则",
+      "footer": "推进：第六章 · 平王则",
+      "body": "贝州宣毅军小校王则以弥勒教起事，建号安阳。这城得攻下来。可以硬攻，可以围住再掘地道，也可以先赈济周边，让他招不到新兵。",
+      "comment": "贝州有人说弥勒要下凡了。我翻了一遍日程表，没有这一条。",
+      "choices": [
+        {
+          "id": "storm",
+          "label": "强攻贝州",
+          "note": "快，战损大",
+          "odds": "险",
+          "morale": -2,
+          "relation": {},
+          "result": "攻城的人上去了。",
+          "effects": [
+            {"type": "flag", "id": "wangze_storm"},
+            {"type": "meter", "id": "unrest", "delta": -10}
+          ]
+        },
+        {
+          "id": "tunnel",
+          "label": "围城掘地道",
+          "note": "慢两回合，损较小",
+          "odds": "五五",
+          "morale": 0,
+          "relation": {},
+          "result": "围上了。地道慢慢挖。",
+          "effects": [
+            {"type": "flag", "id": "wangze_tunnel"},
+            {"type": "meter", "id": "unrest", "delta": -6}
+          ]
+        },
+        {
+          "id": "relief",
+          "label": "赈济周边",
+          "note": "粮四百，停止招募",
+          "odds": "稳",
+          "morale": 1,
+          "relation": {},
+          "result": "周边的粮发了。贝州招不到新人。",
+          "effects": [{"type": "flag", "id": "wangze_relief"}]
+        }
+      ]
+    },
+    {
+      "id": "yuanhao",
+      "code": "E21",
+      "turn": 82,
+      "window": [82, 82],
+      "guarantee": 82,
+      "title": "元昊遇刺",
+      "date_label": "庆历八年正月",
+      "who": "li_yuanhao",
+      "expr": "angry",
+      "portrait": "li_yuanhao_angry",
+      "name": "李元昊",
+      "footer": "推进：第六章 · 西平窗口",
+      "body": "太子宁令哥刺元昊。兴庆府宫里乱了，幼主还没站稳。往后四个回合，西夏的城和兵都松一截。您可以西征，可以花钱扶一个亲宋的人，也可以只看着这四个月过去。",
+      "comment": "兴庆府的宫里最近不太平。元昊把太子的媳妇抢了。陛下，这种家务事，一般不会只吵一架。",
+      "choices": [
+        {
+          "id": "west",
+          "label": "乘隙西征",
+          "note": "打开兴庆府这一战",
+          "odds": "五五",
+          "morale": 1,
+          "relation": {"xia": -8},
+          "result": "西征的令下去了。窗口只有四个月。",
+          "effects": [
+            {"type": "flag", "id": "yuanhao_west"},
+            {"type": "meter", "id": "xia_war", "delta": -15}
+          ]
+        },
+        {
+          "id": "plant",
+          "label": "扶植亲宋",
+          "note": "花钱，不进兴庆",
+          "odds": "稳",
+          "morale": 0,
+          "relation": {"xia": 4},
+          "result": "钱送进兴庆了。人还没站到您这边。",
+          "effects": [
+            {"type": "flag", "id": "yuanhao_plant"},
+            {"type": "meter", "id": "xia_war", "delta": -10}
+          ]
+        },
+        {
+          "id": "watch",
+          "label": "静观",
+          "note": "只吃这四个月的松动",
+          "odds": "",
+          "morale": 0,
+          "relation": {},
+          "result": "看着。西夏自己乱了一阵。",
+          "effects": [
+            {"type": "flag", "id": "yuanhao_watch"},
+            {"type": "meter", "id": "xia_war", "delta": -8}
+          ]
+        }
       ]
     }
   ]

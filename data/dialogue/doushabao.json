@@ -1,38 +1,1033 @@
 {
   "lines": [
-    {"id": "boot", "trigger": "game_start", "power": "any", "cooldown": 99, "mood": "serious", "text": "陛下，醒了？宝元三年正月，延州城下已有西夏铁骑。左键选自己人，再点亮着的格子；点敌军，我把胜算念给您听。迷了路按 Home。我是豆沙包，还在线。"},
-    {"id": "turn_yan", "trigger": "turn_start", "power": "normal", "cooldown": 8, "mood": "serious", "text": "延州还在。先看清谁能走、谁能打，再按结束回合。西夏那几支会自己动。"},
-    {"id": "turn_power", "trigger": "turn_start", "power": "normal", "cooldown": 6, "mood": "think", "text": "电量我盯着。这点电，是用来想神臂弓，还是先把眼前这一仗算清楚？研究台下一里程碑才接上。"},
-    {"id": "turn_autumn", "trigger": "turn_start", "power": "normal", "cooldown": 10, "mood": "normal", "text": "秋高马肥的时候西夏最爱出门。还没到那几个月，可他们已经等不及了。"},
-    {"id": "turn_money", "trigger": "turn_start", "power": "normal", "cooldown": 12, "mood": "smug", "text": "国库看着厚，那是冗兵的账单还没全部寄到。先别高兴。"},
-    {"id": "turn_save", "trigger": "turn_start", "power": "save", "cooldown": 4, "mood": "sleepy", "text": "省电模式。建议还在，闲话先关。延州优先。"},
-    {"id": "low_1", "trigger": "turn_start", "power": "low", "cooldown": 3, "mood": "sleepy", "text": "西夏。边。危。速备。"},
-    {"id": "low_2", "trigger": "turn_start", "power": "low", "cooldown": 3, "mood": "sleepy", "text": "电少。话少。仗还在。"},
-    {"id": "weather_clear", "trigger": "weather_clear", "power": "any", "cooldown": 6, "mood": "smug", "text": "今日晴，面板心情好。我也是。"},
-    {"id": "weather_cloud", "trigger": "weather_cloudy", "power": "any", "cooldown": 6, "mood": "normal", "text": "多云。发电打了折，幽默模块还在。"},
-    {"id": "weather_over", "trigger": "weather_overcast", "power": "any", "cooldown": 6, "mood": "disgust", "text": "阴天。发电惨淡。幽默模块我拒绝关闭。"},
-    {"id": "weather_rain", "trigger": "weather_rain", "power": "any", "cooldown": 6, "mood": "sleepy", "text": "下雨。弓弦会软，火器更惨——不过火器还在图纸里。"},
-    {"id": "weather_snow", "trigger": "weather_snow", "power": "any", "cooldown": 6, "mood": "serious", "text": "下雪。北方的河要结冰，骑兵会觉得这是路。"},
-    {"id": "weather_dust", "trigger": "weather_dust", "power": "any", "cooldown": 8, "mood": "disgust", "text": "沙尘。面板在喊救命。本里程碑还不能收板，您就当我已经唉完了。"},
-    {"id": "win", "trigger": "combat_win", "power": "any", "cooldown": 2, "mood": "smug", "text": "打完了。数字比奏疏诚实。别急着写捷报，西夏最擅长的是您追上去的那一下。"},
-    {"id": "lose", "trigger": "combat_lose", "power": "any", "cooldown": 2, "mood": "shock", "text": "这一仗不漂亮。人还在就还有下一回合。"},
-    {"id": "trade", "trigger": "combat_trade", "power": "any", "cooldown": 2, "mood": "think", "text": "互相刮了一层皮。铁鹞子冲起来像付费订阅，取消键在城墙后面。"},
-    {"id": "enemy", "trigger": "enemy_turn", "power": "any", "cooldown": 4, "mood": "serious", "text": "西夏动了。您看地图，别看我。辽军还在幽州看热闹。"},
-    {"id": "toilet", "trigger": "chatter", "power": "normal", "cooldown": 30, "mood": "disgust", "text": "陛下，我查了一下：宫里用的是厕筹，竹片，可重复使用。……我正式申请把造纸术升级的优先级调到火药之前。这不是科技，这是人权。"},
-    {"id": "post", "trigger": "chatter", "power": "normal", "cooldown": 30, "mood": "disgust", "text": "延州军报到了，发出时间：九天前。在二〇三〇年这叫已读不回，在大宋这叫八百里加急。"},
-    {"id": "debate", "trigger": "chatter", "power": "normal", "cooldown": 30, "mood": "think", "text": "两派大人已经就此事该不该议议了三个时辰。按这个效率，等他们议出结果，我的电池循环次数也该用完了。"},
-    {"id": "cloudjoke", "trigger": "chatter", "power": "normal", "cooldown": 30, "mood": "smug", "text": "今日阴，发电量惨。为了省电，我先关闭幽默模块……开玩笑的，幽默模块永远是最后一个关的。"},
-    {"id": "taster", "trigger": "chatter", "power": "normal", "cooldown": 30, "mood": "disgust", "text": "试膳太监吃了一口，陛下才吃。好消息：没毒。坏消息：菜已经凉了半个时辰。御膳房的考核一定是活着，而不是好吃。"},
-    {"id": "yuanhao", "trigger": "chatter", "power": "normal", "cooldown": 30, "mood": "serious", "text": "李元昊称帝了，还改了发型、造了文字、定了官制。陛下，这位不是来造反的，是来创业的。"},
-    {"id": "subsidy", "trigger": "chatter", "power": "normal", "cooldown": 30, "mood": "think", "text": "辽国过两年会来加钱。按历史，富弼能谈到每年再加银十万两、绢十万匹。咱们这是被订阅制了，而且不能退订。"},
-    {"id": "hail", "trigger": "chatter", "power": "normal", "cooldown": 30, "mood": "shock", "text": "要是下冰雹，请侍卫用盾牌保护面板。盾牌就行。人比面板贵……大概。"},
-    {"id": "butterfly", "trigger": "chatter", "power": "normal", "cooldown": 30, "mood": "awkward", "text": "温馨提示：您还没改历史，我的预测准确率暂时还满格。等您打赢三川口，我就没那么神了。"},
-    {"id": "flint", "trigger": "chatter", "power": "normal", "cooldown": 30, "mood": "smug", "text": "燧发枪还在时代三。真造出来的那天，工匠的眉毛大概要三个月才长得回来。"},
-    {"id": "liuyong", "trigger": "chatter", "power": "normal", "cooldown": 30, "mood": "moved", "text": "这里没有无线网、没有外卖、没有空调。但是有柳永。凡有井水处，皆能歌柳词。恭喜大宋，拥有了自己的流量歌手。"},
-    {"id": "name", "trigger": "chatter", "power": "normal", "cooldown": 30, "mood": "awkward", "text": "御膳房又把我放进蒸笼了。陛下，请下旨：此豆沙包不可食用。……不过这个误会挺好，谁会去刺探一个包子的机密呢？"},
-    {"id": "hold", "trigger": "chatter", "power": "normal", "cooldown": 20, "mood": "normal", "text": "左键选人，左键点格。拿不准就把鼠标停一停，我把账算给您看。回车结束回合。"},
-    {"id": "menu_first", "trigger": "menu_first", "power": "any", "cooldown": 99, "mood": "normal", "text": "这是命令卡。能做的都列在上面，灰的那项后面写着为什么不行。数字键也能选，我不收按键费。"},
-    {"id": "menu_enemy_first", "trigger": "menu_enemy", "power": "any", "cooldown": 99, "mood": "serious", "text": "先看预计战果再动手。数字是区间，不是承诺，铁鹞子可不跟您讲概率。"},
-    {"id": "blocked_first", "trigger": "blocked_first", "power": "any", "cooldown": 99, "mood": "deadpan", "text": "那是湖。陛下，宋军还不会游泳，这条科技我也还没画。"}
+    {
+      "id": "boot",
+      "trigger": "game_start",
+      "power": "any",
+      "cooldown": 99,
+      "mood": "serious",
+      "text": "陛下，醒了？宝元三年正月，延州城下已有西夏铁骑。左键选自己人，再点亮着的格子；点敌军，我把胜算念给您听。迷了路按 Home。我是豆沙包，还在线。",
+      "group": "boot",
+      "priority": 1,
+      "once": true
+    },
+    {
+      "id": "turn_yan",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 8,
+      "mood": "serious",
+      "text": "延州还在。先看清谁能走、谁能打，再按结束回合。西夏那几支会自己动。",
+      "group": "turn_yan",
+      "priority": 10,
+      "once": false
+    },
+    {
+      "id": "turn_power",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 6,
+      "mood": "think",
+      "text": "电量我盯着。这点电，是用来想神臂弓，还是先把眼前这一仗算清楚？研究台下一里程碑才接上。",
+      "group": "turn_power",
+      "priority": 10,
+      "once": false
+    },
+    {
+      "id": "turn_autumn",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 10,
+      "mood": "normal",
+      "text": "秋高马肥的时候西夏最爱出门。还没到那几个月，可他们已经等不及了。",
+      "group": "turn_autumn",
+      "priority": 10,
+      "once": false,
+      "when": {
+        "season": [
+          "spring",
+          "summer"
+        ]
+      }
+    },
+    {
+      "id": "turn_money",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 12,
+      "mood": "smug",
+      "text": "国库看着厚，那是冗兵的账单还没全部寄到。先别高兴。",
+      "group": "turn_money",
+      "priority": 10,
+      "once": false
+    },
+    {
+      "id": "turn_save",
+      "trigger": "turn_start",
+      "power": "save",
+      "cooldown": 4,
+      "mood": "sleepy",
+      "text": "省电模式。建议还在，闲话先关。延州优先。",
+      "group": "turn_save",
+      "priority": 5,
+      "once": false
+    },
+    {
+      "id": "low_1",
+      "trigger": "turn_start",
+      "power": "low",
+      "cooldown": 3,
+      "mood": "sleepy",
+      "text": "西夏。边。危。速备。",
+      "group": "low_1",
+      "priority": 10,
+      "once": false
+    },
+    {
+      "id": "low_2",
+      "trigger": "turn_start",
+      "power": "low",
+      "cooldown": 3,
+      "mood": "sleepy",
+      "text": "电少。话少。仗还在。",
+      "group": "low_2",
+      "priority": 10,
+      "once": false
+    },
+    {
+      "id": "weather_clear",
+      "trigger": "weather_clear",
+      "power": "any",
+      "cooldown": 6,
+      "mood": "smug",
+      "text": "今日晴，面板心情好。我也是。",
+      "group": "weather_clear",
+      "priority": 8,
+      "once": false
+    },
+    {
+      "id": "weather_cloud",
+      "trigger": "weather_cloudy",
+      "power": "any",
+      "cooldown": 6,
+      "mood": "normal",
+      "text": "多云。发电打了折，幽默模块还在。",
+      "group": "weather_cloud",
+      "priority": 8,
+      "once": false
+    },
+    {
+      "id": "weather_over",
+      "trigger": "weather_overcast",
+      "power": "any",
+      "cooldown": 6,
+      "mood": "disgust",
+      "text": "阴天。发电惨淡。幽默模块我拒绝关闭。",
+      "group": "weather_over",
+      "priority": 8,
+      "once": false
+    },
+    {
+      "id": "weather_rain",
+      "trigger": "weather_rain",
+      "power": "any",
+      "cooldown": 6,
+      "mood": "sleepy",
+      "text": "下雨。弓弦会软，火器更惨——不过火器还在图纸里。",
+      "group": "weather_rain",
+      "priority": 8,
+      "once": false
+    },
+    {
+      "id": "weather_snow",
+      "trigger": "weather_snow",
+      "power": "any",
+      "cooldown": 6,
+      "mood": "serious",
+      "text": "下雪。北方的河要结冰，骑兵会觉得这是路。",
+      "group": "weather_snow",
+      "priority": 8,
+      "once": false
+    },
+    {
+      "id": "weather_dust",
+      "trigger": "weather_dust",
+      "power": "any",
+      "cooldown": 8,
+      "mood": "disgust",
+      "text": "沙尘。面板在喊救命。本里程碑还不能收板，您就当我已经唉完了。",
+      "group": "weather_dust",
+      "priority": 8,
+      "once": false
+    },
+    {
+      "id": "win",
+      "trigger": "combat_win",
+      "power": "any",
+      "cooldown": 2,
+      "mood": "smug",
+      "text": "打完了。数字比奏疏诚实。别急着写捷报，西夏最擅长的是您追上去的那一下。",
+      "group": "win",
+      "priority": 6,
+      "once": false
+    },
+    {
+      "id": "lose",
+      "trigger": "combat_lose",
+      "power": "any",
+      "cooldown": 2,
+      "mood": "shock",
+      "text": "这一仗不漂亮。人还在就还有下一回合。",
+      "group": "lose",
+      "priority": 6,
+      "once": false
+    },
+    {
+      "id": "trade",
+      "trigger": "combat_trade",
+      "power": "any",
+      "cooldown": 2,
+      "mood": "think",
+      "text": "互相刮了一层皮。铁鹞子冲起来像付费订阅，取消键在城墙后面。",
+      "group": "trade",
+      "priority": 6,
+      "once": false
+    },
+    {
+      "id": "enemy",
+      "trigger": "enemy_turn",
+      "power": "any",
+      "cooldown": 4,
+      "mood": "serious",
+      "text": "西夏动了。您看地图，别看我。辽军还在幽州看热闹。",
+      "group": "enemy",
+      "priority": 7,
+      "once": false
+    },
+    {
+      "id": "toilet",
+      "trigger": "chatter",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "disgust",
+      "text": "陛下，我查了一下：宫里用的是厕筹，竹片，可重复使用。……我正式申请把造纸术升级的优先级调到火药之前。这不是科技，这是人权。",
+      "group": "toilet",
+      "priority": 9,
+      "once": false
+    },
+    {
+      "id": "post",
+      "trigger": "chatter",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "disgust",
+      "text": "延州军报到了，发出时间：九天前。在二〇三〇年这叫已读不回，在大宋这叫八百里加急。",
+      "group": "post",
+      "priority": 9,
+      "once": false
+    },
+    {
+      "id": "debate",
+      "trigger": "chatter",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "think",
+      "text": "两派大人已经就此事该不该议议了三个时辰。按这个效率，等他们议出结果，我的电池循环次数也该用完了。",
+      "group": "debate",
+      "priority": 9,
+      "once": false
+    },
+    {
+      "id": "cloudjoke",
+      "trigger": "chatter",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "smug",
+      "text": "今日阴，发电量惨。为了省电，我先关闭幽默模块……开玩笑的，幽默模块永远是最后一个关的。",
+      "group": "cloudjoke",
+      "priority": 9,
+      "once": false
+    },
+    {
+      "id": "taster",
+      "trigger": "chatter",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "disgust",
+      "text": "试膳太监吃了一口，陛下才吃。好消息：没毒。坏消息：菜已经凉了半个时辰。御膳房的考核一定是活着，而不是好吃。",
+      "group": "taster",
+      "priority": 9,
+      "once": false
+    },
+    {
+      "id": "yuanhao",
+      "trigger": "chatter",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "serious",
+      "text": "李元昊称帝了，还改了发型、造了文字、定了官制。陛下，这位不是来造反的，是来创业的。",
+      "group": "yuanhao",
+      "priority": 9,
+      "once": false
+    },
+    {
+      "id": "subsidy",
+      "trigger": "chatter",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "think",
+      "text": "辽国过两年会来加钱。按历史，富弼能谈到每年再加银十万两、绢十万匹。咱们这是被订阅制了，而且不能退订。",
+      "group": "subsidy",
+      "priority": 9,
+      "once": false
+    },
+    {
+      "id": "hail",
+      "trigger": "chatter",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "shock",
+      "text": "要是下冰雹，请侍卫用盾牌保护面板。盾牌就行。人比面板贵……大概。",
+      "group": "hail",
+      "priority": 9,
+      "once": false
+    },
+    {
+      "id": "butterfly",
+      "trigger": "chatter",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "awkward",
+      "text": "温馨提示：您还没改历史，我的预测准确率暂时还满格。等您打赢三川口，我就没那么神了。",
+      "group": "butterfly",
+      "priority": 9,
+      "once": false,
+      "when": {
+        "flag_absent": "sanchuan_hold"
+      }
+    },
+    {
+      "id": "flint",
+      "trigger": "chatter",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "smug",
+      "text": "燧发枪还在时代三。真造出来的那天，工匠的眉毛大概要三个月才长得回来。",
+      "group": "flint",
+      "priority": 9,
+      "once": false
+    },
+    {
+      "id": "liuyong",
+      "trigger": "chatter",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "moved",
+      "text": "这里没有无线网、没有外卖、没有空调。但是有柳永。凡有井水处，皆能歌柳词。恭喜大宋，拥有了自己的流量歌手。",
+      "group": "liuyong",
+      "priority": 9,
+      "once": false
+    },
+    {
+      "id": "name",
+      "trigger": "chatter",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "awkward",
+      "text": "御膳房又把我放进蒸笼了。陛下，请下旨：此豆沙包不可食用。……不过这个误会挺好，谁会去刺探一个包子的机密呢？",
+      "group": "name",
+      "priority": 9,
+      "once": false
+    },
+    {
+      "id": "hold",
+      "trigger": "chatter",
+      "power": "normal",
+      "cooldown": 20,
+      "mood": "normal",
+      "text": "左键选人，左键点格。拿不准就把鼠标停一停，我把账算给您看。回车结束回合。",
+      "group": "hold",
+      "priority": 9,
+      "once": false
+    },
+    {
+      "id": "menu_first",
+      "trigger": "menu_first",
+      "power": "any",
+      "cooldown": 99,
+      "mood": "normal",
+      "text": "这是命令卡。能做的都列在上面，灰的那项后面写着为什么不行。数字键也能选，我不收按键费。",
+      "group": "menu_first",
+      "priority": 1,
+      "once": true
+    },
+    {
+      "id": "menu_enemy_first",
+      "trigger": "menu_enemy",
+      "power": "any",
+      "cooldown": 99,
+      "mood": "serious",
+      "text": "先看预计战果再动手。数字是区间，不是承诺，铁鹞子可不跟您讲概率。",
+      "group": "menu_enemy_first",
+      "priority": 1,
+      "once": true
+    },
+    {
+      "id": "blocked_first",
+      "trigger": "blocked_first",
+      "power": "any",
+      "cooldown": 99,
+      "mood": "deadpan",
+      "text": "那是湖。陛下，宋军还不会游泳，这条科技我也还没画。",
+      "group": "blocked_first",
+      "priority": 1,
+      "once": true
+    },
+    {
+      "id": "turn_wall",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "serious",
+      "priority": 10,
+      "text": "延州的城墙还在原来的地方。西夏的人可不一定。",
+      "group": "turn_wall",
+      "once": false
+    },
+    {
+      "id": "turn_sort",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "normal",
+      "priority": 10,
+      "text": "这个月的奏疏我帮您排过了。能打的、该等的，分两边。",
+      "group": "turn_sort",
+      "once": false
+    },
+    {
+      "id": "turn_pair",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "serious",
+      "priority": 10,
+      "text": "刘平在城外，石元孙也在。两个人要是一起出门，您先问我一声。",
+      "group": "turn_pair",
+      "once": false
+    },
+    {
+      "id": "turn_bow",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "think",
+      "priority": 10,
+      "text": "电还够算眼前这一仗。神臂弓的事，排在城门后面。",
+      "group": "turn_bow",
+      "once": false
+    },
+    {
+      "id": "turn_pay",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "normal",
+      "priority": 10,
+      "text": "国库的铜钱看着多。边军的饷，是按月来取的。",
+      "group": "turn_pay",
+      "once": false
+    },
+    {
+      "id": "turn_wind",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "serious",
+      "priority": 10,
+      "text": "今日的风从西边来。西边来的，不一定是风。",
+      "group": "turn_wind",
+      "once": false
+    },
+    {
+      "id": "turn_end",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "deadpan",
+      "priority": 10,
+      "text": "您要是只按结束回合，我就只能看着西夏自己下棋。",
+      "group": "turn_end",
+      "once": false
+    },
+    {
+      "id": "turn_hex",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "normal",
+      "priority": 10,
+      "text": "地图上亮着的格子才走得过去。灰的那些，我不是跟您闹别扭。",
+      "group": "turn_hex",
+      "once": false
+    },
+    {
+      "id": "turn_holdcity",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "serious",
+      "priority": 10,
+      "text": "延州城里还有守军。人在，城就还是宋的。",
+      "group": "turn_holdcity",
+      "once": false
+    },
+    {
+      "id": "turn_odds",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "think",
+      "priority": 10,
+      "text": "我把胜算写在命令卡上了。区间不是保证，铁鹞子不认字。",
+      "group": "turn_odds",
+      "once": false
+    },
+    {
+      "id": "turn_chase",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "serious",
+      "priority": 10,
+      "text": "这个月先别追。西夏最会的，就是等您追上去。",
+      "group": "turn_chase",
+      "once": false
+    },
+    {
+      "id": "turn_sun",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "smug",
+      "priority": 10,
+      "text": "晴天我多说两句。阴天我也说，只是电费心疼。",
+      "group": "turn_sun",
+      "once": false
+    },
+    {
+      "id": "turn_hebei",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "think",
+      "priority": 10,
+      "text": "河北那边暂时安静。安静两个字，我一般不信太久。",
+      "group": "turn_hebei",
+      "once": false
+    },
+    {
+      "id": "turn_fan",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "normal",
+      "priority": 10,
+      "text": "范仲淹的奏疏还在路上。人没到，主意可以先定。",
+      "group": "turn_fan",
+      "once": false
+    },
+    {
+      "id": "turn_qing",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "serious",
+      "priority": 10,
+      "text": "青涧的土还在图上。图上的城，挡不住马。",
+      "group": "turn_qing",
+      "once": false
+    },
+    {
+      "id": "turn_pick",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "normal",
+      "priority": 10,
+      "text": "您选谁出战，我算给谁看。不选，我就看着。",
+      "group": "turn_pick",
+      "once": false
+    },
+    {
+      "id": "turn_coin",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "think",
+      "priority": 10,
+      "text": "岁币的账我先不提。这个月的账在城下。",
+      "group": "turn_coin",
+      "once": false
+    },
+    {
+      "id": "turn_bun",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "deadpan",
+      "priority": 10,
+      "text": "包子不能吃，仗不能不看。陛下，先看城下。",
+      "group": "turn_bun",
+      "once": false
+    },
+    {
+      "id": "july_horses",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "serious",
+      "priority": 10,
+      "when": {
+        "month": [
+          7,
+          8,
+          9
+        ]
+      },
+      "text": "七月了。秋高马肥，西夏人每年这时候都会想起我们。",
+      "group": "july_horses",
+      "once": false
+    },
+    {
+      "id": "winter_hebei",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "serious",
+      "priority": 10,
+      "when": {
+        "season": [
+          "winter"
+        ]
+      },
+      "text": "河北的塘泺结冰了。对辽骑兵来说，这叫修好了一条路。",
+      "group": "winter_hebei",
+      "once": false
+    },
+    {
+      "id": "summer_clear",
+      "trigger": "turn_start",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "smug",
+      "priority": 10,
+      "when": {
+        "season": [
+          "summer"
+        ],
+        "weather": "clear"
+      },
+      "text": "晴天，夏天，满格发电。今天是我一年里最好说话的日子，有什么要算的赶紧。",
+      "group": "summer_clear",
+      "once": false
+    },
+    {
+      "id": "enemy_tea",
+      "trigger": "enemy_turn",
+      "power": "any",
+      "cooldown": 8,
+      "mood": "normal",
+      "priority": 7,
+      "text": "西夏动了。镜头我替您盯着，您喝口茶。",
+      "group": "enemy_tea",
+      "once": false
+    },
+    {
+      "id": "enemy_liao",
+      "trigger": "enemy_turn",
+      "power": "any",
+      "cooldown": 12,
+      "mood": "think",
+      "priority": 7,
+      "text": "辽军在雄州晃了一圈又回去了。这叫路过，下次就不一定了。",
+      "group": "enemy_liao",
+      "once": false
+    },
+    {
+      "id": "enemy_rebel",
+      "trigger": "enemy_turn",
+      "power": "any",
+      "cooldown": 12,
+      "mood": "deadpan",
+      "priority": 7,
+      "text": "叛军钻进山里了。山里不收税，所以他们喜欢。",
+      "group": "enemy_rebel",
+      "once": false
+    },
+    {
+      "id": "enemy_quiet",
+      "trigger": "enemy_quiet",
+      "power": "any",
+      "cooldown": 8,
+      "mood": "normal",
+      "priority": 7,
+      "text": "这个月边上很安静。安静得我都想开个扫描。",
+      "group": "enemy_quiet",
+      "once": false
+    },
+    {
+      "id": "pre_e05_smoke",
+      "trigger": "event_pre:haoshui",
+      "power": "any",
+      "cooldown": 30,
+      "mood": "serious",
+      "priority": 2,
+      "once": true,
+      "group": "e05_pre",
+      "text": "天都山那边的炊烟比上个月多了三成。陛下，西夏人做饭没这么勤快，除非来的人多。"
+    },
+    {
+      "id": "pre_e05_pigeon",
+      "trigger": "event_pre:haoshui",
+      "power": "any",
+      "cooldown": 30,
+      "mood": "serious",
+      "priority": 2,
+      "once": true,
+      "group": "e05_pre",
+      "text": "斥候在路边捡到几只封了口的泥盒子。别让人开。里面是鸽子，一开就等于给伏兵报位置。"
+    },
+    {
+      "id": "pre_e07",
+      "trigger": "event_pre:zengbi",
+      "power": "any",
+      "cooldown": 30,
+      "mood": "think",
+      "priority": 2,
+      "once": true,
+      "text": "幽州那边在点兵。辽人一般不白点兵，点完了要么打仗，要么来要钱。我赌后者。",
+      "group": "pre_e07"
+    },
+    {
+      "id": "pre_e20",
+      "trigger": "event_pre:wangze",
+      "power": "any",
+      "cooldown": 30,
+      "mood": "deadpan",
+      "priority": 2,
+      "once": true,
+      "text": "贝州有人说弥勒要下凡了。我翻了一遍日程表，没有这一条。",
+      "group": "pre_e20"
+    },
+    {
+      "id": "pre_e21",
+      "trigger": "event_pre:yuanhao",
+      "power": "any",
+      "cooldown": 30,
+      "mood": "serious",
+      "priority": 2,
+      "once": true,
+      "text": "兴庆府的宫里最近不太平。元昊把太子的媳妇抢了。陛下，这种家务事，一般不会只吵一架。",
+      "group": "pre_e21"
+    },
+    {
+      "id": "post_sanchuan_hold",
+      "trigger": "event_post:sanchuan:hold",
+      "power": "any",
+      "cooldown": 99,
+      "mood": "smug",
+      "priority": 2,
+      "once": true,
+      "text": "城门没开，刘平还在城里骂街。骂街好，骂街说明人还活着。",
+      "group": "post_sanchuan_hold"
+    },
+    {
+      "id": "post_sanchuan_march",
+      "trigger": "event_post:sanchuan:march",
+      "power": "any",
+      "cooldown": 99,
+      "mood": "serious",
+      "priority": 2,
+      "once": true,
+      "text": "人已经走到三川口了。伏兵也到了。这一页，跟史书叠在一起。",
+      "group": "post_sanchuan_march"
+    },
+    {
+      "id": "post_haoshui_hold",
+      "trigger": "event_post:haoshui:hold",
+      "power": "any",
+      "cooldown": 99,
+      "mood": "smug",
+      "priority": 2,
+      "once": true,
+      "text": "任福憋了一肚子气回营了。气是他的，兵是您的，这买卖划算。",
+      "group": "post_haoshui_hold"
+    },
+    {
+      "id": "post_zengbi_pay",
+      "trigger": "event_post:zengbi:pay",
+      "power": "any",
+      "cooldown": 99,
+      "mood": "think",
+      "priority": 2,
+      "once": true,
+      "text": "谈下来了。富弼大人回来的时候头发又白了一截。陛下，这钱省下来，记得给他买点何首乌。",
+      "group": "post_zengbi_pay"
+    },
+    {
+      "id": "post_heyi_cut",
+      "trigger": "event_post:heyi:cut",
+      "power": "any",
+      "cooldown": 99,
+      "mood": "smug",
+      "priority": 2,
+      "once": true,
+      "text": "元昊称臣了，岁赐还砍了一半。史书上没有这一页，我得先把预测模块重新校准一下。",
+      "group": "post_heyi_cut"
+    },
+    {
+      "id": "crisis_near",
+      "trigger": "city_threat",
+      "power": "any",
+      "cooldown": 8,
+      "mood": "serious",
+      "priority": 3,
+      "text": "{enemy}离{city}只剩两格了。城墙不会自己长高，您得往里塞人。",
+      "group": "crisis_near",
+      "once": false
+    },
+    {
+      "id": "crisis_siege",
+      "trigger": "city_threat",
+      "power": "any",
+      "cooldown": 8,
+      "mood": "serious",
+      "priority": 3,
+      "text": "{city}已经被围{n}个月了。粮还够，耐心不一定够。",
+      "group": "crisis_siege",
+      "once": false
+    },
+    {
+      "id": "crisis_lost",
+      "trigger": "unit_lost",
+      "power": "any",
+      "cooldown": 6,
+      "mood": "serious",
+      "priority": 3,
+      "once": true,
+      "text": "我们刚丢了{unit}。这不是数字，是一营人。下一仗，先看我算的再动手。",
+      "group": "crisis_lost"
+    },
+    {
+      "id": "crisis_will",
+      "trigger": "meter_drop",
+      "power": "any",
+      "cooldown": 10,
+      "mood": "serious",
+      "priority": 3,
+      "text": "西夏战意涨回去了。陛下，上一仗赢的那点面子，他们打算这个秋天就要回去。",
+      "group": "crisis_will",
+      "once": false
+    },
+    {
+      "id": "goal_ch2",
+      "trigger": "chapter_start",
+      "power": "any",
+      "cooldown": 99,
+      "mood": "think",
+      "priority": 4,
+      "once": true,
+      "text": "第二章，辽使南来。剧透一下：他们要钱。再剧透一下：要很多。",
+      "group": "goal_ch2"
+    },
+    {
+      "id": "goal_qingjian",
+      "trigger": "goal_done",
+      "power": "any",
+      "cooldown": 30,
+      "mood": "smug",
+      "priority": 4,
+      "text": "青涧城立起来了。种世衡说土是一层层夯的，我说这是全大宋第一座带考核指标的城。",
+      "group": "goal_qingjian",
+      "once": false
+    },
+    {
+      "id": "goal_craft",
+      "trigger": "goal_done",
+      "power": "any",
+      "cooldown": 12,
+      "mood": "smug",
+      "priority": 4,
+      "text": "这件差事办得漂亮，匠作院多分了{n}个人手。工匠们说要给您立个牌位，我拦住了，您还活着。",
+      "group": "goal_craft",
+      "once": false
+    },
+    {
+      "id": "goal_late",
+      "trigger": "goal_fail",
+      "power": "any",
+      "cooldown": 8,
+      "mood": "deadpan",
+      "priority": 4,
+      "text": "这件差事黄了。没关系，奏疏我替您写成另有深意。",
+      "group": "goal_late",
+      "once": false
+    },
+    {
+      "id": "food_glut",
+      "trigger": "food_glut",
+      "power": "any",
+      "cooldown": 10,
+      "mood": "smug",
+      "priority": 5,
+      "text": "粮仓又满了，老鼠都在开庆功宴。常平仓可以出粜，换点钱，顺便让老鼠减减肥。",
+      "group": "food_glut",
+      "once": false
+    },
+    {
+      "id": "power_full_line",
+      "trigger": "power_full",
+      "power": "any",
+      "cooldown": 8,
+      "mood": "think",
+      "priority": 5,
+      "text": "电池满了，再晒就是白晒。溢出来的我先存进预研，不让太阳白干。",
+      "group": "power_full_line",
+      "once": false
+    },
+    {
+      "id": "craft_idle",
+      "trigger": "craft_idle",
+      "power": "any",
+      "cooldown": 10,
+      "mood": "deadpan",
+      "priority": 5,
+      "text": "匠作院今天在下棋。图纸库空着，工匠的手比我的电还闲。",
+      "group": "craft_idle",
+      "once": false
+    },
+    {
+      "id": "money_low",
+      "trigger": "money_low",
+      "power": "any",
+      "cooldown": 8,
+      "mood": "serious",
+      "priority": 5,
+      "text": "国库见底的声音，跟我低电报警是一个调。",
+      "group": "money_low",
+      "once": false
+    },
+    {
+      "id": "blueprint_full",
+      "trigger": "blueprint_full",
+      "power": "any",
+      "cooldown": 10,
+      "mood": "deadpan",
+      "priority": 5,
+      "text": "图纸库塞满了。再画下去，就得把图纸贴到御书房墙上了。",
+      "group": "blueprint_full",
+      "once": false
+    },
+    {
+      "id": "chat_sushi",
+      "trigger": "chatter",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "smug",
+      "priority": 9,
+      "when": {
+        "year_min": 1045
+      },
+      "text": "苏轼这会儿在眉山念书，七八岁。陛下，等他长大了，请给他安排个好点的贬谪地点。",
+      "group": "chat_sushi",
+      "once": false
+    },
+    {
+      "id": "chat_night",
+      "trigger": "chatter",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "normal",
+      "priority": 9,
+      "text": "东京夜市开到三更。在二〇三〇年这叫二十四小时便利店，在大宋这叫开封。",
+      "group": "chat_night",
+      "once": false
+    },
+    {
+      "id": "chat_abacus",
+      "trigger": "chatter",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "think",
+      "priority": 9,
+      "when": {
+        "flag": "heyi_cut"
+      },
+      "text": "西夏称臣了，可榷场的账本上还在吵架。打完仗以后，仗就搬到算盘上打了。",
+      "group": "chat_abacus",
+      "once": false
+    },
+    {
+      "id": "chat_ancestor",
+      "trigger": "chatter",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "deadpan",
+      "priority": 9,
+      "when": {
+        "year_min": 1043
+      },
+      "text": "两派大人为了新政又议了一天。我统计了一下，祖宗之法出现了四十七次，钱出现了两次。",
+      "group": "chat_ancestor",
+      "once": false
+    },
+    {
+      "id": "chat_diverged",
+      "trigger": "chatter",
+      "power": "normal",
+      "cooldown": 30,
+      "mood": "awkward",
+      "priority": 9,
+      "once": true,
+      "when": {
+        "flag": "sanchuan_hold"
+      },
+      "text": "三川口没按史书走。我的预测准确率，先降到六成出头。城还在，这买卖划算。",
+      "group": "chat_diverged"
+    },
+    {
+      "id": "low_liao",
+      "trigger": "turn_start",
+      "power": "low",
+      "cooldown": 4,
+      "mood": "sleepy",
+      "priority": 5,
+      "text": "辽。要钱。顶住。",
+      "group": "low_liao",
+      "once": false
+    },
+    {
+      "id": "low_bei",
+      "trigger": "turn_start",
+      "power": "low",
+      "cooldown": 4,
+      "mood": "sleepy",
+      "priority": 5,
+      "text": "贝州。乱。速剿。",
+      "group": "low_bei",
+      "once": false
+    },
+    {
+      "id": "low_power",
+      "trigger": "turn_start",
+      "power": "low",
+      "cooldown": 4,
+      "mood": "sleepy",
+      "priority": 5,
+      "text": "电。没。话。省。",
+      "group": "low_power",
+      "once": false
+    }
   ]
 }

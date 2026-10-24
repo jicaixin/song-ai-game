@@ -1,5 +1,7 @@
 extends Node
 
+const EventSystem = preload("res://scripts/core/event_system.gd")
+
 var year := 1040
 var month := 1
 var turn := 1
@@ -47,6 +49,16 @@ var subsidies: Array = []
 var markets: Array = []
 var envoy_turn := {}
 var event_choice := {}
+var pending_events: Array = []
+var event_log: Array = []
+var event_flags := {}
+var line_history := {}
+var line_group_at := {}
+var line_recent: Array = []
+var meters := {"xia_war": 70, "liao_demand": 20, "unrest": 0}
+var report_hold := false
+var report_unread := false
+var last_report := ""
 
 func _ready() -> void:
 	rng.seed = seed_value
@@ -87,6 +99,7 @@ func new_game() -> void:
 	hint_enemy_menu_seen = false
 	hint_blocked_seen = false
 	AdvisorSystem.say("game_start")
+	EventSystem.scan()
 	playing = true
 	EventBus.state_changed.emit()
 
@@ -131,6 +144,39 @@ func _find_open(q: int, r: int) -> Vector2i:
 					return cur
 				cur += dir
 	return start
+
+
+func find_open(q: int, r: int) -> Vector2i:
+	return _find_open(q, r)
+
+
+func unit_by_name(unit_name: String) -> Dictionary:
+	for u_v in units:
+		var u: Dictionary = u_v
+		if str(u.get("name", "")) == unit_name and int(u.hp) > 0:
+			return u
+	return {}
+
+
+func add_unit(def_id: String, unit_name: String, q: int, r: int) -> int:
+	var ut := DataDB.unit_type(def_id)
+	var spot := _find_open(q, r)
+	var uid := next_uid
+	units.append({
+		"uid": uid,
+		"def_id": def_id,
+		"name": unit_name,
+		"faction": str(ut.get("faction", "xia")),
+		"q": spot.x,
+		"r": spot.y,
+		"hp": 100,
+		"mp": int(ut.get("move", 2)),
+		"max_mp": int(ut.get("move", 2)),
+		"general": "",
+		"general_bonus": 0,
+	})
+	next_uid += 1
+	return uid
 
 
 func _free(h: Vector2i) -> bool:
@@ -241,7 +287,7 @@ func finish_turn() -> void:
 	inspected_uid = -1
 
 
-func announce_turn() -> void:
+func announce_turn() -> bool:
 	var lines: PackedStringArray = []
 	for item_v in battle_lines:
 		lines.append(str(item_v))
@@ -249,7 +295,7 @@ func announce_turn() -> void:
 	var blueprint := pending_blueprint
 	pending_blueprint = ""
 	if lines.is_empty() and blueprint == "" and not _should_nag_research():
-		return
+		return false
 	var bits: PackedStringArray = []
 	for line in lines:
 		bits.append(line)
@@ -258,21 +304,18 @@ func announce_turn() -> void:
 	if not bits.is_empty():
 		notice = "\n".join(bits)
 	if not lines.is_empty() and blueprint == "":
-		advisor_text = "城下打起来了。%s明细在上面。" % lines[0]
-		advisor_mood = "serious"
-		return
+		AdvisorSystem.present("城下打起来了。%s明细在上面。" % lines[0], "serious", "battle_brief")
+		return true
 	if lines.is_empty() and blueprint != "":
-		advisor_text = "图纸画好了：%s。去匠作院试制吧。" % blueprint
-		advisor_mood = "smug"
-		return
+		AdvisorSystem.present("图纸画好了：%s。去匠作院试制吧。" % blueprint, "smug", "blueprint_ready")
+		return true
 	if not lines.is_empty() and blueprint != "":
-		advisor_text = "城下打了 %d 场，%s 的图纸也画好了。明细在上面。" % [lines.size(), blueprint]
-		advisor_mood = "serious"
-		return
+		AdvisorSystem.present("城下打了 %d 场，%s 的图纸也画好了。明细在上面。" % [lines.size(), blueprint], "serious", "battle_brief")
+		return true
 	research_idle_warned = true
-	advisor_text = "电库存满了，图纸还空着。按 T 选一份，别让蓄电池干耗着。"
-	advisor_mood = "serious"
+	AdvisorSystem.present("电库存满了，图纸还空着。按 T 选一份，别让蓄电池干耗着。", "serious", "power_nag")
 	notice = "电已满 · 选一份图纸"
+	return true
 
 
 func _should_nag_research() -> bool:
@@ -436,9 +479,8 @@ func resolve_attack(atk_uid: int, def_uid: int) -> void:
 	var line := "%s%s 攻击 %s，守方 -%d，%s。%s" % [where, atk_name, def_name, dmg.y, counter, fallen]
 	last_event = line
 	battle_lines.append(line)
-	advisor_text = "城下交战。" + line
-	advisor_mood = "serious"
-	EventBus.advisor_changed.emit()
+	if not input_locked:
+		AdvisorSystem.present("城下交战。" + line, "serious")
 	EventBus.combat_finished.emit()
 	EventBus.state_changed.emit()
 
@@ -471,6 +513,7 @@ func _reset_politics() -> void:
 	markets = []
 	envoy_turn = {}
 	event_choice = {}
+	_reset_pacing()
 
 
 func send_envoy(fid: String) -> bool:
@@ -518,24 +561,43 @@ func choose_event(event_id: String, choice_id: String) -> void:
 	if event_choice.has(event_id):
 		return
 	var ev: Dictionary = DataDB.event_by_id.get(event_id, {})
-	if ev.is_empty() or turn < int(ev.get("turn", 1)):
+	if ev.is_empty() or not EventSystem.available(ev):
 		return
 	var choice := {}
 	for choice_v in ev.get("choices", []):
 		var item: Dictionary = choice_v
 		if str(item.get("id", "")) == choice_id:
 			choice = item
-	if choice.is_empty():
+	if choice.is_empty() or not EventSystem.choice_enabled(choice):
 		return
 	event_choice[event_id] = choice_id
+	pending_events.erase(event_id)
+	if not event_log.has(event_id):
+		event_log.append(event_id)
 	morale += int(choice.get("morale", 0))
 	var rel: Dictionary = choice.get("relation", {})
 	for key_v in rel.keys():
 		var key := str(key_v)
 		relations[key] = int(relations.get(key, 0)) + int(rel[key_v])
+	EventSystem.apply(ev, choice)
 	notice = str(choice.get("result", "已记下"))
 	last_event = notice
+	AdvisorSystem.say("event_post:%s:%s" % [event_id, choice_id])
 	EventBus.state_changed.emit()
+
+
+func _reset_pacing() -> void:
+	pending_events = []
+	event_log = []
+	event_flags = {}
+	line_history = {}
+	line_group_at = {}
+	line_recent = []
+	meters = {"xia_war": 70, "liao_demand": 20, "unrest": 0}
+	report_hold = false
+	report_unread = false
+	last_report = ""
+	AdvisorSystem.reset_rng()
 
 
 func _reset_research() -> void:
@@ -883,6 +945,32 @@ func _str_list(raw) -> Array:
 	return out
 
 
+func _flag_dict(raw) -> Dictionary:
+	var out := {}
+	if typeof(raw) != TYPE_DICTIONARY:
+		return out
+	var src: Dictionary = raw
+	for key_v in src.keys():
+		out[str(key_v)] = true
+	return out
+
+
+func _recent_list(raw) -> Array:
+	var out: Array = []
+	if typeof(raw) != TYPE_ARRAY:
+		return out
+	for item_v in raw:
+		if typeof(item_v) != TYPE_DICTIONARY:
+			continue
+		var item: Dictionary = item_v
+		out.append({
+			"id": str(item.get("id", "")),
+			"cat": str(item.get("cat", "")),
+			"turn": int(item.get("turn", 0)),
+		})
+	return out
+
+
 func building_unlocked(spec: Dictionary) -> bool:
 	var unlock := str(spec.get("unlock", "start"))
 	if unlock == "" or unlock == "start":
@@ -935,6 +1023,15 @@ func to_save() -> Dictionary:
 		"markets": markets.duplicate(),
 		"envoy_turn": envoy_turn.duplicate(),
 		"event_choice": event_choice.duplicate(),
+		"pending_events": pending_events.duplicate(),
+		"event_log": event_log.duplicate(),
+		"event_flags": event_flags.duplicate(),
+		"line_history": line_history.duplicate(),
+		"line_group_at": line_group_at.duplicate(),
+		"line_recent": line_recent.duplicate(true),
+		"meters": meters.duplicate(),
+		"report_unread": report_unread,
+		"last_report": last_report,
 	}
 
 
@@ -1000,6 +1097,21 @@ func from_save(data: Dictionary) -> bool:
 	markets = _str_list(data.get("markets", []))
 	envoy_turn = _int_dict(data.get("envoy_turn", {}))
 	event_choice = _str_dict(data.get("event_choice", {}))
+	pending_events = _str_list(data.get("pending_events", []))
+	event_log = _str_list(data.get("event_log", []))
+	event_flags = _flag_dict(data.get("event_flags", {}))
+	line_history = _int_dict(data.get("line_history", {}))
+	line_group_at = _int_dict(data.get("line_group_at", {}))
+	line_recent = _recent_list(data.get("line_recent", []))
+	meters = {"xia_war": 70, "liao_demand": 20, "unrest": 0}
+	var raw_meters: Dictionary = data.get("meters", {})
+	for mid_v in meters.keys():
+		var mid := str(mid_v)
+		if raw_meters.has(mid):
+			meters[mid] = int(raw_meters[mid])
+	report_unread = bool(data.get("report_unread", false))
+	last_report = str(data.get("last_report", ""))
+	report_hold = false
 	tech_paused = _int_dict(data.get("tech_paused", {}))
 	tech_target = str(data.get("tech_target", ""))
 	tech_tutorial_done = bool(data.get("tech_tutorial_done", false))
@@ -1025,6 +1137,7 @@ func from_save(data: Dictionary) -> bool:
 	inspected_uid = -1
 	input_locked = false
 	playing = true
+	EventSystem.scan()
 	EventBus.state_changed.emit()
 	return true
 

@@ -1,6 +1,8 @@
 class_name WorldMap
 extends Node3D
 
+const EnemyPace = preload("res://scripts/core/enemy_pace.gd")
+
 const DIST := [780.0, 280.0, 115.0]
 const PITCH := [50.0, 52.0, 40.0]
 const VIEW_ANCHOR := Vector2(488, 326)
@@ -18,6 +20,8 @@ var order_pos := Vector2.ZERO
 var order_moved := false
 var debug_clicks: Array = []
 var animating := false
+var pace_tween: Tween
+var pings: Array[Vector2i] = []
 var suspend := 0
 var map_rect := Rect2()
 var heights := {}
@@ -977,15 +981,31 @@ func animate_move(uid: int, path: Array) -> void:
 	var node: Node3D = sprites.get(uid, null)
 	if node == null:
 		return
+	if path.is_empty():
+		return
+	var last: Vector2i = path[path.size() - 1]
+	if EnemyPace.skip_moves():
+		node.position = _unit_pos(last)
+		return
 	animating = true
 	for h_v in path:
+		if EnemyPace.skip_moves():
+			node.position = _unit_pos(last)
+			break
 		var h: Vector2i = h_v
 		var dest := _unit_pos(h)
+		var hop := EnemyPace.scale(0.09)
+		var land := EnemyPace.scale(0.1)
+		if hop <= 0.0:
+			node.position = dest
+			continue
 		var mid := node.position.lerp(dest, 0.5) + Vector3(0, 1.4, 0)
 		var tw := create_tween()
-		tw.tween_property(node, "position", mid, 0.09)
-		tw.tween_property(node, "position", dest, 0.1)
+		pace_tween = tw
+		tw.tween_property(node, "position", mid, hop)
+		tw.tween_property(node, "position", dest, land)
 		await tw.finished
+		pace_tween = null
 	animating = false
 	_refresh_overlay()
 
@@ -995,13 +1015,31 @@ func animate_strike(uid: int, target: Vector2i) -> void:
 	if node == null:
 		return
 	var home := node.position
+	if EnemyPace.active and EnemyPace.skip:
+		return
 	var dest := _unit_pos(target)
 	var lunge := home.lerp(dest, 0.28)
 	lunge.y = maxf(home.y, dest.y) + 0.4
+	var out_t := EnemyPace.scale(0.12)
+	var back_t := EnemyPace.scale(0.16)
+	if out_t <= 0.0:
+		return
 	var tw := create_tween()
-	tw.tween_property(node, "position", lunge, 0.12)
-	tw.tween_property(node, "position", home, 0.16)
+	pace_tween = tw
+	tw.tween_property(node, "position", lunge, out_t)
+	tw.tween_property(node, "position", home, back_t)
 	await tw.finished
+	pace_tween = null
+
+
+func ping(h: Vector2i) -> void:
+	pings.append(h)
+	while pings.size() > 8:
+		pings.pop_front()
+
+
+func clear_pings() -> void:
+	pings.clear()
 
 
 func visible_hex_span() -> float:
@@ -1395,6 +1433,9 @@ func _modal() -> bool:
 
 
 func _process(delta: float) -> void:
+	if EnemyPace.skip and pace_tween != null and is_instance_valid(pace_tween):
+		pace_tween.kill()
+		pace_tween = null
 	if _booting:
 		_boot_tick()
 		return
@@ -1551,11 +1592,20 @@ func _unhandled_input(event: InputEvent) -> void:
 			if fire and not _modal() and not GameState.input_locked and suspend == 0 and not animating:
 				_right_click(pos)
 				get_viewport().set_input_as_handled()
+	if event is InputEventKey and not event.pressed and event.keycode == KEY_SPACE:
+		EnemyPace.boost = false
 	if event is InputEventKey and event.pressed and not event.echo:
 		_key(event as InputEventKey)
 
 
 func _key(event: InputEventKey) -> void:
+	if GameState.input_locked and EnemyPace.active:
+		if event.keycode == KEY_ESCAPE:
+			EnemyPace.request_skip()
+			return
+		if event.keycode == KEY_SPACE:
+			EnemyPace.boost = true
+			return
 	if event.keycode == KEY_HOME:
 		return_home()
 		return
@@ -2026,6 +2076,10 @@ func minimap_image() -> Image:
 		elif str(u.faction) == "liao":
 			dot = Color("9ec0ea")
 		_mini_disc(img, at, 3.2, dot, dot)
+	for ping_v in pings:
+		var ping_h: Vector2i = ping_v
+		var ping_at := _mini_point(HexGrid.axial_to_pixel(ping_h.x, ping_h.y))
+		_mini_disc(img, ping_at, 4.4, Color("e07a32"), Color("f4c27a"))
 	_mini_viewport(img)
 	_mini_mark_city(img, "yanzhou", Color("f0d060"))
 	_mini_mark_city(img, "kaifeng", Color("c23b2a"))
