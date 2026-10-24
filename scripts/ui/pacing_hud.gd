@@ -34,6 +34,7 @@ var _options: VBoxContainer
 var _comment_head: TextureRect
 var _badge: Label
 var _badge_bg: ColorRect
+var _report_queue := ""
 
 
 func setup(owner: GameUI) -> void:
@@ -64,7 +65,17 @@ func sync() -> void:
 
 func show_banner(total: int) -> void:
 	banner_open = true
+	# The battle report shares this band. Keep it hidden until the phase ends
+	# so the banner stays readable for the whole enemy turn.
+	if report_open:
+		report_open = false
+		_report_hover = false
+		_report_left = 0.0
+		GameState.report_hold = false
+		if _report:
+			_report.visible = false
 	_banner.visible = true
+	_banner.z_index = 4
 	EnemyPace.total = total
 	_apply_faction("西夏")
 	set_progress(0, total, "西夏")
@@ -84,9 +95,21 @@ func hide_banner() -> void:
 	banner_open = false
 	if _banner:
 		_banner.visible = false
+	if _report_queue != "":
+		var queued := _report_queue
+		_report_queue = ""
+		_present_report(queued)
 
 
 func show_report(text: String) -> void:
+	if banner_open:
+		_report_queue = text
+		GameState.last_report = text
+		return
+	_present_report(text)
+
+
+func _present_report(text: String) -> void:
 	_report_label.text = text
 	_report.visible = true
 	report_open = true
@@ -97,6 +120,7 @@ func show_report(text: String) -> void:
 	var tall := clampf(96.0 + float(rows) * 22.0, 120.0, 320.0)
 	_report.size = Vector2(500, tall)
 	_report.position = Vector2(390, 80)
+	_report.z_index = 1
 
 
 func dismiss_report() -> void:
@@ -427,12 +451,14 @@ func _build_event() -> void:
 	_dim.color = Color(0.05, 0.04, 0.03, 0.55)
 	_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_dim.visible = false
+	_dim.z_index = 5
 	_dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_dim)
 	_card = Panel.new()
 	_card.position = Vector2(200, 100)
 	_card.size = Vector2(880, 520)
 	_card.visible = false
+	_card.z_index = 6
 	_card.mouse_filter = Control.MOUSE_FILTER_STOP
 	_card.add_theme_stylebox_override("panel", _plate(Color("f3ead6"), 10, Color("8e2a1e")))
 	add_child(_card)

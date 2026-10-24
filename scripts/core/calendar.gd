@@ -44,3 +44,40 @@ static func era_name(year: int, month: int) -> String:
 
 static func format_date(year: int, month: int) -> String:
 	return "%s %s · %d" % [era_name(year, month), month_name(month), year]
+
+
+## 丙方案. T1–T60 one month, T61–T75 two months, T76–T86 one month.
+## Returns (year, start month, span).
+static func apply_turn(turn: int) -> Vector3i:
+	var months := 0
+	if turn <= 60:
+		months = maxi(0, turn - 1)
+	elif turn <= 75:
+		months = 60 + (turn - 61) * 2
+	else:
+		months = 90 + (turn - 76)
+	var year := 1040 + int(months / 12)
+	var month := (months % 12) + 1
+	var span := 2 if turn >= 61 and turn <= 75 else 1
+	return Vector3i(year, month, span)
+
+
+static func span_for_turn(turn: int) -> int:
+	if turn >= 61 and turn <= 75:
+		return 2
+	return 1
+
+
+static func format_label(year: int, month: int, span: int) -> String:
+	if span <= 1:
+		return "%s %s" % [era_name(year, month), month_name(month)]
+	var next_m := month + 1
+	if next_m > 12:
+		next_m = 1
+	return "%s %s–%s" % [era_name(year, month), month_name(month), month_name(next_m)]
+
+
+static func on_or_after(year: int, month: int, want_year: int, want_month: int) -> bool:
+	if year > want_year:
+		return true
+	return year == want_year and month >= want_month

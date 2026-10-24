@@ -4,6 +4,7 @@ const TechPlan = preload("res://scripts/ui/tech_plan.gd")
 const TileActions = preload("res://scripts/core/tile_actions.gd")
 const EventSystem = preload("res://scripts/core/event_system.gd")
 const EnemyPace = preload("res://scripts/core/enemy_pace.gd")
+const GoalSystem = preload("res://scripts/core/goal_system.gd")
 
 var failed := 0
 
@@ -18,6 +19,7 @@ func run_tests() -> int:
 	check_tiles()
 	check_playtest()
 	check_pacing()
+	check_goals()
 	check_tech()
 	check_camera()
 	check_font()
@@ -492,6 +494,48 @@ func check_pacing() -> void:
 	check("pace_skip", EnemyPace.scale(1.0) == 0.0)
 	EnemyPace.finish()
 	check("pace_idle", is_equal_approx(EnemyPace.scale(0.2), 0.2))
+	GameState.new_game()
+
+
+func check_goals() -> void:
+	var d1 := Calendar.apply_turn(1)
+	var d60 := Calendar.apply_turn(60)
+	var d61 := Calendar.apply_turn(61)
+	var d68 := Calendar.apply_turn(68)
+	var d75 := Calendar.apply_turn(75)
+	var d76 := Calendar.apply_turn(76)
+	var d86 := Calendar.apply_turn(86)
+	check("cal_t1", d1.x == 1040 and d1.y == 1 and d1.z == 1, str(d1))
+	check("cal_t60", d60.x == 1044 and d60.y == 12 and d60.z == 1, str(d60))
+	check("cal_t61", d61.x == 1045 and d61.y == 1 and d61.z == 2, str(d61))
+	check("cal_t68", d68.x == 1046 and d68.y == 3 and d68.z == 2, str(d68))
+	check("cal_t75", d75.x == 1047 and d75.y == 5 and d75.z == 2, str(d75))
+	check("cal_t76", d76.x == 1047 and d76.y == 7 and d76.z == 1, str(d76))
+	check("cal_t86", d86.x == 1048 and d86.y == 5 and d86.z == 1, str(d86))
+	check("chapters", DataDB.chapters.size() == 7, str(DataDB.chapters.size()))
+	GameState.new_game()
+	var long_label := false
+	for item_v in GameState.orders:
+		var item: Dictionary = item_v
+		if str(item.get("text", "")).length() > 14:
+			long_label = true
+	check("orders_present", GameState.orders.size() >= 1 and GameState.orders.size() <= 3, str(GameState.orders.size()))
+	check("orders_short", not long_label)
+	check("order_main", GoalSystem.collapsed_text().length() <= 13 and GoalSystem.collapsed_text() != "")
+	var food_before := int(GameState.resources.get("food", 0))
+	GameState.turn = 60
+	GameState.finish_turn()
+	check("skip_month", GameState.turn == 61 and GameState.year == 1045 and GameState.month == 1 and GameState.month_span == 2)
+	check("skip_once", int(GameState.resources.get("food", 0)) != food_before)
+	GameState.year = 1046
+	GameState.month = 1
+	check("era3_wait", not GameState.era_unlocked(3))
+	GameState.month = 3
+	check("era3_open", GameState.era_unlocked(3))
+	GameState.meters["liao_demand"] = 8
+	check("beiding_reduced", GoalSystem.beiding_done() == "reduced")
+	GameState.meters["xia_war"] = 10
+	check("xiping_done", GoalSystem.xiping_done() and GoalSystem.xiping() >= 85)
 	GameState.new_game()
 
 

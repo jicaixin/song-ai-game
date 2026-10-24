@@ -1,6 +1,8 @@
 extends Node
 
 const TechPlan = preload("res://scripts/ui/tech_plan.gd")
+const GoalSystem = preload("res://scripts/core/goal_system.gd")
+const EnemyPace = preload("res://scripts/core/enemy_pace.gd")
 
 const Kit = preload("res://scripts/ui/kit.gd")
 
@@ -196,7 +198,17 @@ func _process(_delta: float) -> void:
 		"turn": GameState.turn,
 		"year": GameState.year,
 		"month": GameState.month,
+		"month_span": GameState.month_span,
 		"era": Calendar.era_name(GameState.year, GameState.month),
+		"date_label": ui.date_label.text if ui.date_label else "",
+		"orders": _order_texts(),
+		"chapter": str(GoalSystem.current_chapter().get("name", "")),
+		"chapter_open": ui.goals.blocking() if ui.goals else false,
+		"goal_tab": ui.goals.tab if ui.goals else "",
+		"xiping": GoalSystem.xiping(),
+		"beiding": GoalSystem.beiding(),
+		"jingnei": GoalSystem.jingnei(),
+		"flies": ui.goals.fly_debug() if ui.goals else [],
 		"weather": GameState.weather_id,
 		"battery": GameState.battery,
 		"advisor": GameState.advisor_text,
@@ -251,6 +263,14 @@ func _process(_delta: float) -> void:
 	})
 
 
+func _order_texts() -> Array:
+	var out: Array = []
+	for item_v in GameState.orders:
+		var item: Dictionary = item_v
+		out.append(str(item.get("text", "")))
+	return out
+
+
 func _poll_tech_cmd() -> void:
 	if not OS.has_feature("web"):
 		return
@@ -284,6 +304,34 @@ func _poll_tech_cmd() -> void:
 		GameState.input_locked = true
 		ui.begin_enemy_phase(5)
 		ui.set_enemy_progress(2, 5, "西夏")
+		return
+	if cmd == "shot_goals":
+		ui.force_event("sanchuan")
+		GameState.choose_event("sanchuan", "hold")
+		if ui.goals:
+			ui.goals.collapsed = false
+			ui.goals.show_tab("month")
+		return
+	if cmd == "shot_chapter":
+		GameState.tutorial_done = true
+		GameState.card_queue.push_front("start:forts")
+		if ui.goals:
+			ui.goals.dismiss_card()
+		return
+	if cmd == "shot_meters":
+		GameState.tutorial_done = true
+		if ui.goals:
+			ui.goals.show_tab("war")
+		return
+	if cmd == "shot_fly":
+		GameState.reward_queue.append({"text": "匠 +12"})
+		if ui.goals:
+			ui.goals.fly_time = 2.4
+			ui.goals.sync()
+		return
+	if cmd == "pace_slow":
+		EnemyPace.pinned = true
+		EnemyPace.speed = 0.35
 		return
 	if cmd == "shot_report":
 		GameState.notice = "延州：步跋子 攻击 延州守军，守方 -40，攻方 -23。"

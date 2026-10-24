@@ -1,0 +1,12 @@
+{
+  "orders": [
+    {"id": "G02", "kind": "military", "text": "守住延州", "limit": 2, "craft": 10, "morale": 1},
+    {"id": "G04", "kind": "military", "text": "击退城下西夏", "limit": 2, "craft": 8, "morale": 0},
+    {"id": "G06", "kind": "military", "text": "侦察镇戎军北", "limit": 2, "craft": 6, "morale": 0},
+    {"id": "G07", "kind": "craft", "text": "开始一项设计", "limit": 2, "craft": 8, "morale": 0},
+    {"id": "G08", "kind": "craft", "text": "试制一份图纸", "limit": 2, "craft": 10, "morale": 0},
+    {"id": "G11", "kind": "prep", "text": "常平仓出粜", "limit": 2, "craft": 0, "morale": 0},
+    {"id": "G15", "kind": "chapter", "text": "修筑青涧城", "limit": 3, "craft": 6, "morale": 1},
+    {"id": "G16", "kind": "patrol", "text": "巡视延州边", "limit": 1, "craft": 6, "morale": 1}
+  ]
+}

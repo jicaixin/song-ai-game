@@ -18,6 +18,11 @@ static func say(trigger: String) -> void:
 
 
 static func say_turn() -> void:
+	_say_turn_body()
+	_attach_order()
+
+
+static func _say_turn_body() -> void:
 	_tick()
 	_seed()
 	var band := GameState.power_band()
@@ -49,6 +54,17 @@ static func say_turn() -> void:
 			return
 	var date := Calendar.format_date(GameState.year, GameState.month)
 	_fallback("第%d回合，%s。城里的事我列在上面，边上的事等您问。" % [GameState.turn, date])
+
+
+static func _attach_order() -> void:
+	if GameState.orders.is_empty():
+		return
+	var first: Dictionary = GameState.orders[0]
+	var order := str(first.get("text", ""))
+	if order == "" or GameState.advisor_text.begins_with("主令"):
+		return
+	GameState.advisor_text = "主令：%s。%s" % [order, GameState.advisor_text]
+	EventBus.advisor_changed.emit()
 
 
 static func say_combat(player_dead: bool, enemy_dead: bool) -> void:

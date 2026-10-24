@@ -1,6 +1,7 @@
 extends Node
 
 const EventSystem = preload("res://scripts/core/event_system.gd")
+const GoalSystem = preload("res://scripts/core/goal_system.gd")
 
 var busy := false
 
@@ -29,12 +30,13 @@ func _run() -> void:
 	GameState.finish_turn()
 	var told := GameState.announce_turn()
 	if had_battle and ui and ui.has_method("show_battle_report"):
-		var date := Calendar.format_date(GameState.year, GameState.month)
+		var date := "%s · %d" % [Calendar.format_label(GameState.year, GameState.month, GameState.month_span), GameState.year]
 		ui.call("show_battle_report", "%s\n%s" % [date, GameState.notice])
 	elif not told:
 		AdvisorSystem.say_turn()
 		GameState.notice = "这个月边上很安静。"
 	EventSystem.scan()
+	GoalSystem.on_turn()
 	SaveManager.save_slot(0, true)
 	GameState.input_locked = false
 	busy = false

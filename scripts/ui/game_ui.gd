@@ -8,6 +8,7 @@ const TileMenuSc = preload("res://scripts/ui/tile_menu.gd")
 const TileTipSc = preload("res://scripts/ui/tile_tip.gd")
 const TileMarksSc = preload("res://scripts/ui/tile_marks.gd")
 const PacingHudSc = preload("res://scripts/ui/pacing_hud.gd")
+const GoalHudSc = preload("res://scripts/ui/goal_hud.gd")
 
 const RES_BAR := [
 	["food", "res_food", "HudNumberLabel", Color("6db394")],
@@ -69,6 +70,7 @@ var cancel_button: Button
 var desk: Desk
 var tutor: Onboarding
 var pacing
+var goals
 var btn_map := {}
 var _enemy_dots := 0
 var _notice_seen := ""
@@ -98,6 +100,11 @@ func _ready() -> void:
 	pacing.z_index = 70
 	add_child(pacing)
 	pacing.setup(self)
+	goals = GoalHudSc.new()
+	goals.name = "GoalHud"
+	goals.z_index = 50
+	add_child(goals)
+	goals.setup(self)
 	EventBus.state_changed.connect(_refresh)
 	EventBus.advisor_changed.connect(_refresh_advisor)
 	EventBus.camera_moved.connect(_on_camera_moved)
@@ -487,6 +494,8 @@ func _process(delta: float) -> void:
 			toast.visible = false
 	if pacing:
 		pacing.tick(delta)
+	if goals:
+		goals.tick(delta)
 	_refresh()
 
 
@@ -500,14 +509,13 @@ func _refresh() -> void:
 	if over:
 		return
 	var era := Calendar.era_name(GameState.year, GameState.month)
-	var month := Calendar.month_name(GameState.month)
-	date_label.text = "%s %s" % [era, month]
+	date_label.text = Calendar.format_label(GameState.year, GameState.month, GameState.month_span)
 	if era.contains("祐"):
 		date_label.theme_type_variation = "H2Label"
 		date_label.add_theme_color_override("font_color", Color("8e2a1e"))
 	else:
 		date_label.theme_type_variation = "BrushLabel"
-		date_label.add_theme_font_size_override("font_size", 20)
+		date_label.add_theme_font_size_override("font_size", 16 if GameState.month_span >= 2 else 20)
 	year_label.text = str(GameState.year)
 	for key_v in res_labels.keys():
 		var key := str(key_v)
@@ -545,6 +553,8 @@ func _refresh() -> void:
 		minimap.texture = ImageTexture.create_from_image(map.minimap_image())
 	if pacing:
 		pacing.sync()
+	if goals:
+		goals.sync()
 
 
 func _set_play_visible(show_hud: bool) -> void:
@@ -556,6 +566,8 @@ func _set_play_visible(show_hud: bool) -> void:
 		key_plate.visible = show_hud
 	elif key_hint:
 		key_hint.visible = show_hud
+	if goals:
+		goals.visible = show_hud
 	if not show_hud:
 		unit_card.visible = false
 		toast.visible = false
@@ -705,6 +717,9 @@ func _cancel_detail() -> void:
 func hide_modals() -> void:
 	if pacing and pacing.event_open:
 		return
+	if goals and goals.blocking():
+		goals.dismiss_card()
+		return
 	if pacing and pacing.report_open:
 		pacing.dismiss_report()
 		return
@@ -717,6 +732,8 @@ func hide_modals() -> void:
 
 func modal_open() -> bool:
 	if pacing and pacing.event_blocking():
+		return true
+	if goals and goals.blocking():
 		return true
 	return combat_panel.visible or (desk != null and desk.is_open())
 

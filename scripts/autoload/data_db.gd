@@ -28,6 +28,9 @@ var edict_by_id := {}
 var stages: Array = []
 var events: Array = []
 var event_by_id := {}
+var chapters: Array = []
+var chapter_by_id := {}
+var goal_orders: Array = []
 var scenario: Dictionary = {}
 var river_masks := {}
 var feature_hexes := {}
@@ -74,6 +77,13 @@ func _ready() -> void:
 	for ev_v in events:
 		var ev: Dictionary = ev_v
 		event_by_id[str(ev.get("id", ""))] = ev
+	var chapter_doc := _load_dict("res://data/chapters.json")
+	chapters = chapter_doc.get("chapters", [])
+	for ch_v in chapters:
+		var ch: Dictionary = ch_v
+		chapter_by_id[str(ch.get("id", ""))] = ch
+	var goal_doc := _load_dict("res://data/goals.json")
+	goal_orders = goal_doc.get("orders", [])
 	var res_doc := _load_dict("res://data/resources.json")
 	resources_meta = res_doc.get("resources", [])
 	var bdoc := _load_dict("res://data/buildings.json")

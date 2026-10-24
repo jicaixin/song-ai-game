@@ -8,6 +8,7 @@ static var skip := false
 static var attacks_only := false
 static var boost := false
 static var speed := 2.0
+static var pinned := false
 static var started_ms := 0
 static var index := 0
 static var total := 0
@@ -18,7 +19,8 @@ static func begin() -> void:
 	skip = false
 	attacks_only = false
 	boost = false
-	speed = 2.0
+	if not pinned:
+		speed = 2.0
 	index = 0
 	total = 0
 	started_ms = Time.get_ticks_msec()
@@ -29,6 +31,7 @@ static func finish() -> void:
 	skip = false
 	attacks_only = false
 	boost = false
+	pinned = false
 	index = 0
 	total = 0
 

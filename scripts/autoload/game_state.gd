@@ -1,5 +1,7 @@
 extends Node
 
+const GoalSystem = preload("res://scripts/core/goal_system.gd")
+
 const EventSystem = preload("res://scripts/core/event_system.gd")
 
 var year := 1040
@@ -59,6 +61,14 @@ var meters := {"xia_war": 70, "liao_demand": 20, "unrest": 0}
 var report_hold := false
 var report_unread := false
 var last_report := ""
+var month_span := 1
+var orders: Array = []
+var order_seen := {}
+var card_queue: Array = []
+var chapter_shown := {}
+var chapter_rewarded := {}
+var reward_queue: Array = []
+var battery_bonus := 0
 
 func _ready() -> void:
 	rng.seed = seed_value
@@ -100,6 +110,7 @@ func new_game() -> void:
 	hint_blocked_seen = false
 	AdvisorSystem.say("game_start")
 	EventSystem.scan()
+	GoalSystem.on_turn()
 	playing = true
 	EventBus.state_changed.emit()
 
@@ -273,14 +284,14 @@ func restore_movement() -> void:
 
 
 func finish_turn() -> void:
-	month += 1
-	if month > 12:
-		month = 1
-		year += 1
+	turn += 1
+	var date := Calendar.apply_turn(turn)
+	year = date.x
+	month = date.y
+	month_span = date.z
 	roll_weather()
 	apply_power()
 	_economy()
-	turn += 1
 	_research_tick()
 	restore_movement()
 	selected_uid = -1
@@ -583,6 +594,7 @@ func choose_event(event_id: String, choice_id: String) -> void:
 	notice = str(choice.get("result", "已记下"))
 	last_event = notice
 	AdvisorSystem.say("event_post:%s:%s" % [event_id, choice_id])
+	GoalSystem.touch()
 	EventBus.state_changed.emit()
 
 
@@ -597,6 +609,7 @@ func _reset_pacing() -> void:
 	report_hold = false
 	report_unread = false
 	last_report = ""
+	GoalSystem.reset()
 	AdvisorSystem.reset_rng()
 
 
@@ -625,6 +638,7 @@ func battery_cap() -> int:
 		cap += 60
 	if tech_done.has("E06"):
 		cap += 150
+	cap += battery_bonus
 	return cap
 
 
@@ -650,7 +664,7 @@ func era_unlocked(era: int) -> bool:
 	if era == 2:
 		return turn > 30
 	if era == 3:
-		return turn > 75 or _era_done_count(2) >= 11
+		return Calendar.on_or_after(year, month, 1046, 3) or _era_done_count(2) >= 11
 	return false
 
 
@@ -985,6 +999,7 @@ func to_save() -> Dictionary:
 		"save_version": 1,
 		"year": year,
 		"month": month,
+		"month_span": month_span,
 		"turn": turn,
 		"weather_id": weather_id,
 		"battery": battery,
@@ -1032,6 +1047,12 @@ func to_save() -> Dictionary:
 		"meters": meters.duplicate(),
 		"report_unread": report_unread,
 		"last_report": last_report,
+		"orders": orders.duplicate(true),
+		"order_seen": order_seen.duplicate(),
+		"card_queue": card_queue.duplicate(),
+		"chapter_shown": chapter_shown.duplicate(),
+		"chapter_rewarded": chapter_rewarded.duplicate(),
+		"battery_bonus": battery_bonus,
 	}
 
 
@@ -1040,9 +1061,11 @@ func from_save(data: Dictionary) -> bool:
 		return false
 	_reset_research()
 	_reset_politics()
-	year = int(data.get("year", 1040))
-	month = int(data.get("month", 1))
 	turn = int(data.get("turn", 1))
+	var date := Calendar.apply_turn(turn)
+	year = date.x
+	month = date.y
+	month_span = date.z
 	weather_id = str(data.get("weather_id", "clear"))
 	battery = int(data.get("battery", 0))
 	last_gen = int(data.get("last_gen", 0))
@@ -1137,6 +1160,16 @@ func from_save(data: Dictionary) -> bool:
 	inspected_uid = -1
 	input_locked = false
 	playing = true
+	orders = data.get("orders", [])
+	if typeof(orders) != TYPE_ARRAY:
+		orders = []
+	order_seen = _int_dict(data.get("order_seen", {}))
+	card_queue = _str_list(data.get("card_queue", []))
+	chapter_shown = _flag_dict(data.get("chapter_shown", {}))
+	chapter_rewarded = _str_dict(data.get("chapter_rewarded", {}))
+	battery_bonus = int(data.get("battery_bonus", 0))
+	if orders.is_empty():
+		GoalSystem.on_turn()
 	EventSystem.scan()
 	EventBus.state_changed.emit()
 	return true
@@ -1147,6 +1180,7 @@ func load_tech_sample() -> void:
 	turn = 52
 	year = 1044
 	month = 4
+	month_span = 1
 	tech_done = []
 	for tech_v in DataDB.techs:
 		var tech: Dictionary = tech_v

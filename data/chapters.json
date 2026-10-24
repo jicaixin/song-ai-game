@@ -1,0 +1,102 @@
+{
+  "chapters": [
+    {
+      "id": "prologue",
+      "name": "三川口",
+      "label": "序章",
+      "turn": [1, 4],
+      "art": "chapter_00_sanchuankou",
+      "years": "宝元三年正月 — 康定元年四月",
+      "lead": "金明寨已失，元昊兵临延州城下。",
+      "main": "延州不失，西夏撤围",
+      "sides": ["刘平部、石元孙部保全"],
+      "check": "yan",
+      "craft": 20,
+      "morale": 2
+    },
+    {
+      "id": "forts",
+      "name": "堡寨与好水川",
+      "label": "第一章",
+      "turn": [5, 20],
+      "art": "chapter_01_haoshuichuan",
+      "years": "康定元年五月 — 康定二年八月",
+      "lead": "范仲淹、韩琦赴陕西。筑堡寨，还是寻机决战？",
+      "main": "好水川一役不被全歼",
+      "sides": ["青涧城筑成", "挫败秋季攻势"],
+      "check": "haoshui",
+      "craft": 20,
+      "battery": 10
+    },
+    {
+      "id": "liao",
+      "name": "辽使南来",
+      "label": "第二章",
+      "turn": [21, 36],
+      "art": "chapter_02_liaoshi",
+      "years": "康定二年九月 — 庆历二年腊月",
+      "lead": "辽使萧英、刘六符南来，开口便是关南十县。",
+      "main": "增币结束时辽索求 ≤ 10 档",
+      "sides": ["定川寨守住", "苏颂入仕"],
+      "check": "liao",
+      "craft": 20,
+      "morale": 2
+    },
+    {
+      "id": "qingli",
+      "name": "庆历三年",
+      "label": "第三章",
+      "turn": [37, 48],
+      "art": "chapter_03_qingli3",
+      "years": "庆历三年正月 — 腊月",
+      "lead": "沂州兵变，商山聚众。这一年，内外都不太平。",
+      "main": "平定王伦、张海郭邈山",
+      "sides": ["颁布至少一条新政"],
+      "check": "rebels",
+      "craft": 20,
+      "morale": 2
+    },
+    {
+      "id": "heyi",
+      "name": "庆历和议",
+      "label": "第四章",
+      "turn": [49, 60],
+      "art": "chapter_04_heyi",
+      "years": "庆历四年正月 — 腊月",
+      "lead": "西夏遣使议和。仗打到这里，该谈价钱了。",
+      "main": "和议时西平进度 ≥ 70",
+      "sides": ["河曲之战中获利"],
+      "check": "heyi",
+      "craft": 15,
+      "morale": 3
+    },
+    {
+      "id": "gewu",
+      "name": "庆历格物",
+      "label": "第五章",
+      "turn": [61, 75],
+      "art": "chapter_05_gewu",
+      "years": "庆历五年正月 — 庆历七年六月",
+      "lead": "边境暂歇，匠作院不歇。",
+      "main": "完成一项时代三科技",
+      "sides": ["北境不失", "唃厮啰联兵"],
+      "check": "era3",
+      "battery": 10,
+      "craft": 15
+    },
+    {
+      "id": "beizhou",
+      "name": "贝州与兴庆",
+      "label": "第六章",
+      "turn": [76, 86],
+      "art": "chapter_06_beizhou_xingqing",
+      "years": "庆历七年七月 — 庆历八年五月",
+      "lead": "贝州传言弥勒下凡，兴庆府宫中刀光一闪。",
+      "main": "平定王则，窗口内达成西平",
+      "sides": ["攻占兴庆府"],
+      "check": "finale",
+      "craft": 30,
+      "morale": 3
+    }
+  ]
+}
