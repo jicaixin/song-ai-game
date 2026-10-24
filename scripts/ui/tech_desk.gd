@@ -48,9 +48,11 @@ func build() -> void:
 	offset_right = 0.0
 	offset_bottom = 0.0
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	custom_minimum_size = Vector2(1280, 720)
 	var bg := ColorRect.new()
 	bg.color = PAPER
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.position = Vector2.ZERO
+	bg.size = Vector2(1280, 720)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
 	if desk.tech_legend_bar < 0:
@@ -214,8 +216,15 @@ func _build_body(header_h: float) -> void:
 		box.add_theme_constant_override("separation", 8)
 		scroller.add_child(box)
 		_left(box)
+		call_deferred("_fit_guide", left, box)
 	var tree_x := left_w
 	var tree_w := 1280.0 - left_w - drawer_w
+	var tree_paper := ColorRect.new()
+	tree_paper.color = PAPER
+	tree_paper.position = Vector2(tree_x, top)
+	tree_paper.size = Vector2(tree_w, height)
+	tree_paper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(tree_paper)
 	var host := HBoxContainer.new()
 	host.position = Vector2(tree_x, top)
 	host.size = Vector2(tree_w, height)
@@ -364,6 +373,19 @@ func _left(box: VBoxContainer) -> void:
 	for item_v in blocks:
 		var item: Dictionary = item_v
 		box.add_child(_blocker(item))
+	box.add_child(_section_title("4  读图"))
+	var how := Kit.label("金边是已成，青框是正在画。点一格看说明。按 T 关闭这张图。电满了就别空着槽。", "SmallLabel")
+	how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(how)
+
+
+func _fit_guide(panel: PanelContainer, box: VBoxContainer) -> void:
+	if not is_instance_valid(panel) or not is_instance_valid(box):
+		return
+	box.size.x = maxf(240.0, panel.size.x - 24.0)
+	var content := box.get_combined_minimum_size().y + 20.0
+	var max_h := 720.0 - panel.position.y - 40.0
+	panel.size.y = clampf(content, 200.0, max_h)
 
 
 func _advice_card(title: String, reason: String, telegraph: bool, live: bool) -> PanelContainer:
@@ -1538,6 +1560,7 @@ class Graph extends Control:
 		add_child(ink)
 
 	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), Color("f3ead6"), true)
 		var focus := ""
 		var hover_id := ""
 		var pick_id := ""

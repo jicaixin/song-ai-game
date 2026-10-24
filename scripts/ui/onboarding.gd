@@ -193,16 +193,17 @@ func _process(_delta: float) -> void:
 
 func _place() -> void:
 	hole_global = _hole_for_step()
-	if bubble != null:
-		bubble.position = Vector2(280, 64)
-		var tall := 210 if step == 1 else 176
-		bubble.size = Vector2(640, tall)
-		bubble.custom_minimum_size = Vector2(640, tall)
-	if shade == null:
-		return
 	var vp := get_viewport_rect().size
 	if vp.x < 2.0:
 		vp = Vector2(1280, 720)
+	if bubble != null:
+		var tall := 210.0 if step == 1 else 176.0
+		var bsize := Vector2(620, tall)
+		bubble.size = bsize
+		bubble.custom_minimum_size = bsize
+		bubble.position = _bubble_pos(vp, bsize)
+	if shade == null:
+		return
 	shade.visible = true
 	shade.position = Vector2.ZERO
 	shade.size = vp
@@ -230,6 +231,8 @@ func _hole_for_step() -> Rect2:
 		if top.size.x < 4.0:
 			top = host.dock.get_global_rect()
 		return top.merge(host.home_button.get_global_rect()).grow(8.0)
+	if step == 3 and host != null and host.key_plate != null:
+		return host.key_plate.get_global_rect().grow(10.0)
 	if step == 3 and host != null and host.key_hint != null:
 		return host.key_hint.get_global_rect().grow(12.0)
 	if step == 4 and host != null and host.end_button != null:
@@ -332,6 +335,49 @@ func _pick_hex(u: Dictionary) -> Vector2i:
 	return best
 
 
+func _bubble_pos(vp: Vector2, bsize: Vector2) -> Vector2:
+	var avoid: Array[Rect2] = []
+	avoid.append(hole_global.grow(18.0))
+	avoid.append(Rect2(0, 568, 1020, 160))
+	avoid.append(Rect2(1000, 420, 280, 300))
+	avoid.append(Rect2(0, 52, 330, 250))
+	if step <= 1:
+		var map := _map()
+		if map != null:
+			var box := hole_global
+			for h_v in map.reach_cost.keys():
+				var h: Vector2i = h_v
+				var sp := map.world_to_screen(HexGrid.axial_to_pixel(h.x, h.y))
+				box = box.merge(Rect2(sp - Vector2(22, 22), Vector2(44, 44)))
+			if map.camera != null and DataDB.in_bounds(guide.x, guide.y):
+				var gsp := map.world_to_screen(HexGrid.axial_to_pixel(guide.x, guide.y))
+				box = box.merge(Rect2(gsp - Vector2(36, 36), Vector2(72, 72)))
+			avoid.append(box.grow(12.0))
+	var candidates: Array[Vector2] = [
+		Vector2(24, 348),
+		Vector2(640, 68),
+		Vector2(340, 68),
+		Vector2(24, 188),
+	]
+	var best := candidates[0]
+	var best_hit := 999999.0
+	for spot in candidates:
+		var rect := Rect2(spot, bsize)
+		if rect.end.x > vp.x - 8.0 or rect.end.y > vp.y - 8.0 or rect.position.x < 8.0:
+			continue
+		var hit := 0.0
+		for block in avoid:
+			if rect.intersects(block):
+				var overlap := rect.intersection(block)
+				hit += overlap.size.x * overlap.size.y
+		if hit < best_hit:
+			best_hit = hit
+			best = spot
+			if hit <= 0.0:
+				break
+	return best
+
+
 func _map() -> WorldMap:
 	return get_tree().get_first_node_in_group("world_map") as WorldMap
 
@@ -401,4 +447,5 @@ class HoleFrame extends Control:
 	func _draw() -> void:
 		if size.x < 2.0 or size.y < 2.0:
 			return
-		draw_rect(Rect2(Vector2.ZERO, size), Color("e7c98a"), false, 3.0)
+		draw_rect(Rect2(Vector2.ZERO, size).grow(-1), Color(0.05, 0.04, 0.03, 0.9), false, 7.0)
+		draw_rect(Rect2(Vector2.ZERO, size).grow(-3), Color("e7c98a"), false, 3.0)

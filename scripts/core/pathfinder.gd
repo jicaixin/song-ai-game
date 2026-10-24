@@ -48,6 +48,8 @@ static func reachable(unit: Dictionary) -> Dictionary:
 				continue
 			if GameState.occupied(nb, int(unit.get("uid", -1))):
 				continue
+			if _held_city(unit, nb.x, nb.y):
+				continue
 			var step := enter_cost(unit, nb.x, nb.y)
 			if step < 0:
 				continue
@@ -80,6 +82,17 @@ static func reconstruct(parent: Dictionary, start: Vector2i, dest: Vector2i) -> 
 		return []
 	rev.reverse()
 	return rev
+
+
+static func _held_city(unit: Dictionary, q: int, r: int) -> bool:
+	var city := DataDB.city_at_hex(q, r)
+	if city.is_empty():
+		return false
+	var owner := str(city.get("faction", ""))
+	var faction := str(unit.get("faction", ""))
+	if owner == "" or owner == faction:
+		return false
+	return DataDB.hostile(faction, owner)
 
 
 static func _zoc(hex: Vector2i, unit: Dictionary) -> bool:

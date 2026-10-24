@@ -39,6 +39,9 @@ var site_turns := {}
 var firmware_done: Array = []
 var edicts_done: Array = []
 var notice := ""
+var battle_lines: Array[String] = []
+var pending_blueprint := ""
+var research_idle_warned := false
 var relations := {}
 var subsidies: Array = []
 var markets: Array = []
@@ -77,6 +80,9 @@ func new_game() -> void:
 	apply_power()
 	restore_movement()
 	tutorial_done = false
+	battle_lines = []
+	pending_blueprint = ""
+	research_idle_warned = false
 	hint_menu_seen = false
 	hint_enemy_menu_seen = false
 	hint_blocked_seen = false
@@ -235,6 +241,89 @@ func finish_turn() -> void:
 	inspected_uid = -1
 
 
+func announce_turn() -> void:
+	var lines: PackedStringArray = []
+	for item_v in battle_lines:
+		lines.append(str(item_v))
+	battle_lines.clear()
+	var blueprint := pending_blueprint
+	pending_blueprint = ""
+	if lines.is_empty() and blueprint == "" and not _should_nag_research():
+		return
+	var bits: PackedStringArray = []
+	for line in lines:
+		bits.append(line)
+	if blueprint != "":
+		bits.append("图纸已成 · %s" % blueprint)
+	if not bits.is_empty():
+		notice = "\n".join(bits)
+	if not lines.is_empty() and blueprint == "":
+		advisor_text = "城下打起来了。%s明细在上面。" % lines[0]
+		advisor_mood = "serious"
+		return
+	if lines.is_empty() and blueprint != "":
+		advisor_text = "图纸画好了：%s。去匠作院试制吧。" % blueprint
+		advisor_mood = "smug"
+		return
+	if not lines.is_empty() and blueprint != "":
+		advisor_text = "城下打了 %d 场，%s 的图纸也画好了。明细在上面。" % [lines.size(), blueprint]
+		advisor_mood = "serious"
+		return
+	research_idle_warned = true
+	advisor_text = "电库存满了，图纸还空着。按 T 选一份，别让蓄电池干耗着。"
+	advisor_mood = "serious"
+	notice = "电已满 · 选一份图纸"
+
+
+func _should_nag_research() -> bool:
+	if research_idle_warned:
+		return false
+	if battery < battery_cap():
+		return false
+	if tech_designing != "":
+		return false
+	if not tech_queue.is_empty() or not tech_trials.is_empty() or not tech_blueprints.is_empty():
+		return false
+	return true
+
+
+func research_blurb() -> Dictionary:
+	var full := battery >= battery_cap()
+	if tech_designing != "":
+		var tech: Dictionary = DataDB.tech_by_id.get(tech_designing, {})
+		var state := tech_state(tech_designing)
+		return {
+			"title": "停电" if state == "nopower" else "设计中",
+			"body": str(tech.get("name", tech_designing)),
+			"alert": false,
+		}
+	if not tech_trials.is_empty():
+		var trial: Dictionary = tech_trials[0]
+		var tech_t: Dictionary = DataDB.tech_by_id.get(str(trial.get("id", "")), {})
+		return {
+			"title": "试制中",
+			"body": "%s  %d/%d" % [str(tech_t.get("name", "")), int(trial.get("prog", 0)), int(trial.get("need", 1))],
+			"alert": false,
+		}
+	if not tech_queue.is_empty():
+		var tech_q: Dictionary = DataDB.tech_by_id.get(str(tech_queue[0]), {})
+		return {"title": "队列", "body": str(tech_q.get("name", "")), "alert": false}
+	if not tech_blueprints.is_empty():
+		var id := str(tech_blueprints[0])
+		var tech_b: Dictionary = DataDB.tech_by_id.get(id, {})
+		var extra := ""
+		if tech_blueprints.size() > 1:
+			extra = " 等%d份" % tech_blueprints.size()
+		var title := "电已满 · 图纸待试制" if full else "图纸待试制"
+		return {
+			"title": title,
+			"body": "%s%s · 去匠作院" % [str(tech_b.get("name", id)), extra],
+			"alert": true,
+		}
+	var idle_title := "电已满" if full else "格物"
+	return {"title": idle_title, "body": "选一份图纸 · 按 T", "alert": true}
+
+
 func _economy() -> void:
 	var factor := 1.0
 	var eco: Dictionary = DataDB.balance.get("economy", {})
@@ -331,12 +420,25 @@ func resolve_attack(atk_uid: int, def_uid: int) -> void:
 	var def_name := str(dfd.name)
 	var atk_dead := int(atk.hp) <= 0
 	var def_dead := int(dfd.hp) <= 0
-	var player_dead := (str(atk.faction) == "song" and atk_dead) or (str(dfd.faction) == "song" and def_dead)
-	var enemy_dead := (str(atk.faction) != "song" and atk_dead) or (str(dfd.faction) != "song" and def_dead)
 	_remove_dead()
 	var counter := "不受反击" if bool(preview.ranged) else "攻方 -%d" % dmg.x
-	last_event = "%s 攻击 %s，守方 -%d，%s。" % [atk_name, def_name, dmg.y, counter]
-	AdvisorSystem.say_combat(player_dead, enemy_dead)
+	var where := ""
+	var city := DataDB.city_at_hex(int(dfd.q), int(dfd.r))
+	if not city.is_empty():
+		where = "%s：" % str(city.get("name", ""))
+	var fallen := ""
+	if def_dead and atk_dead:
+		fallen = "双方阵亡。"
+	elif def_dead:
+		fallen = "守方阵亡。"
+	elif atk_dead:
+		fallen = "攻方阵亡。"
+	var line := "%s%s 攻击 %s，守方 -%d，%s。%s" % [where, atk_name, def_name, dmg.y, counter, fallen]
+	last_event = line
+	battle_lines.append(line)
+	advisor_text = "城下交战。" + line
+	advisor_mood = "serious"
+	EventBus.advisor_changed.emit()
 	EventBus.combat_finished.emit()
 	EventBus.state_changed.emit()
 
@@ -446,6 +548,9 @@ func _reset_research() -> void:
 	tech_paused = {}
 	tech_target = ""
 	tech_tutorial_done = false
+	battle_lines = []
+	pending_blueprint = ""
+	research_idle_warned = false
 	site_turns = {}
 	firmware_done = []
 	edicts_done = []
@@ -541,6 +646,7 @@ func start_design(id: String) -> bool:
 	if st != "available" and st != "queued":
 		return false
 	tech_queue.erase(id)
+	research_idle_warned = false
 	if tech_designing == "":
 		tech_designing = id
 		tech_design_prog = int(tech_paused.get(id, 0))
@@ -687,7 +793,8 @@ func _research_tick() -> void:
 		if tech_design_prog >= need:
 			tech_blueprints.append(id)
 			var tech: Dictionary = DataDB.tech_by_id.get(id, {})
-			notice = "图纸已成 · %s" % str(tech.get("name", id))
+			pending_blueprint = str(tech.get("name", id))
+			notice = "图纸已成 · %s" % pending_blueprint
 			last_event = notice
 			tech_designing = ""
 			tech_design_prog = 0
@@ -819,6 +926,7 @@ func to_save() -> Dictionary:
 		"hint_menu_seen": hint_menu_seen,
 		"hint_enemy_menu_seen": hint_enemy_menu_seen,
 		"hint_blocked_seen": hint_blocked_seen,
+		"research_idle_warned": research_idle_warned,
 		"site_turns": site_turns.duplicate(),
 		"firmware_done": firmware_done.duplicate(),
 		"edicts_done": edicts_done.duplicate(),
@@ -899,6 +1007,9 @@ func from_save(data: Dictionary) -> bool:
 	hint_menu_seen = bool(data.get("hint_menu_seen", false))
 	hint_enemy_menu_seen = bool(data.get("hint_enemy_menu_seen", false))
 	hint_blocked_seen = bool(data.get("hint_blocked_seen", false))
+	research_idle_warned = bool(data.get("research_idle_warned", false))
+	battle_lines = []
+	pending_blueprint = ""
 	site_turns = _int_dict(data.get("site_turns", {}))
 	tech_trials = []
 	for trial_v in data.get("tech_trials", []):

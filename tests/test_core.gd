@@ -14,6 +14,7 @@ func run_tests() -> int:
 	check_path()
 	check_save_roundtrip()
 	check_tiles()
+	check_playtest()
 	check_tech()
 	check_camera()
 	check_font()
@@ -369,6 +370,62 @@ func check_tiles() -> void:
 	var restored := _named_unit("刘平部")
 	var snap: Dictionary = restored.get("undo", {})
 	check("tile_undo_load", int(snap.get("mp", -1)) == 2, str(snap))
+
+
+func check_playtest() -> void:
+	GameState.new_game()
+	var buba := _named_unit("步跋子")
+	var gar := _named_unit("延州守军")
+	var yan: Dictionary = DataDB.city_by_id("yanzhou")
+	var city := Vector2i(int(yan.q), int(yan.r))
+	check("buba_spawn", not buba.is_empty() and not gar.is_empty())
+	if buba.is_empty() or gar.is_empty():
+		return
+	check("buba_off_city", int(buba.q) != city.x or int(buba.r) != city.y)
+	var reach := Pathfinder.reachable(buba)
+	check("buba_city_blocked", not reach.cost.has(city), str(reach.cost.keys()))
+	var dist := HexGrid.distance(Vector2i(int(buba.q), int(buba.r)), Vector2i(int(gar.q), int(gar.r)))
+	check("buba_beside_yan", dist == 1, str(dist))
+	var hp0 := int(buba.hp)
+	GameState.resolve_attack(int(buba.uid), int(gar.uid))
+	check("buba_counter", int(buba.hp) < hp0 and int(buba.hp) > 0, "%d -> %d" % [hp0, int(buba.hp)])
+	check("buba_stayed", int(buba.q) != city.x or int(buba.r) != city.y)
+	check("battle_line", GameState.battle_lines.size() == 1 and str(GameState.battle_lines[0]).find("延州") >= 0 and str(GameState.battle_lines[0]).find("攻方 -") >= 0, str(GameState.battle_lines))
+	GameState.announce_turn()
+	check("battle_notice", GameState.notice.find("步跋子") >= 0 and GameState.advisor_text.find("打起来") >= 0, GameState.notice)
+	check("battle_cleared", GameState.battle_lines.is_empty())
+	for u_v in GameState.units.duplicate():
+		var u: Dictionary = u_v
+		if str(u.faction) == "song" and int(u.q) == city.x and int(u.r) == city.y:
+			u.hp = 0
+	GameState._remove_dead()
+	buba.mp = int(buba.max_mp)
+	var again := Pathfinder.reachable(buba)
+	check("buba_city_still_blocked", not again.cost.has(city), str(again.cost.keys()))
+	var song := {"faction": "song", "uid": 99}
+	check("xia_held_city", Pathfinder._held_city(buba, city.x, city.y))
+	check("song_own_city", not Pathfinder._held_city(song, city.x, city.y))
+	GameState.tech_designing = ""
+	GameState.tech_queue = []
+	GameState.tech_trials = []
+	GameState.tech_blueprints = ["M02"]
+	GameState.battery = 10
+	var waiting: Dictionary = GameState.research_blurb()
+	check("blurb_blueprint", str(waiting.get("title", "")).find("图纸待试制") >= 0 and str(waiting.get("body", "")).find("去匠作院") >= 0, str(waiting))
+	GameState.tech_blueprints = []
+	GameState.battery = GameState.battery_cap()
+	var idle: Dictionary = GameState.research_blurb()
+	check("blurb_idle", str(idle.get("body", "")).find("选一份图纸") >= 0 and bool(idle.get("alert", false)) and str(idle.get("title", "")).find("电已满") >= 0, str(idle))
+	GameState.research_idle_warned = false
+	GameState.pending_blueprint = ""
+	GameState.battle_lines.clear()
+	GameState.announce_turn()
+	check("idle_nag", GameState.notice.find("电已满") >= 0 and GameState.research_idle_warned, GameState.notice)
+	var plan := TileActions.plan_reach(city, -1, {}, {})
+	var joined := ""
+	for line_v in plan.get("more", []):
+		joined += str(line_v) + "\n"
+	check("city_section", joined.find("城市 · 延州") >= 0, joined)
 
 
 func _named_unit(unit_name: String) -> Dictionary:

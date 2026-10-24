@@ -125,7 +125,7 @@ func _fill() -> void:
 	_wipe()
 	picked = keep_pick
 	if mode == "tech":
-		dim.color = Color("e7dcc4")
+		dim.color = Color("f3ead6")
 		var board := TechDesk.new()
 		board.desk = self
 		board.set_anchors_preset(Control.PRESET_FULL_RECT)

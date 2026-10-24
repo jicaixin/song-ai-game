@@ -468,6 +468,7 @@ static func _append_place_more(more: Array, hex: Vector2i, terr: Dictionary, cit
 		var sign := "+" if defense > 0 else ""
 		more.append("移动消耗 %d，防御 %s%d" % [move, sign, defense])
 	if not city.is_empty():
+		more.append("城市 · %s" % str(city.get("name", "")))
 		more.append("人口 %s，城墙 +%d" % [str(city.get("pop", "")), int(city.get("walls", 0))])
 		var output: Dictionary = city.get("output", {})
 		if not output.is_empty():

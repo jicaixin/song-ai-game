@@ -21,6 +21,7 @@ func _run() -> void:
 	await FactionAI.run()
 	GameState.finish_turn()
 	AdvisorSystem.say_turn()
+	GameState.announce_turn()
 	SaveManager.save_slot(0, true)
 	GameState.input_locked = false
 	busy = false

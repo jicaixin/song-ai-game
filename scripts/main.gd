@@ -236,6 +236,11 @@ func _process(_delta: float) -> void:
 		"tile_menu": ui.tile_menu_debug() if ui.has_method("tile_menu_debug") else {},
 		"hover_head": str(world.hover_plan.get("head", "")),
 		"hover_more": world.hover_plan.get("more", []),
+		"notice": GameState.notice,
+		"research_title": ui.research_title.text if ui.research_title else "",
+		"research_body": ui.research_body.text if ui.research_body else "",
+		"toast": ui.toast_label.text if ui.toast and ui.toast.visible else "",
+		"tutorial_bubble": ui.tutorial_bubble_rect() if ui.has_method("tutorial_bubble_rect") else [],
 	})
 
 
@@ -253,6 +258,29 @@ func _poll_tech_cmd() -> void:
 	var desk := ui.desk
 	if cmd == "sample":
 		GameState.load_tech_sample()
+		return
+	if cmd == "shot_blueprint":
+		GameState.tech_designing = ""
+		GameState.tech_queue = []
+		GameState.tech_trials = []
+		GameState.tech_blueprints = ["M02"]
+		GameState.pending_blueprint = ""
+		GameState.notice = "图纸已成 · 堡寨筑城法"
+		GameState.advisor_text = "图纸画好了：堡寨筑城法。去匠作院试制吧。"
+		GameState.advisor_mood = "smug"
+		EventBus.state_changed.emit()
+		return
+	if cmd == "shot_idle":
+		GameState.tech_designing = ""
+		GameState.tech_queue = []
+		GameState.tech_trials = []
+		GameState.tech_blueprints = []
+		GameState.battery = GameState.battery_cap()
+		GameState.research_idle_warned = false
+		GameState.battle_lines.clear()
+		GameState.pending_blueprint = ""
+		GameState.announce_turn()
+		EventBus.state_changed.emit()
 		return
 	if cmd == "open":
 		desk.open("tech")

@@ -55,6 +55,7 @@ var dock: Control
 var end_button: Button
 var home_button: Button
 var key_hint: Label
+var key_plate: PanelContainer
 var minimap: TextureRect
 var toast: PanelContainer
 var toast_label: Label
@@ -87,6 +88,7 @@ func _ready() -> void:
 	_build_tiles()
 	desk = Desk.new()
 	desk.name = "Desk"
+	desk.z_index = 60
 	add_child(desk)
 	EventBus.state_changed.connect(_refresh)
 	EventBus.advisor_changed.connect(_refresh_advisor)
@@ -223,11 +225,26 @@ func _build_unit() -> void:
 
 
 func _build_hover() -> void:
-	key_hint = Kit.label("空格 下一支可动宋军 · Home 回延州 · Shift 看明细", "HudMutedLabel")
-	key_hint.position = Vector2(16, 520)
-	key_hint.size = Vector2(720, 24)
-	key_hint.clip_text = true
-	add_child(key_hint)
+	key_plate = PanelContainer.new()
+	key_plate.position = Vector2(16, 504)
+	key_plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var plate := StyleBoxFlat.new()
+	plate.bg_color = Color("14211f")
+	plate.border_color = Color("e7c98a")
+	plate.set_border_width_all(2)
+	plate.set_corner_radius_all(6)
+	plate.content_margin_left = 10
+	plate.content_margin_top = 6
+	plate.content_margin_right = 10
+	plate.content_margin_bottom = 6
+	key_plate.add_theme_stylebox_override("panel", plate)
+	add_child(key_plate)
+	key_hint = Kit.label("空格 下一支可动宋军 · Home 回延州 · Shift 看明细", "HudLabel")
+	key_hint.add_theme_color_override("font_color", Color("f7f1e4"))
+	key_hint.add_theme_color_override("font_outline_color", Color("1a2428"))
+	key_hint.add_theme_constant_override("outline_size", 4)
+	key_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	key_plate.add_child(key_hint)
 
 
 func _build_tiles() -> void:
@@ -321,7 +338,15 @@ func _build_toast() -> void:
 	toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(toast)
 	toast_label = Kit.label("", "H3Label")
+	toast_label.add_theme_color_override("font_color", Color("f7f1e4"))
+	toast_label.add_theme_color_override("font_outline_color", Color("1a2428"))
+	toast_label.add_theme_constant_override("outline_size", 6)
+	toast_label.add_theme_font_size_override("font_size", 16)
+	toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	toast_label.custom_minimum_size = Vector2(460, 0)
+	toast_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	toast.add_child(toast_label)
+	toast.z_index = 55
 
 
 func _build_return() -> void:
@@ -403,6 +428,13 @@ func tutorial_dim() -> Vector2:
 	return tutor.shade.size
 
 
+func tutorial_bubble_rect() -> Array:
+	if tutor == null or tutor.bubble == null or not tutor.active:
+		return []
+	var rect := tutor.bubble.get_global_rect()
+	return [rect.position.x, rect.position.y, rect.size.x, rect.size.y]
+
+
 func tutorial_hole() -> Array:
 	if tutor == null or not tutor.active:
 		return []
@@ -413,6 +445,7 @@ func tutorial_hole() -> Array:
 func open_desk(which: String) -> void:
 	close_tile_menu()
 	hide_combat()
+	clear_hover_tip()
 	if desk.mode == which:
 		desk.shut()
 		return
@@ -497,7 +530,9 @@ func _set_play_visible(show_hud: bool) -> void:
 	research_card.visible = show_hud
 	advisor_root.visible = show_hud
 	dock.visible = show_hud
-	if key_hint:
+	if key_plate:
+		key_plate.visible = show_hud
+	elif key_hint:
 		key_hint.visible = show_hud
 	if not show_hud:
 		unit_card.visible = false
@@ -507,32 +542,25 @@ func _set_play_visible(show_hud: bool) -> void:
 
 
 func _refresh_research() -> void:
+	var blurb := GameState.research_blurb()
+	research_title.text = str(blurb.get("title", "格物"))
+	research_body.text = str(blurb.get("body", ""))
+	var ink := Color("ff6a4a") if bool(blurb.get("alert", false)) else Color("f3e9d2")
+	research_title.add_theme_color_override("font_color", ink)
+	research_body.add_theme_color_override("font_color", ink)
 	if GameState.tech_designing != "":
-		var tech: Dictionary = DataDB.tech_by_id.get(GameState.tech_designing, {})
 		var state := GameState.tech_state(GameState.tech_designing)
-		research_title.text = "停电" if state == "nopower" else "设计中"
-		research_body.text = str(tech.get("name", GameState.tech_designing))
 		research_bar.visible = true
 		research_bar.theme_type_variation = "NodeBarNoPower" if state == "nopower" else "NodeBarDesign"
 		research_bar.max_value = float(GameState.design_need(GameState.tech_designing))
 		research_bar.value = float(GameState.tech_design_prog)
 	elif not GameState.tech_trials.is_empty():
 		var trial: Dictionary = GameState.tech_trials[0]
-		var tech: Dictionary = DataDB.tech_by_id.get(str(trial.get("id", "")), {})
-		research_title.text = "试制中"
-		research_body.text = "%s  %d/%d" % [str(tech.get("name", "")), int(trial.get("prog", 0)), int(trial.get("need", 1))]
 		research_bar.visible = true
 		research_bar.theme_type_variation = "NodeBarTrial"
 		research_bar.max_value = float(maxi(1, int(trial.get("need", 1))))
 		research_bar.value = float(int(trial.get("prog", 0)))
-	elif not GameState.tech_queue.is_empty():
-		var tech: Dictionary = DataDB.tech_by_id.get(str(GameState.tech_queue[0]), {})
-		research_title.text = "队列"
-		research_body.text = str(tech.get("name", ""))
-		research_bar.visible = false
 	else:
-		research_title.text = "格物"
-		research_body.text = "还没开题。按 T。"
 		research_bar.visible = false
 
 
@@ -579,6 +607,10 @@ func _refresh_toast() -> void:
 		return
 	_notice_seen = GameState.notice
 	toast_label.text = GameState.notice
+	var rows := GameState.notice.split("\n").size()
+	var tall := 28.0 + float(rows) * 26.0
+	toast.size = Vector2(520, maxf(64.0, tall))
+	toast.custom_minimum_size = toast.size
 	toast.visible = true
 	toast_left = 4.0
 
@@ -750,7 +782,7 @@ func present_hover(hex: Vector2i, plan: Dictionary) -> void:
 		_refresh_unit()
 	if tile_tip == null:
 		return
-	if menu_is_open() or modal_open() or GameState.input_locked:
+	if tutorial_active() or menu_is_open() or modal_open() or GameState.input_locked:
 		tile_tip.clear_tip()
 		return
 	var map := get_tree().get_first_node_in_group("world_map") as WorldMap
