@@ -40,6 +40,11 @@ const HEIGHTS := {
 # neighbour is not edge i: corners sit at 60°·k−30°, so edge k faces 60°·k.
 const RIVER_DIR_EDGE := [0, 5, 4, 3, 2, 1]
 
+const RANGES_INDEX := "res://art/models/song_ranges/ranges_index.json"
+static var _range_peak := {}
+static var _range_hill := {}
+static var _range_kit := {}  # LOCAL PATCH (v5): hill/loess hexes that get the range-style kit
+static var _range_loaded := false
 static var _river_buckets: Dictionary = {}
 static var _river_courses: Array = []
 
@@ -673,6 +678,32 @@ static func _push_feature(out: Array, ax: Vector2i, id: String, mesh: String, ya
 	})
 
 
+static func ranges_enabled() -> bool:
+	# Continuous range meshes replace the per-hex peak kit. SONG_RANGES=0 restores the kit.
+	return OS.get_environment("SONG_RANGES") != "0" and FileAccess.file_exists(RANGES_INDEX)
+
+
+static func range_index() -> Dictionary:
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(RANGES_INDEX))
+	return parsed if parsed is Dictionary else {}
+
+
+static func _load_range_cover() -> void:
+	if _range_loaded:
+		return
+	_range_loaded = true
+	if not ranges_enabled():
+		return
+	var regions: Dictionary = range_index().get("regions", {})
+	for key in regions.keys():
+		for h in regions[key].get("peak_hexes", []):
+			_range_peak[Vector2i(int(h[0]), int(h[1]))] = key
+		for h2 in regions[key].get("hill_hexes", []):
+			_range_hill[Vector2i(int(h2[0]), int(h2[1]))] = key
+	for k3 in range_index().get("kit", {}).get("hexes", []):
+		_range_kit[Vector2i(int(k3[0]), int(k3[1]))] = str(k3[2])
+
+
 static func _feature_list(heights: Dictionary) -> Array:
 	# One entry per kit piece. spawn_hex_features() groups them by mesh name.
 	# Ridge pieces only keep a connector when the neighbour piece connects back,
@@ -709,8 +740,9 @@ static func _feature_list(heights: Dictionary) -> Array:
 			if nb_dirs.has(back):
 				keep.append(d)
 		mutual[ax] = keep
+	_load_range_cover()
 	for peak in peaks:
-		if _city_here(peak):
+		if _city_here(peak) or _range_peak.has(peak):
 			continue
 		var id := DataDB.terrain_id(peak.x, peak.y)
 		var keep2: Array = mutual[peak]
@@ -740,16 +772,20 @@ static func _feature_list(heights: Dictionary) -> Array:
 				continue
 			var id2 := DataDB.terrain_id(ax2.x, ax2.y)
 			var spin := _hn(ax2.x, ax2.y, 6) * 60
-			if id2 == "loess" or (id2 == "hill" and _loess_belt(ax2)):
+			# v5: range feet are one continuous mesh (no ochre underlay under them -> no double-stacked
+			# terrace ring), and hill/loess hexes outside the ranges use the range-style kit (world_map).
+			var range_foot := _range_hill.has(ax2) or (_range_kit.has(ax2) and (id2 == "hill" or id2 == "loess"))
+			if range_foot:
+				pass
+			elif id2 == "loess" or (id2 == "hill" and _loess_belt(ax2)):
 				# Most of the plateau stays flat ground. A minority keeps the
-				# terrace mesh; the rest borrow a softer ochre hill.
+				# terrace mesh. (v4: do NOT use hills_a_loess/hills_b_loess — those
+				# reuse the green hills_a/b meshes and left a bright green mound by 延州
+				# even after ochre retint of named grass materials.)
 				var roll := _mix(ax2.x, ax2.y, 10)
 				var lyaw := _mix(ax2.x, ax2.y, 6) * 60
-				if roll <= 3:
+				if roll <= 5:
 					_push_feature(out, ax2, id2, "hills_loess", lyaw, heights, Vector2.ZERO, 0.0, 0.7)
-				elif roll <= 6:
-					var ochre := "hills_a_loess" if _mix(ax2.x + 3, ax2.y, 2) == 0 else "hills_b_loess"
-					_push_feature(out, ax2, id2, ochre, lyaw, heights, Vector2.ZERO, 0.0, 0.7)
 			elif id2 == "hill":
 				var hills := ["hills_a", "hills_b", "hills_c"]
 				_push_feature(out, ax2, id2, str(hills[_hn(ax2.x, ax2.y, 3)]), spin, heights, Vector2.ZERO)

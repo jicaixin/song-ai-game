@@ -36,6 +36,7 @@ var _env: Environment
 var _land_shader: ShaderMaterial
 var _water_shader: ShaderMaterial
 var _border_shader: ShaderMaterial
+var _range_mat: ShaderMaterial  # LOCAL PATCH (v3)
 var _wash_shader: ShaderMaterial
 var _wash_node: MeshInstance3D
 var _fill_node: MeshInstance3D
@@ -146,6 +147,7 @@ func _boot_apply(built: Dictionary) -> void:
 	feature_points = built.features
 	_add_trees(built)
 	_spawn_terrain_kit()
+	_spawn_ranges()
 	_tris = _count_tris(built.land) + _count_tris(built.water)
 	print("TRIS land %d water %d rivers 0" % [_count_tris(built.land), _count_tris(built.water)])
 	_build_cities()
@@ -442,6 +444,8 @@ func _sync_grade() -> void:
 	if _border_shader:
 		var half_m := _border_half_metres(border_px)
 		_border_shader.set_shader_parameter("border_half_m", half_m)
+		if _range_mat:
+			_range_mat.set_shader_parameter("border_half_m", half_m)
 		if _wash_shader:
 			_wash_shader.set_shader_parameter("wash_inset", half_m + 0.6)
 	if _env:
@@ -530,6 +534,91 @@ func _spawn_terrain_kit() -> void:
 			# wheat sticks there and at strategic zoom. A close view is inside it.
 			detail = 210.0
 		spawn_hex_features(key, _terrain_mesh(key), 0.0, detail)
+
+
+func _spawn_ranges() -> void:
+	# LOCAL PATCH: continuous mountain ranges (one glb per range: range mesh + tree clusters).
+	if not TerrainFactory.ranges_enabled():
+		return
+	var holder := Node3D.new()
+	holder.name = "Ranges"
+	add_child(holder)
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/range.gdshader")
+	_range_mat = mat
+	var tris := 0
+	var regions: Dictionary = TerrainFactory.range_index().get("regions", {})
+	for key in regions.keys():
+		var packed: PackedScene = load("res://art/models/song_ranges/%s" % str(regions[key].glb))
+		if packed == null:
+			push_error("missing range " + str(key))
+			continue
+		var scene := packed.instantiate()
+		for node in scene.find_children("*", "MeshInstance3D", true, false):
+			var mi := node as MeshInstance3D
+			var inst := MeshInstance3D.new()
+			inst.name = mi.name
+			inst.mesh = mi.mesh
+			inst.transform = mi.transform
+			inst.material_override = mat
+			inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			holder.add_child(inst)
+			tris += _count_tris(mi.mesh)
+		scene.free()
+	print("RANGES %d regions tris %d" % [regions.size(), tris])
+	_spawn_range_kit(holder)
+
+
+func _spawn_range_kit(holder: Node3D) -> void:
+	# LOCAL PATCH (v5): hill/loess hexes outside the ranges get low-poly hills in the range palette
+	# (instanced, same range shader; the toe colour is authored to the median in-game hill/loess ground).
+	var kit: Dictionary = TerrainFactory.range_index().get("kit", {})
+	if kit.is_empty():
+		return
+	var kmat := ShaderMaterial.new()
+	kmat.shader = _range_mat.shader
+	var by_var := {}
+	for e in kit.get("hexes", []):
+		var key := str(e[2])
+		if key == "none":
+			continue
+		if not by_var.has(key):
+			by_var[key] = []
+		by_var[key].append(e)
+	var tris := 0
+	var variants: Dictionary = kit.get("variants", {})
+	for key in by_var.keys():
+		var packed: PackedScene = load("res://art/models/song_ranges/%s" % str(variants[key]))
+		if packed == null:
+			push_error("missing kit " + str(key))
+			continue
+		var scene := packed.instantiate()
+		var mis := scene.find_children("*", "MeshInstance3D", true, false)
+		if mis.is_empty():
+			scene.free()
+			continue
+		var src := mis[0] as MeshInstance3D
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true   # COLOR *= instance colour
+		mm.mesh = src.mesh
+		var list: Array = by_var[key]
+		mm.instance_count = list.size()
+		for i in list.size():
+			var e2: Array = list[i]
+			var c2 := HexGrid.axial_to_pixel(int(e2[0]), int(e2[1]))
+			var b := Basis(Vector3.UP, deg_to_rad(float(e2[3]))).scaled(Vector3(1.0, float(e2[4]), 1.0))
+			var y := TerrainFactory._surface_height(c2)
+			mm.set_instance_transform(i, Transform3D(b, Vector3(c2.x, y, c2.y)) * src.transform)
+			mm.set_instance_color(i, Color(1, 1, 1, 1))
+		var inst := MultiMeshInstance3D.new()
+		inst.name = "RangeKit_" + key
+		inst.multimesh = mm
+		inst.material_override = kmat
+		holder.add_child(inst)
+		tris += _count_tris(src.mesh) * list.size()
+		scene.free()
+	print("RANGEKIT %d variants %d hexes tris %d" % [by_var.size(), kit.get("hexes", []).size(), tris])
 
 
 func _terrain_mesh(key: String) -> ArrayMesh:
@@ -1890,6 +1979,11 @@ func _tint_baked(col: Color, albedo: Color, v: Vector3, mname: String) -> Dictio
 			col = col.lerp(_retint(col, albedo, ochre), tint_t)
 			# Keep the sun from blowing the terrace back up to a white-orange plate.
 			col = Color(col.r * 0.84, col.g * 0.86, col.b * 0.9, 1.0)
+		elif _bake_mode == "loess_hill":
+			# hills_a_loess reuses the green hills_a mesh; retint EVERY material or the
+			# main body stays lime-green (the bright green mound near 延州).
+			col = col.lerp(_retint(col, albedo, ochre), 0.94)
+			col = Color(col.r * 0.88, col.g * 0.86, col.b * 0.9, 1.0)
 		elif mname.begins_with("M_t_grass") or mname == "M_bush_g" or mname == "M_skirt" or mname == "M_t_earth":
 			col = col.lerp(_retint(col, albedo, ochre), 0.92)
 			col = Color(col.r * 0.88, col.g * 0.88, col.b * 0.9, 1.0)
