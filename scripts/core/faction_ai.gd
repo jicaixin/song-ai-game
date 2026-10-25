@@ -114,9 +114,7 @@ static func _rebel_act(unit: Dictionary) -> void:
 	if unit.is_empty():
 		return
 	if Vector2i(int(unit.q), int(unit.r)) == dest and str(unit.get("tag", "")) == "wanglun":
-		if not GameState.event_flags.has("wanglun_at_yangzhou"):
-			GameState.event_flags["wanglun_at_yangzhou"] = true
-			GameState.notice = "叛军到了扬州。"
+		Campaign.seize_yangzhou()
 
 
 static func _present_attack(unit: Dictionary, prey: Dictionary) -> void:

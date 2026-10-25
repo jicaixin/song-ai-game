@@ -55,9 +55,9 @@ func _ready() -> void:
 		var runner = load("res://tests/test_core.gd").new()
 		var failed: int = runner.run_tests()
 		get_tree().quit(failed)
-	if OS.get_cmdline_user_args().has("--sweep"):
+	if OS.get_cmdline_user_args().has("--sweep") or OS.get_cmdline_user_args().has("--wang"):
 		var sweep = load("res://scripts/core/sweep.gd").new()
-		var sweep_failed: int = sweep.run()
+		var sweep_failed: int = sweep.run() if OS.get_cmdline_user_args().has("--sweep") else sweep.wang_only()
 		get_tree().quit(sweep_failed)
 
 
@@ -205,7 +205,17 @@ func _process(_delta: float) -> void:
 		"month_span": GameState.month_span,
 		"era": Calendar.era_name(GameState.year, GameState.month),
 		"date_label": ui.date_label.text if ui.date_label else "",
-		"orders": _order_texts(),
+		"orders": _order_rows(),
+		"food": int(GameState.resources.get("food", 0)),
+		"food_start": GameState.food_start,
+		"money": int(GameState.resources.get("money", 0)),
+		"presearch": GameState.presearch,
+		"presearch_cap": GameState.presearch_cap(),
+		"shading": GameState.shading,
+		"shade_button": ui.shade_button.visible if ui.shade_button else false,
+		"notice": GameState.notice,
+		"jingnei_mod": GameState.jingnei_mod,
+		"order_menu": ui.goals.menu_debug() if ui.goals else {},
 		"chapter": str(GoalSystem.current_chapter().get("name", "")),
 		"chapter_label": str(GoalSystem.current_chapter().get("label", "")),
 		"chapter_open": ui.goals.blocking() if ui.goals else false,
@@ -256,7 +266,6 @@ func _process(_delta: float) -> void:
 		"tile_menu": ui.tile_menu_debug() if ui.has_method("tile_menu_debug") else {},
 		"hover_head": str(world.hover_plan.get("head", "")),
 		"hover_more": world.hover_plan.get("more", []),
-		"notice": GameState.notice,
 		"research_title": ui.research_title.text if ui.research_title else "",
 		"research_body": ui.research_body.text if ui.research_body else "",
 		"toast": ui.toast_label.text if ui.toast and ui.toast.visible else "",
@@ -282,11 +291,16 @@ func _debug_turn(at: int) -> void:
 	GameState.month_span = date.z
 
 
-func _order_texts() -> Array:
+func _order_rows() -> Array:
 	var out: Array = []
 	for item_v in GameState.orders:
 		var item: Dictionary = item_v
-		out.append(str(item.get("text", "")))
+		out.append({
+			"id": str(item.get("id", "")),
+			"text": str(item.get("text", "")),
+			"main": bool(item.get("main", false)),
+			"note": str(item.get("note", "")),
+		})
 	return out
 
 
@@ -366,6 +380,63 @@ func _poll_tech_cmd() -> void:
 			ui.goals.show_tab("month")
 			ui.goals.sync()
 		return
+	if cmd == "shot_wanglun":
+		GameState.tutorial_done = true
+		GameState.input_locked = false
+		_debug_turn(38)
+		ui.end_enemy_phase()
+		if ui.pacing and ui.pacing.event_open:
+			ui.pacing._close_event()
+		GoalSystem.on_turn()
+		GameState.card_queue.clear()
+		GameState.reward_queue.clear()
+		if ui.goals:
+			if ui.goals.blocking():
+				ui.goals.dismiss_card()
+			ui.goals._clear_flights()
+			ui.goals.collapsed = false
+			ui.goals.show_tab("month")
+			ui.goals.sync()
+		var map := get_tree().get_first_node_in_group("world_map")
+		if map:
+			map.call("focus_city", "yizhou")
+		EventBus.state_changed.emit()
+		return
+	if cmd == "shot_shelve":
+		GameState.tutorial_done = true
+		GameState.input_locked = false
+		ui.end_enemy_phase()
+		if ui.pacing and ui.pacing.event_open:
+			ui.pacing._close_event()
+		if ui.goals and ui.goals.blocking():
+			ui.goals.dismiss_card()
+		if ui.goals:
+			ui.goals.debug_open_shelve()
+		return
+	if cmd == "shot_grain":
+		GameState.tutorial_done = true
+		GameState.input_locked = false
+		ui.end_enemy_phase()
+		if ui.pacing and ui.pacing.event_open:
+			ui.pacing._close_event()
+		if ui.goals and ui.goals.blocking():
+			ui.goals.dismiss_card()
+		var before := int(GameState.resources.get("food", 0))
+		GameState.finish_turn()
+		GoalSystem.on_turn()
+		GameState.notice = "开局粮 %d，结算后 %d，没有强卖。" % [before, int(GameState.resources.get("food", 0))]
+		EventBus.state_changed.emit()
+		return
+	if cmd == "shot_shade":
+		GameState.tutorial_done = true
+		GameState.input_locked = false
+		ui.end_enemy_phase()
+		GameState.battery = GameState.battery_cap()
+		GameState.presearch = GameState.presearch_cap()
+		GameState.shade_skip = 0
+		GameState.apply_power()
+		EventBus.state_changed.emit()
+		return
 	if cmd == "shot_rating":
 		GameState.tutorial_done = true
 		GameState.input_locked = false
@@ -376,7 +447,9 @@ func _poll_tech_cmd() -> void:
 		if ui.goals and ui.goals.blocking():
 			ui.goals.dismiss_card()
 		GameState.demo_over = true
+		GameState.reward_queue.append({"text": "匠 +15"})
 		if ui.goals:
+			ui.goals._clear_flights()
 			ui.goals._rating_hold = false
 			ui.goals.sync()
 		return

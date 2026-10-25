@@ -23,8 +23,12 @@ static func after_choice(event_id: String, choice_id: String) -> void:
 			GameState.add_unit("song_xiangjun", "收编虎翼", 29, 30)
 		elif choice_id == "fight":
 			_ensure("wanglun", 2, "rebel_infantry", "沂州叛军", 29, 30, "yangzhou")
+			_slow_wanglun()
+			_jingdong_guard()
 		elif choice_id == "blame":
 			_ensure("wanglun", 1, "rebel_infantry", "沂州叛军", 29, 30, "yangzhou")
+			_slow_wanglun()
+			_jingdong_guard()
 	elif event_id == "zhanghai":
 		if choice_id == "amnesty":
 			_pay(200, 200)
@@ -39,6 +43,7 @@ static func after_choice(event_id: String, choice_id: String) -> void:
 static func on_turn() -> void:
 	press_liao()
 	_hequ_shift()
+	_wanglun_window()
 	if _live("wangze") and not GameState.campaign.has("wangze_spawned"):
 		_ensure("wangze", 2, "rebel_infantry", "贝州叛军", 27, 25, "beizhou")
 		GameState.campaign["wangze_spawned"] = GameState.turn
@@ -128,6 +133,60 @@ static func _near_song_city(h: Vector2i, limit: int) -> bool:
 		if HexGrid.distance(h, there) <= limit:
 			return true
 	return false
+
+
+static func seize_yangzhou() -> void:
+	if GameState.event_flags.has("wanglun_seized"):
+		return
+	var city := DataDB.city_by_id("yangzhou")
+	if city.is_empty():
+		return
+	var cid := str(city.get("id", "yangzhou"))
+	if not GameState.city_home.has(cid):
+		GameState.city_home[cid] = str(city.get("faction", "song"))
+	city["faction"] = "rebel"
+	GameState.event_flags["wanglun_at_yangzhou"] = true
+	GameState.event_flags["wanglun_seized"] = true
+	GameState.jingnei_mod -= 10
+	GameState.notice = "叛军占了扬州。五个回合的窗口关上了。"
+
+
+static func _wanglun_window() -> void:
+	if not GameState.campaign.has("wanglun_born"):
+		return
+	if GameState.event_flags.has("wanglun_timeout"):
+		return
+	if GameState.event_flags.has("wanglun_seized") or GameState.event_flags.has("wanglun_caught"):
+		return
+	if alive("wanglun") <= 0:
+		return
+	var born := int(GameState.campaign.get("wanglun_born", 0))
+	if born <= 0 or GameState.turn <= born + 5:
+		return
+	GameState.event_flags["wanglun_timeout"] = true
+	GameState.jingnei_mod -= 3
+	GameState.notice = "五个回合过了，沂州的窗口关上了。"
+
+
+static func _slow_wanglun() -> void:
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		if str(u.get("tag", "")) != "wanglun" or int(u.get("hp", 0)) <= 0:
+			continue
+		u["move_mod"] = 1
+		u["mp"] = 1
+		u["max_mp"] = 1
+
+
+static func _jingdong_guard() -> void:
+	if GameState.campaign.has("jingdong_guard"):
+		return
+	var city := DataDB.city_by_id("xuzhou")
+	var q := int(city.get("q", 26))
+	var r := int(city.get("r", 32))
+	# Stands on the Huai crossing east of 徐州, where the column has to pass.
+	GameState.add_unit("song_xiangjun", "徐州厢军", 28, 33)
+	GameState.campaign["jingdong_guard"] = true
 
 
 static func _spawn_one(tag: String, def_id: String, base: String, q: int, r: int) -> void:

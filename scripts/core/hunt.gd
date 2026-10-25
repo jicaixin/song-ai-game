@@ -3,6 +3,16 @@ extends RefCounted
 const Campaign = preload("res://scripts/core/campaign.gd")
 
 
+static func step_rebels() -> void:
+	if Campaign.alive("wanglun") <= 0:
+		return
+	if GameState.event_flags.has("wanglun_at_yangzhou"):
+		return
+	_rebels()
+	if Campaign.alive("wanglun") <= 0 and not GameState.event_flags.has("wanglun_at_yangzhou"):
+		GameState.event_flags["wanglun_caught"] = true
+
+
 static func step() -> void:
 	if GameState.pending_events.has("wanglun") and not GameState.event_choice.has("wanglun"):
 		GameState.choose_event("wanglun", "fight")
@@ -47,8 +57,7 @@ static func _rebels() -> void:
 		if not foe.is_empty():
 			GameState.resolve_attack(int(live.uid), int(foe.uid))
 			continue
-		var steps := int(DataDB.unit_type(str(live.get("def_id", ""))).get("move", 2))
-		var left := steps
+		var left := int(live.get("mp", 0))
 		while left > 0 and int(live.get("hp", 0)) > 0:
 			left -= 1
 			if not _step(live, dest):
@@ -57,7 +66,9 @@ static func _rebels() -> void:
 			if live.is_empty():
 				break
 			if Vector2i(int(live.q), int(live.r)) == dest:
-				GameState.event_flags["wanglun_at_yangzhou"] = true
+				Campaign.seize_yangzhou()
+				break
+			if int(live.get("mp", 0)) <= 0:
 				break
 
 

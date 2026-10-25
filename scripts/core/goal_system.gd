@@ -34,6 +34,8 @@ static func reset() -> void:
 	GameState.shelved = []
 	GameState.power_made = 0
 	GameState.power_waste = 0
+	GameState.power_over = 0
+	GameState.power_sunk = 0
 	GameState.grain_samples = 0
 	GameState.grain_le12 = 0
 	GameState.epilogue_shown = false
@@ -41,6 +43,16 @@ static func reset() -> void:
 	GameState.recovery_until = 0
 	GameState.recovery_turn = -1
 	GameState.demo_over = false
+	GameState.presearch_bonus = 0
+	GameState.shading = false
+	GameState.shade_skip = 0
+	GameState.night_read = false
+	GameState.night_pay = 0
+	GameState.design_ease = 0
+	GameState.jingnei_mod = 0
+	GameState.mold_said = -99
+	GameState.presearch_full_said = -99
+	GameState.produce_floor = -1
 
 
 static func on_turn() -> void:
@@ -101,21 +113,41 @@ static func verdict() -> Dictionary:
 	}
 
 
-static func shelve(id: String) -> void:
-	var keep: Array = []
+static func shelve(id: String) -> bool:
+	var target: Dictionary = {}
 	for item_v in GameState.orders:
 		var item: Dictionary = item_v
-		if str(item.get("id", "")) == id and GameState.shelved.size() < 3:
-			item["shelved"] = true
-			GameState.shelved.append(item)
+		if str(item.get("id", "")) == id:
+			target = item
+			break
+	if target.is_empty():
+		return false
+	if bool(target.get("main", false)):
+		GameState.notice = "主令不可搁置"
+		EventBus.state_changed.emit()
+		return false
+	if GameState.shelved.size() >= 2:
+		GameState.notice = "搁置已满两道。"
+		EventBus.state_changed.emit()
+		return false
+	var keep: Array = []
+	for item_v2 in GameState.orders:
+		var row: Dictionary = item_v2
+		if str(row.get("id", "")) == id:
+			row["shelved"] = true
+			GameState.shelved.append(row)
 		else:
-			keep.append(item)
+			keep.append(row)
 	GameState.orders = keep
 	_fill_orders()
+	EventBus.state_changed.emit()
+	return true
 
 
 static func restore(id: String) -> void:
 	if GameState.orders.size() >= MAX_ORDERS:
+		GameState.notice = "本月令已满，腾不出位置。"
+		EventBus.state_changed.emit()
 		return
 	var keep: Array = []
 	var moved := false
@@ -123,13 +155,14 @@ static func restore(id: String) -> void:
 		var item: Dictionary = item_v
 		if not moved and str(item.get("id", "")) == id:
 			item["shelved"] = false
-			item["born"] = GameState.turn
 			GameState.orders.append(item)
 			moved = true
 		else:
 			keep.append(item)
 	GameState.shelved = keep
 	_mark_main()
+	_refresh_notes()
+	EventBus.state_changed.emit()
 
 
 static func touch() -> void:
@@ -256,7 +289,8 @@ static func jingnei_count() -> int:
 
 
 static func jingnei() -> int:
-	return int(round(float(jingnei_count()) * 100.0 / 3.0))
+	var base := int(round(float(jingnei_count()) * 100.0 / 3.0))
+	return clampi(base + GameState.jingnei_mod, 0, 100)
 
 
 static func jingnei_done() -> bool:
@@ -279,6 +313,7 @@ static func grant_chapter(ch: Dictionary, state: String) -> void:
 		GameState.chapter_rewarded[cid] = state
 		return
 	GameState.chapter_rewarded[cid] = state
+	GameState.presearch_bonus += 10
 	var scale := 1.0 if state == "done" else 0.5
 	var craft := int(round(float(int(ch.get("craft", 0))) * scale))
 	var morale := int(round(float(int(ch.get("morale", 0))) * scale))
@@ -321,6 +356,9 @@ static func _fill_orders() -> void:
 	for item_v in GameState.orders:
 		var item: Dictionary = item_v
 		have[str(item.get("id", ""))] = true
+	for shelved_v in GameState.shelved:
+		var shelved: Dictionary = shelved_v
+		have[str(shelved.get("id", ""))] = true
 	var started_empty: bool = GameState.orders.is_empty()
 	if GameState.turn <= GameState.recovery_until and not have.has("G30") and GameState.orders.size() >= MAX_ORDERS:
 		GameState.orders.pop_back()
@@ -352,7 +390,7 @@ static func _fill_orders() -> void:
 		_push(want, have, "G11", "常平仓出粜", "", "", 1)
 	if _battery_full() and _can_design():
 		_push(want, have, "G12", "把溢电送去设计", "", "", 1)
-	elif int(GameState.resources.get("food", 0)) >= 200 and int(GameState.resources.get("food", 0)) > GameState.monthly_food() * 12:
+	elif int(GameState.resources.get("food", 0)) >= 200 and GameState.grain_warning():
 		_push(want, have, "G17", "转输陕西边粮", "yanzhou", "", 1)
 	if GameState.can_feast():
 		_push(want, have, "G18", "犒赏一支伤兵", "yanzhou", "", 1)
@@ -383,6 +421,7 @@ static func _fill_orders() -> void:
 			GameState.rest_streak = 0
 		else:
 			GameState.rest_streak += 1
+	_raise_wanglun()
 	_mark_main()
 	_refresh_notes()
 
@@ -396,10 +435,45 @@ static func _chapter_steps(want: Array, have: Dictionary) -> void:
 		_push(want, have, "G06", "侦察镇戎军北", "zhenrong", "", 1)
 	if cid == "liao" and not GameState.event_choice.has("zengbi"):
 		_push(want, have, "G25", "雄州定州驻军", "xiongzhou", "", 1)
-	if cid == "qingli" and Campaign.alive("wanglun") > 0:
-		_push(want, have, "G26", "追击沂州叛军", "yizhou", "", 1)
-	elif cid == "qingli" and Campaign.alive("zhanghai") > 0:
+	if cid == "qingli" and Campaign.alive("zhanghai") > 0 and Campaign.alive("wanglun") <= 0:
 		_push(want, have, "G26", "清剿商山贼", "shang", "", 1)
+
+
+static func _raise_wanglun() -> void:
+	if GameState.turn >= 38 and not GameState.event_choice.has("wanglun"):
+		_raise("G31", "进驻京东", "yizhou")
+		return
+	if Campaign.alive("wanglun") > 0 and not GameState.event_flags.has("wanglun_amnesty"):
+		_raise("G32", "接敌或招安", "yizhou")
+
+
+static func _raise(id: String, text: String, place: String) -> void:
+	if GameState.order_seen.has(id):
+		return
+	var found: Dictionary = {}
+	var keep: Array = []
+	for item_v in GameState.orders:
+		var item: Dictionary = item_v
+		if found.is_empty() and str(item.get("id", "")) == id:
+			found = item
+		else:
+			keep.append(item)
+	if not found.is_empty():
+		keep.push_front(found)
+		GameState.orders = keep
+		return
+	for shelved_v in GameState.shelved:
+		var shelved: Dictionary = shelved_v
+		if str(shelved.get("id", "")) == id:
+			return
+	if GameState.orders.size() >= MAX_ORDERS:
+		GameState.orders.pop_back()
+	var row := _make(id, text, place, "", 1)
+	if row.is_empty():
+		return
+	GameState.orders.push_front(row)
+	if place != "":
+		GameState.order_place[place] = GameState.turn
 
 
 static func _force_fallback() -> void:
@@ -486,8 +560,17 @@ static func _make(id: String, text: String, place: String, envoy: String, need: 
 
 
 static func _resolve_orders(by_turn: bool) -> void:
+	GameState.orders = _resolve_list(GameState.orders, by_turn, false)
+	GameState.shelved = _resolve_list(GameState.shelved, by_turn, true)
+	_mark_main()
+	_refresh_notes()
+	if GameState.orders.is_empty():
+		_fill_orders()
+
+
+static func _resolve_list(rows: Array, by_turn: bool, quiet: bool) -> Array:
 	var keep: Array = []
-	for item_v in GameState.orders:
+	for item_v in rows:
 		var item: Dictionary = item_v
 		var id := str(item.get("id", ""))
 		var state := _order_state(item, by_turn)
@@ -500,14 +583,19 @@ static func _resolve_orders(by_turn: bool) -> void:
 			var morale := int(item.get("morale", 0))
 			if bool(item.get("main", false)):
 				craft = int(round(float(craft) * 1.5))
-			_pay(craft, morale, 0)
+			if quiet:
+				if craft > 0:
+					GameState.resources["craft"] = int(GameState.resources.get("craft", 0)) + craft
+				if morale > 0:
+					GameState.morale += morale
+			else:
+				_pay(craft, morale, 0)
 		else:
-			GameState.reward_queue.append({"text": "逾期", "bad": true})
-	GameState.orders = keep
-	_mark_main()
-	_refresh_notes()
-	if GameState.orders.is_empty():
-		_fill_orders()
+			if id == "G32":
+				GameState.jingnei_mod -= 3
+			if not quiet:
+				GameState.reward_queue.append({"text": "逾期", "bad": true})
+	return keep
 
 
 static func _order_state(item: Dictionary, by_turn: bool) -> String:
@@ -619,6 +707,20 @@ static func _order_state(item: Dictionary, by_turn: bool) -> String:
 		if by_turn and age >= limit:
 			return "overdue"
 		return "open"
+	if id == "G31":
+		if _jingdong_ready():
+			return "done"
+		if by_turn and age >= limit:
+			return "overdue"
+		return "open"
+	if id == "G32":
+		if GameState.event_flags.has("wanglun_amnesty") or _wanglun_contact():
+			return "done"
+		if Campaign.alive("wanglun") <= 0 and GameState.event_flags.has("wanglun_fight"):
+			return "done"
+		if by_turn and age >= limit:
+			return "overdue"
+		return "open"
 	if id == "G26":
 		var rebels_gone: bool = Campaign.alive("wanglun") == 0 and Campaign.alive("zhanghai") == 0
 		var dealt: bool = _flag_any("wanglun_fight", "wanglun_amnesty") or _flag_any("zhanghai_fight", "zhanghai_amnesty")
@@ -653,13 +755,21 @@ static func _mark_main() -> void:
 
 
 static func _refresh_notes() -> void:
-	for item_v in GameState.orders:
+	var rows: Array = GameState.orders.duplicate()
+	rows.append_array(GameState.shelved)
+	for item_v in rows:
 		var item: Dictionary = item_v
 		var left := int(item.get("limit", 1)) - (GameState.turn - int(item.get("born", GameState.turn)))
 		if left < 1:
 			left = 1
-		var place := _place_name(str(item.get("place", "")), str(item.get("id", "")))
-		item["note"] = "剩 %d 回合 · %s" % [left, place]
+		var oid := str(item.get("id", ""))
+		if oid == "G31":
+			item["note"] = "剩 %d 回合 · 京东四格内" % left
+		elif oid == "G32":
+			item["note"] = "剩 %d 回合 · 接敌或招安" % left
+		else:
+			var place := _place_name(str(item.get("place", "")), oid)
+			item["note"] = "剩 %d 回合 · %s" % [left, place]
 
 
 static func completable(item: Dictionary) -> bool:
@@ -772,6 +882,32 @@ static func _garrison_count() -> int:
 	if _song_count_near("zhending", 1) > 0:
 		n += 1
 	return n
+
+
+static func _jingdong_ready() -> bool:
+	var yi := DataDB.city_by_id("yizhou")
+	var xz := DataDB.city_by_id("xuzhou")
+	var yz := Vector2i(int(yi.get("q", 29)), int(yi.get("r", 30)))
+	var xv := Vector2i(int(xz.get("q", 26)), int(xz.get("r", 32)))
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		if str(u.get("faction", "")) != "song" or int(u.get("hp", 0)) <= 0:
+			continue
+		var at := Vector2i(int(u.get("q", 0)), int(u.get("r", 0)))
+		if at == xv or at == yz or HexGrid.distance(at, yz) <= 4:
+			return true
+	return false
+
+
+static func _wanglun_contact() -> bool:
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		if str(u.get("tag", "")) != "wanglun" or int(u.get("hp", 0)) <= 0:
+			continue
+		var at := Vector2i(int(u.get("q", 0)), int(u.get("r", 0)))
+		if _song_count_near_hex(at, 1) > 0:
+			return true
+	return false
 
 
 static func _rebel_contact() -> bool:

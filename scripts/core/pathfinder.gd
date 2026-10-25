@@ -53,6 +53,10 @@ static func reachable(unit: Dictionary) -> Dictionary:
 			var step := enter_cost(unit, nb.x, nb.y)
 			if step < 0:
 				continue
+			if str(unit.get("tag", "")) == "wanglun" and huai(nb.x, nb.y) and not huai(cur.x, cur.y):
+				var remain := mp - int(best[cur])
+				if remain > step:
+					step = remain
 			var nc: int = int(best[cur]) + step
 			if nc > mp:
 				continue
@@ -84,9 +88,17 @@ static func reconstruct(parent: Dictionary, start: Vector2i, dest: Vector2i) -> 
 	return rev
 
 
+static func huai(q: int, r: int) -> bool:
+	if r < 32 or r > 36 or q < 20 or q > 34:
+		return false
+	return DataDB.river_masks.has(Vector2i(q, r))
+
+
 static func _held_city(unit: Dictionary, q: int, r: int) -> bool:
 	var city := DataDB.city_at_hex(q, r)
 	if city.is_empty():
+		return false
+	if str(unit.get("tag", "")) == "wanglun" and str(city.get("id", "")) == "yangzhou":
 		return false
 	var owner := str(city.get("faction", ""))
 	var faction := str(unit.get("faction", ""))

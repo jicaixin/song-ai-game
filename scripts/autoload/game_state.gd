@@ -6,6 +6,8 @@ const EventSystem = preload("res://scripts/core/event_system.gd")
 
 const Campaign = preload("res://scripts/core/campaign.gd")
 
+const Pathfinder = preload("res://scripts/core/pathfinder.gd")
+
 var year := 1040
 var month := 1
 var turn := 1
@@ -85,6 +87,8 @@ var campaign := {}
 var shelved: Array = []
 var power_made := 0
 var power_waste := 0
+var power_over := 0
+var power_sunk := 0
 var grain_samples := 0
 var grain_le12 := 0
 var epilogue_shown := false
@@ -92,12 +96,25 @@ var rating_floor := 0
 var recovery_until := 0
 var recovery_turn := -1
 var demo_over := false
+var presearch_bonus := 0
+var shading := false
+var shade_skip := 0
+var night_read := false
+var night_pay := 0
+var design_ease := 0
+var jingnei_mod := 0
+var city_home := {}
+var mold_said := -99
+var presearch_full_said := -99
+var produce_floor := -1
+var food_start := 0
 
 func _ready() -> void:
 	rng.seed = seed_value
 
 
 func new_game() -> void:
+	_release_cities()
 	var sc: Dictionary = DataDB.scenario
 	year = int(sc.get("year", 1040))
 	month = int(sc.get("month", 1))
@@ -107,6 +124,7 @@ func new_game() -> void:
 	resources = (sc.get("resources", {}) as Dictionary).duplicate(true)
 	for k in resources.keys():
 		resources[k] = int(resources[k])
+	food_start = int(resources.get("food", 0))
 	morale = int(sc.get("morale", 62))
 	prestige = int(sc.get("prestige", 55))
 	secrecy = int(sc.get("secrecy", 70))
@@ -269,6 +287,8 @@ func _fill(bag: Array[String], id: String, n: int) -> void:
 
 
 func apply_power() -> void:
+	# 人力坊 / 牛转 / 水轮 are not in this sum (tech debt). If they are wired later,
+	# that building power must stay full: only the solar term is shaded.
 	var power: Dictionary = DataDB.balance.get("power", {})
 	var season_name := Calendar.season(month)
 	var s := float(DataDB.balance.get("season", {}).get(season_name, 1.0))
@@ -276,22 +296,73 @@ func apply_power() -> void:
 	var panel := float(power.get("panel", 1.0))
 	if tech_done.has("E01"):
 		panel *= 1.15
-	last_gen = int(round(float(power.get("base", 36)) * s * w * panel))
+	var solar := int(round(float(power.get("base", 36)) * s * w * panel))
+	shading = false
+	var pool := presearch_cap()
+	if battery >= battery_cap() and presearch * 5 >= pool * 4 and shade_skip != turn:
+		solar = int(solar / 2)
+		shading = true
+	last_gen = solar
 	var standby := standby_cost()
 	var cap := battery_cap()
 	var gained := battery - standby + last_gen
+	if night_read and gained >= 4:
+		gained -= 4
+		if rng.randi() % 2 == 0:
+			night_pay = 3
+		elif tech_designing != "":
+			tech_design_prog += 1
+		else:
+			design_ease += 1
 	power_made += last_gen
 	if gained > cap:
 		var overflow := gained - cap
 		battery = cap
+		power_over += overflow
 		overflow = _pour_design(overflow)
-		if overflow > 0:
-			var room := maxi(0, 20 - presearch)
-			var kept := mini(overflow, room)
-			presearch = mini(20, presearch + kept)
-			power_waste += overflow - kept
+		overflow = _absorb_presearch(overflow)
+		power_waste += overflow
+		power_sunk += (gained - cap) - overflow
 	else:
 		battery = maxi(0, gained)
+
+
+func presearch_cap() -> int:
+	return mini(80, 60 + presearch_bonus)
+
+
+func _absorb_presearch(overflow: int) -> int:
+	var left := overflow
+	if tech_designing == "":
+		_convert_presearch()
+	left = _store_presearch(left)
+	if left > 0 and tech_designing == "":
+		_convert_presearch()
+		left = _store_presearch(left)
+	var pool := presearch_cap()
+	if presearch >= pool and turn - presearch_full_said >= 8:
+		presearch_full_said = turn
+		AdvisorSystem.present("预研池满了。兑成匠，或兑一点皇威。", "serious", "presearch_full")
+	return left
+
+
+func _store_presearch(left: int) -> int:
+	var room := maxi(0, presearch_cap() - presearch)
+	var kept := mini(left, room)
+	presearch += kept
+	return left - kept
+
+
+func _convert_presearch() -> void:
+	var craft_n := 0
+	while presearch >= 5 and craft_n < 15:
+		presearch -= 5
+		craft_n += 1
+	if craft_n > 0:
+		resources["craft"] = int(resources.get("craft", 0)) + craft_n
+	if presearch >= 10:
+		presearch -= 10
+		morale += 1
 
 
 func _pour_design(overflow: int) -> int:
@@ -346,8 +417,16 @@ func restore_movement() -> void:
 	for u_v in units:
 		var u: Dictionary = u_v
 		var ut := DataDB.unit_type(str(u.def_id))
-		u.mp = int(ut.get("move", 2))
-		u.max_mp = int(ut.get("move", 2))
+		var move := int(ut.get("move", 2))
+		if int(u.get("move_mod", 0)) > 0:
+			move = int(u.get("move_mod", move))
+		if int(u.get("ford_wait", 0)) > 0:
+			u["ford_wait"] = int(u.get("ford_wait", 0)) - 1
+			u.mp = 0
+			u.max_mp = move
+		else:
+			u.mp = move
+			u.max_mp = move
 		if u.has("undo"):
 			u.erase("undo")
 		if u.has("skip_turn"):
@@ -491,15 +570,22 @@ func _economy() -> void:
 		supply_left -= 1
 	if event_flags.has("zengbi_signed"):
 		money -= int(meters.get("liao_demand", 0)) * 2
+	if night_pay > 0:
+		craft += night_pay
+		night_pay = 0
 	var next_food := int(resources.get("food", 0)) + food
-	var year_cap := monthly_food() * 12
-	if next_food > year_cap:
-		var extra := next_food - year_cap
-		money += int(extra * 2 / 5)
-		next_food = year_cap
+	var mold_line := monthly_need() * 18
+	if next_food > mold_line:
+		var excess := next_food - mold_line
+		var rot := int(excess * 3 / 100)
+		if rot > 0:
+			next_food -= rot
+			if turn - mold_said >= 10:
+				mold_said = turn
+				AdvisorSystem.present("仓里压得太久，超额的陈粮霉了百分之三。", "serious", "mold")
 	resources["food"] = max(0, next_food)
 	grain_samples += 1
-	if int(resources.get("food", 0)) <= monthly_food() * 12:
+	if int(resources.get("food", 0)) <= monthly_need() * 12:
 		grain_le12 += 1
 	resources["money"] = max(0, int(resources.get("money", 0)) + money)
 	resources["craft"] = max(0, int(resources.get("craft", 0)) + craft)
@@ -525,12 +611,41 @@ func monthly_food() -> int:
 	return use
 
 
+func monthly_need() -> int:
+	return maxi(monthly_food(), _produce_floor())
+
+
+func grain_warning() -> bool:
+	return int(resources.get("food", 0)) > monthly_need() * 12
+
+
+func _produce_floor() -> int:
+	if produce_floor >= 0:
+		return produce_floor
+	var food := 0
+	for c_v in DataDB.cities:
+		var city: Dictionary = c_v
+		var cid := str(city.get("id", ""))
+		var fac := str(city.get("faction", ""))
+		if city_home.has(cid):
+			fac = str(city_home[cid])
+		if fac != "song":
+			continue
+		var output: Dictionary = city.get("output", {})
+		food += int(output.get("food", 0))
+	var net := food - 5
+	if net < 1:
+		net = food
+	produce_floor = maxi(1, int(round(float(net) * 0.25)))
+	return produce_floor
+
+
 func can_sell_grain() -> bool:
 	if grain_sold_turn == turn:
 		return false
 	if int(resources.get("food", 0)) < 300:
 		return false
-	return int(resources.get("food", 0)) > monthly_food() * 12
+	return int(resources.get("food", 0)) > monthly_need() * 12
 
 
 func sell_grain() -> bool:
@@ -615,8 +730,14 @@ func set_pos(uid: int, h: Vector2i) -> void:
 	var u := unit_by_id(uid)
 	if u.is_empty():
 		return
+	var before := Vector2i(int(u.q), int(u.r))
 	u.q = h.x
 	u.r = h.y
+	if str(u.get("tag", "")) != "wanglun":
+		return
+	if Pathfinder.huai(h.x, h.y) and not Pathfinder.huai(before.x, before.y):
+		u.mp = 0
+		u["ford_wait"] = 1
 
 
 func fortify(uid: int) -> void:
@@ -784,6 +905,8 @@ func choose_event(event_id: String, choice_id: String) -> void:
 	if int(choice.get("morale", 0)) <= -4 or _hurts_army(choice):
 		recovery_until = maxi(recovery_until, turn + 10)
 	notice = str(choice.get("result", "已记下"))
+	if event_id == "wanglun" and (choice_id == "fight" or choice_id == "blame"):
+		notice += "徐州厢军就近听调。"
 	last_event = notice
 	AdvisorSystem.say("event_post:%s:%s" % [event_id, choice_id])
 	GoalSystem.touch()
@@ -826,6 +949,23 @@ func _afford_choice(event_id: String, choice_id: String) -> bool:
 	if choice_id == "amnesty" and (event_id == "wanglun" or event_id == "zhanghai"):
 		return int(resources.get("food", 0)) >= 200 and int(resources.get("money", 0)) >= 200
 	return true
+
+
+func _release_cities() -> void:
+	for id_v in city_home.keys():
+		var city := DataDB.city_by_id(str(id_v))
+		if city.is_empty():
+			continue
+		city["faction"] = str(city_home[id_v])
+	city_home = {}
+
+
+func _apply_seized() -> void:
+	for id_v in city_home.keys():
+		var city := DataDB.city_by_id(str(id_v))
+		if city.is_empty():
+			continue
+		city["faction"] = "rebel"
 
 
 func _reset_pacing() -> void:
@@ -885,6 +1025,8 @@ func design_need(id: String) -> int:
 	var need := maxi(1, int(cost.get("power", 1)))
 	if firmware_done.has("D03"):
 		need = maxi(1, int(round(float(need) * 0.9)))
+	if design_ease > 0:
+		need = maxi(1, need - design_ease)
 	return need
 
 
@@ -960,6 +1102,9 @@ func start_design(id: String) -> bool:
 		if presearch > 0:
 			tech_design_prog += presearch
 			presearch = 0
+		if design_ease > 0:
+			tech_design_prog += design_ease
+			design_ease = 0
 	elif id != tech_designing and not tech_queue.has(id):
 		tech_queue.append(id)
 	EventBus.state_changed.emit()
@@ -1300,6 +1445,8 @@ func to_save() -> Dictionary:
 		"shelved": shelved.duplicate(true),
 		"power_made": power_made,
 		"power_waste": power_waste,
+		"power_over": power_over,
+		"power_sunk": power_sunk,
 		"grain_samples": grain_samples,
 		"grain_le12": grain_le12,
 		"epilogue_shown": epilogue_shown,
@@ -1307,6 +1454,17 @@ func to_save() -> Dictionary:
 		"recovery_until": recovery_until,
 		"recovery_turn": recovery_turn,
 		"demo_over": demo_over,
+		"presearch_bonus": presearch_bonus,
+		"shading": shading,
+		"shade_skip": shade_skip,
+		"night_read": night_read,
+		"night_pay": night_pay,
+		"design_ease": design_ease,
+		"jingnei_mod": jingnei_mod,
+		"city_home": city_home.duplicate(),
+		"mold_said": mold_said,
+		"presearch_full_said": presearch_full_said,
+		"food_start": food_start,
 	}
 
 
@@ -1366,6 +1524,10 @@ func from_save(data: Dictionary) -> bool:
 			row["march"] = str(src.get("march", ""))
 		if int(src.get("born", 0)) > 0:
 			row["born"] = int(src.get("born", 0))
+		if int(src.get("move_mod", 0)) > 0:
+			row["move_mod"] = int(src.get("move_mod", 0))
+		if int(src.get("ford_wait", 0)) > 0:
+			row["ford_wait"] = int(src.get("ford_wait", 0))
 		units.append(row)
 	rng.state = int(str(data.get("rng_state", "0")))
 	tech_done = _str_list(data.get("tech_done", []))
@@ -1447,6 +1609,8 @@ func from_save(data: Dictionary) -> bool:
 		shelved = []
 	power_made = int(data.get("power_made", 0))
 	power_waste = int(data.get("power_waste", 0))
+	power_over = int(data.get("power_over", 0))
+	power_sunk = int(data.get("power_sunk", 0))
 	grain_samples = int(data.get("grain_samples", 0))
 	grain_le12 = int(data.get("grain_le12", 0))
 	epilogue_shown = bool(data.get("epilogue_shown", false))
@@ -1454,6 +1618,19 @@ func from_save(data: Dictionary) -> bool:
 	recovery_until = int(data.get("recovery_until", 0))
 	recovery_turn = int(data.get("recovery_turn", -1))
 	demo_over = bool(data.get("demo_over", false))
+	presearch_bonus = int(data.get("presearch_bonus", 0))
+	shading = bool(data.get("shading", false))
+	shade_skip = int(data.get("shade_skip", 0))
+	night_read = bool(data.get("night_read", false))
+	night_pay = int(data.get("night_pay", 0))
+	design_ease = int(data.get("design_ease", 0))
+	jingnei_mod = int(data.get("jingnei_mod", 0))
+	city_home = _str_dict(data.get("city_home", {}))
+	mold_said = int(data.get("mold_said", -99))
+	presearch_full_said = int(data.get("presearch_full_said", -99))
+	food_start = int(data.get("food_start", int(resources.get("food", 0))))
+	produce_floor = -1
+	_apply_seized()
 	if orders.is_empty():
 		GoalSystem.on_turn()
 	EventSystem.scan()

@@ -26,6 +26,8 @@ var _seal: Label
 var _seal_left := 0.0
 var _rating: Control
 var _rating_hold := false
+var _menu: Control
+var _menu_id := ""
 
 
 func setup(owner) -> void:
@@ -73,7 +75,10 @@ func sync() -> void:
 	else:
 		z_index = 50
 	if _rating:
-		_rating.visible = GameState.demo_over and not blocking() and not _rating_hold
+		var show_rating: bool = GameState.demo_over and not blocking() and not _rating_hold
+		if show_rating and not _rating.visible:
+			_clear_flights()
+		_rating.visible = show_rating
 		if _rating.visible:
 			_fill_rating()
 			z_index = 90
@@ -123,6 +128,9 @@ func _sync_bar() -> void:
 		sig += "|%s|%s" % [str(item.get("text", "")), str(item.get("note", ""))]
 	sig += "|%d|%d|%d" % [GoalSystem.xiping(), GoalSystem.beiding(), GoalSystem.jingnei()]
 	sig += "|" + str(Omen.current().get("title", ""))
+	for shelved_v in GameState.shelved:
+		var shelved: Dictionary = shelved_v
+		sig += "|s:%s" % str(shelved.get("id", ""))
 	if sig == _sig:
 		return
 	_sig = sig
@@ -136,6 +144,7 @@ func _layout() -> void:
 		height = 32.0 + 36.0 + 8.0
 		if tab == "month":
 			height += float(maxi(GameState.orders.size(), 1)) * 70.0
+			height += float(GameState.shelved.size()) * 42.0
 			if not Omen.current().is_empty():
 				height += 68.0
 		elif tab == "chapter":
@@ -149,6 +158,7 @@ func _layout() -> void:
 
 
 func _paint() -> void:
+	_close_order_menu()
 	for child in _rows.get_children():
 		_rows.remove_child(child)
 		child.free()
@@ -220,16 +230,41 @@ func _order_row(item: Dictionary, index: int) -> Control:
 	note.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(note)
 	var reward := _reward_label(item)
-	reward.position = Vector2(188, 20)
-	reward.size = Vector2(90, 24)
+	reward.position = Vector2(156, 20)
+	reward.size = Vector2(96, 24)
 	row.add_child(reward)
+	var oid := str(item.get("id", ""))
 	var hit := Button.new()
 	hit.flat = true
 	hit.focus_mode = Control.FOCUS_NONE
 	hit.set_anchors_preset(Control.PRESET_FULL_RECT)
-	hit.pressed.connect(_activate_order.bind(str(item.get("id", ""))))
-	hit.gui_input.connect(_shelve_click.bind(str(item.get("id", ""))))
+	hit.offset_right = -32
+	hit.pressed.connect(_open_order_menu.bind(oid))
 	row.add_child(hit)
+	if main:
+		var flag := Label.new()
+		flag.text = "令"
+		flag.position = Vector2(256, 18)
+		flag.size = Vector2(24, 24)
+		flag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		flag.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		flag.add_theme_font_size_override("font_size", 14)
+		flag.add_theme_color_override("font_color", Color("8e2a1e"))
+		flag.tooltip_text = "主令不可搁置"
+		flag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(flag)
+	else:
+		var shelf := Button.new()
+		shelf.flat = true
+		shelf.focus_mode = Control.FOCUS_NONE
+		shelf.icon = Kit.icon("ui_shelve")
+		shelf.expand_icon = true
+		shelf.tooltip_text = "搁置"
+		shelf.position = Vector2(256, 20)
+		shelf.custom_minimum_size = Vector2(24, 24)
+		shelf.size = Vector2(24, 24)
+		shelf.pressed.connect(_do_shelve.bind(oid))
+		row.add_child(shelf)
 	if host:
 		host.btn_map["goal_%d" % index] = hit
 	return row
@@ -456,6 +491,7 @@ func _show_card(token: String) -> void:
 	var cid := token.trim_prefix("end:") if ending else token.trim_prefix("start:")
 	var ch: Dictionary = {}
 	if token == "epilogue":
+		_clear_flights()
 		ch = {
 			"label": "尾声",
 			"name": "三胜之后",
@@ -593,16 +629,6 @@ func _focus_city(city: String) -> void:
 		map.call("focus_city", city)
 
 
-func _shelve_click(event: InputEvent, id: String) -> void:
-	if not (event is InputEventMouseButton):
-		return
-	var mouse := event as InputEventMouseButton
-	if not mouse.pressed or mouse.button_index != MOUSE_BUTTON_RIGHT:
-		return
-	GoalSystem.shelve(id)
-	mouse.button_index = MOUSE_BUTTON_NONE
-
-
 func _shelved_row(item: Dictionary) -> Control:
 	var row := Control.new()
 	row.custom_minimum_size = Vector2(288, 36)
@@ -619,18 +645,189 @@ func _shelved_row(item: Dictionary) -> Control:
 	var title := Label.new()
 	title.text = "搁置 · %s" % str(item.get("text", ""))
 	title.position = Vector2(10, 6)
-	title.size = Vector2(260, 22)
+	title.size = Vector2(220, 22)
 	title.add_theme_font_size_override("font_size", 14)
 	title.add_theme_color_override("font_color", Color("6b5b48"))
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(title)
+	var oid := str(item.get("id", ""))
 	var hit := Button.new()
 	hit.flat = true
 	hit.focus_mode = Control.FOCUS_NONE
 	hit.set_anchors_preset(Control.PRESET_FULL_RECT)
-	hit.pressed.connect(GoalSystem.restore.bind(str(item.get("id", ""))))
+	hit.offset_right = -32
+	hit.pressed.connect(_open_order_menu.bind(oid))
 	row.add_child(hit)
+	var back := Button.new()
+	back.flat = true
+	back.focus_mode = Control.FOCUS_NONE
+	back.text = "复"
+	back.tooltip_text = "恢复"
+	back.position = Vector2(256, 6)
+	back.custom_minimum_size = Vector2(24, 24)
+	back.size = Vector2(24, 24)
+	back.add_theme_font_size_override("font_size", 13)
+	back.pressed.connect(_do_restore.bind(oid))
+	row.add_child(back)
 	return row
+
+
+func _do_shelve(id: String) -> void:
+	if GameState.input_locked:
+		return
+	_close_order_menu()
+	GoalSystem.shelve(id)
+
+
+func _do_restore(id: String) -> void:
+	if GameState.input_locked:
+		return
+	_close_order_menu()
+	GoalSystem.restore(id)
+
+
+func _open_order_menu(id: String) -> void:
+	if GameState.input_locked:
+		return
+	_close_order_menu()
+	var card := Kit.panel("InkPanel")
+	card.name = "OrderMenu"
+	var y := 120.0
+	var index := 0
+	for item_v in GameState.orders:
+		var item: Dictionary = item_v
+		if str(item.get("id", "")) == id:
+			y = 110.0 + float(index) * 70.0
+		index += 1
+	if y == 120.0:
+		for shelved_v in GameState.shelved:
+			var shelved: Dictionary = shelved_v
+			if str(shelved.get("id", "")) == id:
+				y = 110.0 + float(GameState.orders.size()) * 70.0
+	if not Omen.current().is_empty():
+		y += 68.0
+	card.position = Vector2(748, y)
+	card.size = Vector2(200, 132)
+	card.custom_minimum_size = Vector2(200, 132)
+	card.z_index = 40
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(card)
+	_menu = card
+	_menu_id = id
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	box.position = Vector2(8, 8)
+	box.size = Vector2(184, 116)
+	card.add_child(box)
+	_menu_button(box, "ui_locate", "前往", false, _menu_go.bind(id))
+	var shelved_row := _shelved_id(id)
+	if shelved_row:
+		_menu_button(box, "ui_shelve", "恢复", false, _do_restore.bind(id))
+	else:
+		var locked: bool = _order_main(id)
+		var icon_name := "ui_shelve_disabled" if locked else "ui_shelve"
+		_menu_button(box, icon_name, "搁置", locked, _do_shelve.bind(id))
+
+
+func _menu_button(parent: Node, icon_name: String, label: String, locked: bool, action: Callable) -> void:
+	var button := Button.new()
+	button.text = label
+	button.icon = Kit.icon(icon_name)
+	button.expand_icon = true
+	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	button.disabled = locked
+	button.focus_mode = Control.FOCUS_NONE
+	button.custom_minimum_size = Vector2(180, 36)
+	button.add_theme_font_size_override("font_size", 15)
+	if locked:
+		button.tooltip_text = "主令不可搁置"
+	else:
+		button.pressed.connect(action)
+	parent.add_child(button)
+
+
+func _menu_go(id: String) -> void:
+	_close_order_menu()
+	_activate_order(id)
+
+
+func _close_order_menu() -> void:
+	_menu_id = ""
+	if _menu == null:
+		return
+	if is_instance_valid(_menu):
+		_menu.queue_free()
+	_menu = null
+
+
+func _order_main(id: String) -> bool:
+	for item_v in GameState.orders:
+		var item: Dictionary = item_v
+		if str(item.get("id", "")) == id:
+			return bool(item.get("main", false))
+	return false
+
+
+func _shelved_id(id: String) -> bool:
+	for item_v in GameState.shelved:
+		var item: Dictionary = item_v
+		if str(item.get("id", "")) == id:
+			return true
+	return false
+
+
+func debug_open_shelve() -> void:
+	collapsed = false
+	tab = "month"
+	_sig = ""
+	_sync_bar()
+	var pick := ""
+	for item_v in GameState.orders:
+		var item: Dictionary = item_v
+		if bool(item.get("main", false)):
+			pick = str(item.get("id", ""))
+			break
+	if pick == "" and not GameState.orders.is_empty():
+		var first: Dictionary = GameState.orders[0]
+		pick = str(first.get("id", ""))
+	if pick == "":
+		return
+	_open_order_menu(pick)
+
+
+func menu_debug() -> Dictionary:
+	if _menu == null or not is_instance_valid(_menu) or not _menu.visible:
+		return {"open": false}
+	var labels: Array = []
+	var box := _menu.get_child(0)
+	if box:
+		for child in box.get_children():
+			if child is Button:
+				var button := child as Button
+				labels.append({"t": button.text, "off": button.disabled})
+	return {
+		"open": true,
+		"id": _menu_id,
+		"x": _menu.position.x,
+		"y": _menu.position.y,
+		"w": _menu.size.x,
+		"h": _menu.size.y,
+		"labels": labels,
+	}
+
+
+func _clear_flights() -> void:
+	_flights.clear()
+	GameState.reward_queue.clear()
+	_seal_left = 0.0
+	if _seal:
+		_seal.visible = false
+	for child in get_children():
+		if str(child.name) != "FlyReward" or not (child is Control):
+			continue
+		var node: Control = child as Control
+		node.visible = false
+		node.position = Vector2(-200, -200)
 
 
 func _reward_icon(text: String) -> String:

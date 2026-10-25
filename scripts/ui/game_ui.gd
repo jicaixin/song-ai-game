@@ -35,6 +35,8 @@ var date_label: Label
 var year_label: Label
 var res_labels := {}
 var power_label: Label
+var shade_button: Button
+var night_read: CheckBox
 var weather_icon: TextureRect
 var weather_label: Label
 var research_card: PanelContainer
@@ -146,6 +148,13 @@ func _build_top() -> void:
 	power.add_child(Kit.icon_rect("res_power", 18))
 	power_label = Kit.label("0", "PowerLabel")
 	power.add_child(power_label)
+	shade_button = Kit.button("节晒中", "Button")
+	shade_button.visible = false
+	shade_button.tooltip_text = "点一下，下一回合照常满发"
+	shade_button.custom_minimum_size = Vector2(72, 28)
+	shade_button.add_theme_font_size_override("font_size", 13)
+	shade_button.pressed.connect(_cancel_shade)
+	power.add_child(shade_button)
 	weather_icon = Kit.icon_rect("wx_sunny", 18)
 	row.add_child(weather_icon)
 	weather_label = Kit.label("", "HudMutedLabel")
@@ -197,8 +206,21 @@ func _build_research() -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 4)
 	research_card.add_child(box)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	box.add_child(head)
 	research_title = Kit.label("格物", "HudLabel")
-	box.add_child(research_title)
+	head.add_child(research_title)
+	var head_gap := Control.new()
+	head_gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(head_gap)
+	night_read = CheckBox.new()
+	night_read.text = "夜读"
+	night_read.tooltip_text = "夜读典籍。每回合耗 4 电，下回合匠 +3，或让手头的设计少耗 1 电。"
+	night_read.focus_mode = Control.FOCUS_NONE
+	night_read.add_theme_font_size_override("font_size", 13)
+	night_read.toggled.connect(_on_night)
+	head.add_child(night_read)
 	research_body = Kit.label("", "HudMutedLabel")
 	research_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(research_body)
@@ -521,8 +543,15 @@ func _refresh() -> void:
 		var key := str(key_v)
 		var num: Label = res_labels[key]
 		num.text = str(int(GameState.resources.get(key, 0)))
+		if key == "food":
+			var ink := Color("e0b84a") if GameState.grain_warning() else Color("6db394")
+			num.add_theme_color_override("font_color", ink)
 	var cap := GameState.battery_cap()
 	power_label.text = "%d/%d" % [GameState.battery, cap]
+	if shade_button:
+		shade_button.visible = GameState.shading
+	if night_read and night_read.button_pressed != GameState.night_read:
+		night_read.set_pressed_no_signal(GameState.night_read)
 	var wx := str(WX_ICON.get(GameState.weather_id, "wx_sunny"))
 	weather_icon.texture = Kit.icon(wx)
 	weather_label.text = str(DataDB.balance.get("weather", {}).get(GameState.weather_id, {}).get("name", ""))
@@ -575,10 +604,23 @@ func _set_play_visible(show_hud: bool) -> void:
 		clear_hover_tip()
 
 
+func _cancel_shade() -> void:
+	GameState.shade_skip = GameState.turn + 1
+	GameState.shading = false
+	if shade_button:
+		shade_button.visible = false
+
+
+func _on_night(on: bool) -> void:
+	GameState.night_read = on
+
+
 func _refresh_research() -> void:
 	var blurb := GameState.research_blurb()
 	research_title.text = str(blurb.get("title", "格物"))
-	research_body.text = str(blurb.get("body", ""))
+	var body := str(blurb.get("body", ""))
+	body += "  预研 %d/%d" % [GameState.presearch, GameState.presearch_cap()]
+	research_body.text = body
 	var ink := Color("ff6a4a") if bool(blurb.get("alert", false)) else Color("f3e9d2")
 	research_title.add_theme_color_override("font_color", ink)
 	research_body.add_theme_color_override("font_color", ink)
@@ -595,7 +637,10 @@ func _refresh_research() -> void:
 		research_bar.max_value = float(maxi(1, int(trial.get("need", 1))))
 		research_bar.value = float(int(trial.get("prog", 0)))
 	else:
-		research_bar.visible = false
+		research_bar.visible = true
+		research_bar.theme_type_variation = "NodeBarDesign"
+		research_bar.max_value = float(maxi(1, GameState.presearch_cap()))
+		research_bar.value = float(GameState.presearch)
 
 
 func _panel_uid() -> int:

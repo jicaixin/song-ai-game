@@ -564,7 +564,17 @@ func check_goals() -> void:
 	GameState.turn = 41
 	var before_units := GameState.units.size()
 	GameState.choose_event("wanglun", "fight")
-	check("rebel_spawn", Campaign.alive("wanglun") == 2 and GameState.units.size() == before_units + 2, str(Campaign.alive("wanglun")))
+	var slow := false
+	var guard := false
+	for spawned_v in GameState.units:
+		var spawned: Dictionary = spawned_v
+		if str(spawned.get("tag", "")) == "wanglun" and int(spawned.get("move_mod", 0)) == 1:
+			slow = true
+		if str(spawned.get("name", "")) == "徐州厢军":
+			guard = true
+	check("rebel_spawn", Campaign.alive("wanglun") == 2 and GameState.units.size() == before_units + 3, str(GameState.units.size() - before_units))
+	check("rebel_move", slow)
+	check("jingdong_guard", guard)
 	GameState.new_game()
 	GameState.resources["food"] = 10
 	GameState.resources["money"] = 10
@@ -586,10 +596,15 @@ func check_goals() -> void:
 	GameState.turn = 12
 	check("omen_hao", str(Omen.current().get("title", "")) == "好水川")
 	GameState.new_game()
+	var start_food := int(GameState.resources.get("food", 0))
 	GameState.finish_turn()
 	var chip := Calendar.apply_turn(GameState.turn)
 	check("date_chip", GameState.year == chip.x and GameState.month == chip.y and GameState.month_span == chip.z)
-	check("grain_cap", int(GameState.resources.get("food", 0)) <= GameState.monthly_food() * 12)
+	var held_food := int(GameState.resources.get("food", 0))
+	check("grain_hold", start_food > 0 and held_food * 100 >= start_food * 95, "%d/%d" % [held_food, start_food])
+	check("grain_cap", held_food > GameState.monthly_food() * 12, str(held_food))
+	check("monthly_need", GameState.monthly_need() > GameState.monthly_food(), str(GameState.monthly_need()))
+	check("presearch_cap", GameState.presearch_cap() == 60)
 	var morale_before := GameState.morale
 	GameState.choose_event("sanchuan", "march")
 	check("recovery_window", GameState.recovery_until >= GameState.turn + 10)
@@ -610,16 +625,44 @@ func check_goals() -> void:
 	GoalSystem.on_turn()
 	if not GameState.orders.is_empty():
 		var first: Dictionary = GameState.orders[0]
-		var shelved_id := str(first.get("id", ""))
-		GoalSystem.shelve(shelved_id)
+		var main_id := str(first.get("id", ""))
+		var refused: bool = not GoalSystem.shelve(main_id)
+		check("shelve_main", refused and GameState.shelved.is_empty() and GameState.notice == "主令不可搁置", GameState.notice)
+		var side_id := ""
+		var side_born := 0
+		if GameState.orders.size() > 1:
+			var second: Dictionary = GameState.orders[1]
+			side_id = str(second.get("id", ""))
+			side_born = int(second.get("born", 0))
 		var held := false
-		for shelved_v in GameState.shelved:
-			var shelved: Dictionary = shelved_v
-			if str(shelved.get("id", "")) == shelved_id:
-				held = true
+		if side_id != "":
+			held = GoalSystem.shelve(side_id)
 		check("shelve", held)
+		if held:
+			if GameState.orders.size() >= 3:
+				GameState.orders.pop_back()
+			GoalSystem.restore(side_id)
+			var born_now := -1
+			for order_v in GameState.orders:
+				var order: Dictionary = order_v
+				if str(order.get("id", "")) == side_id:
+					born_now = int(order.get("born", -1))
+			check("shelve_born", born_now == side_born, "%d/%d" % [born_now, side_born])
+		else:
+			check("shelve_born", false, "no side order")
 	else:
 		check("shelve", false, "no order")
+		check("shelve_main", false, "no order")
+		check("shelve_born", false, "no order")
+	GameState.new_game()
+	GameState.turn = 38
+	GoalSystem.on_turn()
+	var g31 := false
+	if not GameState.orders.is_empty():
+		var lead: Dictionary = GameState.orders[0]
+		g31 = str(lead.get("id", "")) == "G31" and bool(lead.get("main", false))
+	check("g31_main", g31, str(GameState.orders))
+	check("huai_band", Pathfinder.huai(28, 33))
 	GameState.rating_floor = 3
 	GameState.morale = 10
 	check("rating_floor", int(GoalSystem.verdict().get("score", 0)) == 3)

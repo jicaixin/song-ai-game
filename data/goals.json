@@ -17,6 +17,8 @@
     {"id": "G25", "kind": "military", "text": "雄州定州驻军", "limit": 3, "craft": 8, "morale": 0},
     {"id": "G26", "kind": "military", "text": "追击沂州叛军", "limit": 3, "craft": 8, "morale": 0},
     {"id": "G28", "kind": "patrol", "text": "巡视开封外围", "limit": 1, "craft": 6, "morale": 0},
-    {"id": "G30", "kind": "prep", "text": "整军养伤", "limit": 1, "craft": 0, "morale": 2}
+    {"id": "G30", "kind": "prep", "text": "整军养伤", "limit": 1, "craft": 0, "morale": 2},
+    {"id": "G31", "kind": "military", "text": "进驻京东", "limit": 3, "craft": 8, "morale": 0},
+    {"id": "G32", "kind": "military", "text": "接敌或招安", "limit": 3, "craft": 8, "morale": 0}
   ]
 }
