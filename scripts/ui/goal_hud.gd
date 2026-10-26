@@ -161,7 +161,7 @@ func _paint() -> void:
 	_close_order_menu()
 	for child in _rows.get_children():
 		_rows.remove_child(child)
-		child.free()
+		child.queue_free()
 	_clear_goal_buttons()
 	_rows.visible = tab == "month" and not collapsed
 	_meters.visible = tab == "war" and not collapsed
@@ -296,7 +296,7 @@ func _reward_label(item: Dictionary) -> Label:
 func _paint_chapter() -> void:
 	for child in _chapter_box.get_children():
 		_chapter_box.remove_child(child)
-		child.free()
+		child.queue_free()
 	var ch := GoalSystem.current_chapter()
 	if ch.is_empty():
 		return
@@ -341,7 +341,7 @@ func _paint_chapter() -> void:
 func _paint_meters() -> void:
 	for child in _meters.get_children():
 		_meters.remove_child(child)
-		child.free()
+		child.queue_free()
 	_meters.add_child(_meter("西平", GoalSystem.xiping(), 85, Color("6B3E8E"), "西夏战意 %d" % int(GameState.meters.get("xia_war", 70)), GoalSystem.xiping_done()))
 	var demand := int(GameState.meters.get("liao_demand", 20))
 	var bei := GoalSystem.beiding_done()
@@ -540,7 +540,7 @@ func _fill_sides(ch: Dictionary) -> void:
 	var box: HBoxContainer = _card.get_node("LabelLayer/Sides")
 	for child in box.get_children():
 		box.remove_child(child)
-		child.free()
+		child.queue_free()
 	var sides: Array = ch.get("sides", [])
 	if sides.is_empty():
 		return

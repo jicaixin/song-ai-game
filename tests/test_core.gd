@@ -26,11 +26,58 @@ func run_tests() -> int:
 	check_tech()
 	check_camera()
 	check_font()
+	check_city_close()
 	if failed > 0:
 		push_error("失败 %d 项" % failed)
 	else:
 		print("ALL TESTS PASSED")
 	return failed
+
+
+func check_city_close() -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var ui := tree.get_first_node_in_group("game_ui") as GameUI
+	if ui == null or ui.desk == null:
+		check("city_close", false, "no ui")
+		return
+	if ui.pacing and ui.pacing.event_open:
+		ui.pacing._close_event()
+	if ui.goals and ui.goals.blocking():
+		ui.goals.dismiss_card()
+	ui.open_city("yanzhou")
+	var btn: Button = ui.desk.debug_btns.get("desk_close")
+	var alive := [false]
+	if btn != null:
+		alive[0] = true
+		btn.pressed.connect(func() -> void: alive[0] = is_instance_valid(btn))
+		btn.pressed.emit()
+	check("city_close", btn != null and ui.desk.mode == "" and not ui.desk.visible and alive[0])
+	ui.open_city("yanzhou")
+	var outside := InputEventMouseButton.new()
+	outside.button_index = MOUSE_BUTTON_LEFT
+	outside.pressed = true
+	ui.desk.dim.gui_input.emit(outside)
+	check("city_outside", ui.desk.mode == "")
+	ui.open_city("kaifeng")
+	ui.hide_modals()
+	check("city_esc", ui.desk.mode == "")
+	ui.open_desk("codex")
+	var codex: Button = ui.desk.debug_btns.get("desk_close")
+	if codex != null:
+		codex.pressed.emit()
+	check("codex_close", codex != null and ui.desk.mode == "")
+	ui.desk.open("tech")
+	ui.desk.tech_show_legend = true
+	ui.desk.tech_tutorial = -1
+	ui.desk._fill()
+	var sheet: Button = ui.desk.debug_btns.get("tech_sheet_close")
+	var sheet_alive := [false]
+	if sheet != null:
+		sheet_alive[0] = true
+		sheet.pressed.connect(func() -> void: sheet_alive[0] = is_instance_valid(sheet))
+		sheet.pressed.emit()
+	check("sheet_close", sheet != null and not ui.desk.tech_show_legend and sheet_alive[0] and ui.desk.mode == "tech")
+	ui.desk.shut()
 
 
 func check_camera() -> void:

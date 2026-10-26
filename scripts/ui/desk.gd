@@ -65,19 +65,40 @@ var debug_btns := {}
 
 func _ready() -> void:
 	theme = Settings.theme
-	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	visible = false
 	dim = ColorRect.new()
 	dim.color = Color(0, 0, 0, 0.45)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
+	dim.gui_input.connect(_on_dim_input)
 	host = Control.new()
-	host.set_anchors_preset(Control.PRESET_FULL_RECT)
 	host.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(host)
+	_fit_viewport()
+	get_viewport().size_changed.connect(_fit_viewport)
 	EventBus.state_changed.connect(_on_state)
+
+
+func _fit_viewport() -> void:
+	# Anchors stay 0×0 on this canvas layer, so the dim never covered the
+	# screen and a click outside the paper fell through to the map.
+	var vp := get_viewport_rect().size
+	if vp.x < 2.0 or vp.y < 2.0:
+		vp = Vector2(1280, 720)
+	# Top-left anchors keep an explicit size. Full-rect anchors on this layer
+	# collapse back to 0×0, which is why the dim never caught outside clicks.
+	set_anchors_preset(Control.PRESET_TOP_LEFT)
+	position = Vector2.ZERO
+	size = vp
+	if dim:
+		dim.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		dim.position = Vector2.ZERO
+		dim.size = vp
+	if host:
+		host.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		host.position = Vector2.ZERO
+		host.size = vp
 
 
 func is_open() -> bool:
@@ -85,6 +106,7 @@ func is_open() -> bool:
 
 
 func open(which: String) -> void:
+	_fit_viewport()
 	mode = which
 	if which == "tech" and not GameState.tech_tutorial_done and tech_tutorial < 0:
 		tech_tutorial = 0
@@ -108,15 +130,31 @@ func shut() -> void:
 	_wipe()
 
 
+func _on_dim_input(event: InputEvent) -> void:
+	if not (event is InputEventMouseButton) or not event.pressed:
+		return
+	var mb := event as InputEventMouseButton
+	if mb.button_index != MOUSE_BUTTON_LEFT and mb.button_index != MOUSE_BUTTON_RIGHT and mb.button_index != MOUSE_BUTTON_MIDDLE:
+		return
+	# 格物图铺满全屏，点到空白不是「面板外面」。
+	if mode == "tech":
+		dim.accept_event()
+		return
+	shut()
+	dim.accept_event()
+
+
 func _on_state() -> void:
 	if mode != "":
 		_fill()
 
 
 func _wipe() -> void:
+	# The close button calls shut() from its pressed signal. free() would
+	# delete that button while the viewport is still inside the click.
 	for child in host.get_children():
 		host.remove_child(child)
-		child.free()
+		child.queue_free()
 	debug_btns = {}
 	detail = null
 

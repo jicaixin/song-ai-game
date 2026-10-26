@@ -413,6 +413,16 @@ func _poll_tech_cmd() -> void:
 		if ui.goals:
 			ui.goals.debug_open_shelve()
 		return
+	if cmd == "shot_city":
+		GameState.tutorial_done = true
+		GameState.input_locked = false
+		ui.end_enemy_phase()
+		if ui.pacing and ui.pacing.event_open:
+			ui.pacing._close_event()
+		if ui.goals and ui.goals.blocking():
+			ui.goals.dismiss_card()
+		ui.open_city("yanzhou")
+		return
 	if cmd == "shot_grain":
 		GameState.tutorial_done = true
 		GameState.input_locked = false

@@ -189,7 +189,7 @@ func _open_event(id: String) -> void:
 	_clear_choice_buttons()
 	for child in _options.get_children():
 		_options.remove_child(child)
-		child.free()
+		child.queue_free()
 	_comment.visible = id != "zengbi"
 	_comment_head.visible = id != "zengbi"
 	if id == "zengbi":
@@ -762,7 +762,7 @@ func _repaint_bargain() -> void:
 	var kept: Array = _bargain_pick.duplicate()
 	for child in _options.get_children():
 		_options.remove_child(child)
-		child.free()
+		child.queue_free()
 	_bargain_pick = kept
 	_fill_bargain()
 
