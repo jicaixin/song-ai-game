@@ -415,13 +415,19 @@ func _poll_tech_cmd() -> void:
 		return
 	if cmd == "shot_city":
 		GameState.tutorial_done = true
+		GameState.playing = true
 		GameState.input_locked = false
 		ui.end_enemy_phase()
 		if ui.pacing and ui.pacing.event_open:
 			ui.pacing._close_event()
+		GameState.pending_events.clear()
+		GameState.card_queue.clear()
 		if ui.goals and ui.goals.blocking():
 			ui.goals.dismiss_card()
+		if ui.goals:
+			ui.goals.sync()
 		ui.open_city("yanzhou")
+		ui._order_layers()
 		return
 	if cmd == "shot_grain":
 		GameState.tutorial_done = true

@@ -1302,7 +1302,8 @@ func _show_parts() -> void:
 func _hide_sheets() -> void:
 	desk.tech_show_legend = false
 	desk.tech_show_parts = false
-	desk._fill()
+	# Rebuilding now would delete this button inside its own click and stall the web frame.
+	desk._fill.call_deferred()
 
 
 func _toggle_bar() -> void:

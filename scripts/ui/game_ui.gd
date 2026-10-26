@@ -107,6 +107,9 @@ func _ready() -> void:
 	goals.z_index = 50
 	add_child(goals)
 	goals.setup(self)
+	# Picking walks later siblings first and ignores z_index. Keep tree order
+	# aligned with z so the city panel stays above the goal bar that overlaps 关闭.
+	_order_layers()
 	EventBus.state_changed.connect(_refresh)
 	EventBus.advisor_changed.connect(_refresh_advisor)
 	EventBus.camera_moved.connect(_on_camera_moved)
@@ -507,7 +510,37 @@ func close_city() -> void:
 		desk.shut()
 
 
+func _order_layers() -> void:
+	var ranked: Array = []
+	var i := 0
+	for child in get_children():
+		if not (child is Control):
+			return
+		ranked.append({"n": child, "z": (child as Control).z_index, "i": i})
+		i += 1
+	if ranked.size() < 2:
+		return
+	ranked.sort_custom(_layer_before)
+	var dirty := false
+	for k in ranked.size():
+		if get_child(k) != ranked[k].n:
+			dirty = true
+			break
+	if not dirty:
+		return
+	for k in ranked.size():
+		move_child(ranked[k].n, k)
+
+
+static func _layer_before(a: Dictionary, b: Dictionary) -> bool:
+	if int(a.z) == int(b.z):
+		return int(a.i) < int(b.i)
+	return int(a.z) < int(b.z)
+
+
 func _process(delta: float) -> void:
+	# Goal cards and the tutorial change z_index after _ready.
+	_order_layers()
 	if not visible:
 		return
 	if toast_left > 0.0 and not GameState.input_locked and not _chapter_blocking():

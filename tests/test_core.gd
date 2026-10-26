@@ -44,8 +44,33 @@ func check_city_close() -> void:
 		ui.pacing._close_event()
 	if ui.goals and ui.goals.blocking():
 		ui.goals.dismiss_card()
+	var was_tutorial: bool = GameState.tutorial_done
+	var was_playing: bool = GameState.playing
+	GameState.tutorial_done = true
+	GameState.playing = true
 	ui.open_city("yanzhou")
+	if ui.goals:
+		if ui.goals.blocking():
+			ui.goals.dismiss_card()
+		ui.goals._bar.visible = true
+		ui.goals.z_index = 50
+	ui._order_layers()
+	var stacked: bool = ui.goals != null and ui.desk.get_index() > ui.goals.get_index()
+	check("city_stack", stacked)
+	_layout(ui)
 	var btn: Button = ui.desk.debug_btns.get("desk_close")
+	var hit: Control = null
+	if btn != null:
+		hit = _top_at(ui, btn.get_global_rect().get_center())
+	check("city_hit", btn != null and hit == btn, "hit %s btn %s" % [hit, btn.get_global_rect() if btn != null else Rect2()])
+	if ui.goals:
+		ui.goals.z_index = 90
+		ui._order_layers()
+		var front: bool = ui.goals.get_index() > ui.desk.get_index() and (ui.pacing == null or ui.goals.get_index() > ui.pacing.get_index())
+		check("chapter_front", front)
+		ui.goals.z_index = 50
+		ui.goals._bar.visible = true
+		ui._order_layers()
 	var alive := [false]
 	if btn != null:
 		alive[0] = true
@@ -76,8 +101,41 @@ func check_city_close() -> void:
 		sheet_alive[0] = true
 		sheet.pressed.connect(func() -> void: sheet_alive[0] = is_instance_valid(sheet))
 		sheet.pressed.emit()
-	check("sheet_close", sheet != null and not ui.desk.tech_show_legend and sheet_alive[0] and ui.desk.mode == "tech")
+	check("sheet_alive", sheet != null and sheet_alive[0] and ui.desk.mode == "tech")
+	ui.desk._fill()
+	check("sheet_close", not ui.desk.tech_show_legend and ui.desk.mode == "tech")
 	ui.desk.shut()
+	GameState.tutorial_done = was_tutorial
+	GameState.playing = was_playing
+
+
+func _layout(n: Node) -> void:
+	if n is Container:
+		n.notification(Container.NOTIFICATION_SORT_CHILDREN)
+	for c in n.get_children():
+		_layout(c)
+	if n is CanvasItem:
+		(n as CanvasItem).force_update_transform()
+
+
+func _top_at(n: Node, pos: Vector2) -> Control:
+	if n is CanvasItem and not (n as CanvasItem).visible:
+		return null
+	if n is Control:
+		var clip := n as Control
+		if clip.is_clipping_contents() and not clip.get_global_rect().has_point(pos):
+			return null
+	var kids := n.get_children()
+	for i in range(kids.size() - 1, -1, -1):
+		var child := kids[i] as Node
+		var hit := _top_at(child, pos)
+		if hit != null:
+			return hit
+	if n is Control:
+		var c := n as Control
+		if c.mouse_filter != Control.MOUSE_FILTER_IGNORE and c.get_global_rect().has_point(pos):
+			return c
+	return null
 
 
 func check_camera() -> void:

@@ -61,6 +61,7 @@ var dim: ColorRect
 var host: Control
 var detail: PanelContainer
 var debug_btns := {}
+var _generation := 0
 
 
 func _ready() -> void:
@@ -106,6 +107,7 @@ func is_open() -> bool:
 
 
 func open(which: String) -> void:
+	_generation += 1
 	_fit_viewport()
 	mode = which
 	if which == "tech" and not GameState.tech_tutorial_done and tech_tutorial < 0:
@@ -127,6 +129,15 @@ func open_city(id: String) -> void:
 func shut() -> void:
 	mode = ""
 	visible = false
+	# Freeing the clicked button inside its pressed signal stalls the web
+	# frame, so the last picture stays on screen. Drop the page next idle.
+	_generation += 1
+	_wipe_later.call_deferred(_generation)
+
+
+func _wipe_later(gen: int) -> void:
+	if gen != _generation:
+		return
 	_wipe()
 
 
@@ -150,8 +161,6 @@ func _on_state() -> void:
 
 
 func _wipe() -> void:
-	# The close button calls shut() from its pressed signal. free() would
-	# delete that button while the viewport is still inside the click.
 	for child in host.get_children():
 		host.remove_child(child)
 		child.queue_free()
