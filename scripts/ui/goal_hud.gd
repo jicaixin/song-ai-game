@@ -21,6 +21,7 @@ var _card_id := ""
 var _card_left := 0.0
 var _sig := ""
 var _flights: Array = []
+var _flyers: Array = []
 var fly_time := 1.0
 var _seal: Label
 var _seal_left := 0.0
@@ -833,10 +834,8 @@ func _clear_flights() -> void:
 	_seal_left = 0.0
 	if _seal:
 		_seal.visible = false
-	for child in get_children():
-		if str(child.name) != "FlyReward" or not (child is Control):
-			continue
-		var node: Control = child as Control
+	for node_v in _flyers:
+		var node: Control = node_v
 		node.visible = false
 		node.position = Vector2(-200, -200)
 
@@ -973,10 +972,8 @@ func _drain_rewards() -> void:
 
 func fly_debug() -> Array:
 	var marks: Array = []
-	for child in get_children():
-		if str(child.name) != "FlyReward" or not (child is Control):
-			continue
-		var node: Control = child as Control
+	for node_v in _flyers:
+		var node: Control = node_v
 		if not node.visible:
 			continue
 		var center := node.position + node.size * 0.5
@@ -995,9 +992,12 @@ func fly_debug() -> Array:
 func _build_flyers() -> void:
 	# Reused chips, built with the hud. A ColorRect always paints its fill, and
 	# z 40 keeps the chip above the goal bar on the way to 朝堂.
-	for _i in 4:
+	# Sibling names have to stay unique. Godot renames a second "FlyReward",
+	# and a lookup by that exact name then drops every chip after the first.
+	_flyers.clear()
+	for i in 4:
 		var chip := ColorRect.new()
-		chip.name = "FlyReward"
+		chip.name = "FlyReward%d" % i
 		chip.visible = false
 		chip.z_index = 40
 		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1024,15 +1024,24 @@ func _build_flyers() -> void:
 		icon.visible = false
 		chip.add_child(icon)
 		add_child(chip)
+		_flyers.append(chip)
 
 
 func _take_flyer() -> Control:
-	for child in get_children():
-		if str(child.name) == "FlyReward" and child is Control:
-			var node: Control = child as Control
-			if not node.visible:
-				return node
+	for node_v in _flyers:
+		var node: Control = node_v
+		if _flyer_busy(node):
+			continue
+		return node
 	return null
+
+
+func _flyer_busy(node: Control) -> bool:
+	for flight_v in _flights:
+		var flight: Dictionary = flight_v
+		if flight.get("node") == node:
+			return true
+	return false
 
 
 func _fly(text: String, origin: Vector2, delay: float, bad: bool) -> void:

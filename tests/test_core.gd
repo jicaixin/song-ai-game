@@ -1336,3 +1336,26 @@ func check_spec() -> void:
 	GoalSystem.grant_chapter(gewu, "done")
 	check("d12_pay", GameState.battery_bonus == 10 and int(GameState.resources.get("craft", 0)) == craft0 + 15, "bonus %d craft %d" % [GameState.battery_bonus, int(GameState.resources.get("craft", 0))])
 	GameState.new_game()
+	var ui := Engine.get_main_loop().get_first_node_in_group("game_ui") as GameUI
+	if ui != null and ui.goals != null:
+		ui.goals._clear_flights()
+		ui.goals.fly_time = 8.0
+		GameState.reward_queue = [
+			{"text": "匠 +20"},
+			{"text": "皇威 +2"},
+			{"text": "图纸库 +1（上限 4）"},
+		]
+		ui.goals._drain_rewards()
+		ui.goals.tick(0.25)
+		var seen := ""
+		var wide := 0.0
+		for mark_v in ui.goals.fly_debug():
+			var mark: Dictionary = mark_v
+			seen += str(mark.get("t", "")) + "|"
+			if str(mark.get("t", "")).begins_with("图纸库"):
+				wide = float(mark.get("w", 0))
+		check("c_fly", seen.find("匠 +20") >= 0 and seen.find("皇威 +2") >= 0 and seen.find("图纸库 +1（上限 4）") >= 0 and wide >= 200.0, seen)
+		ui.goals._clear_flights()
+		ui.goals.fly_time = 1.0
+	else:
+		check("c_fly", false, "no hud")
