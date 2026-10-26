@@ -2180,7 +2180,7 @@ func from_save(data: Dictionary) -> bool:
 
 
 func load_tech_sample() -> void:
-	# 第 52 回合示例：设计 K03 22/40，队列空，试制槽 1（K02 已试制 2/3 回合），图纸 I05、K04，格物院未颁布，实践 煤场 4、焦炉 6、水磨 6，电池 46，铜 14，已完成 21 项。
+	# 第 52 回合示例：设计 K03 22/40，队列空，试制槽 1（K02 已试制 2/4 回合），图纸 I05、K04，格物院未颁布，实践 煤场 4、焦炉 6、水磨 6，电池 46，铜 14，已完成 21 项。
 	turn = 52
 	year = 1044
 	month = 4
@@ -2196,7 +2196,7 @@ func load_tech_sample() -> void:
 	tech_design_prog = 22
 	tech_queue = []
 	tech_blueprints = ["I05", "K04"]
-	tech_trials = [{"id": "K02", "prog": 2, "need": 3}]
+	tech_trials = [{"id": "K02", "prog": 2, "need": 4}]
 	tech_paused = {}
 	tech_target = ""
 	tech_target_skip = []
@@ -2210,5 +2210,6 @@ func load_tech_sample() -> void:
 	resources["iron"] = 46
 	site_turns = {"mill": 6, "coal": 4, "coke": 6}
 	blueprint_bonus = 0
+	battery_bonus = 0
 	battery = 46
 	EventBus.state_changed.emit()

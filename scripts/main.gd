@@ -658,6 +658,12 @@ func _poll_tech_cmd() -> void:
 		desk.tech_show_legend = false
 		desk.open("tech")
 		return
+	if cmd == "shot_workshop":
+		_arm_shot()
+		GameState.load_tech_sample()
+		desk.tech_tutorial = -1
+		desk.open("workshop")
+		return
 	if cmd == "shot_tech" or cmd == "shot_swap" or cmd == "shot_hud":
 		_arm_shot()
 		GameState.load_tech_sample()

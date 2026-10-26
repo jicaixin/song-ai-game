@@ -980,7 +980,7 @@ func check_tech() -> void:
 		var trial: Dictionary = trial_v
 		if str(trial.get("id", "")) == "K02":
 			need = int(trial.get("need", 0))
-	check("tech_save", restored and GameState.tech_target == "E05" and need == 3 and int(GameState.site_turns.get("mill", 0)) == 6, "need %d target %s" % [need, GameState.tech_target])
+	check("tech_save", restored and GameState.tech_target == "E05" and need == 4 and int(GameState.site_turns.get("mill", 0)) == 6, "need %d target %s" % [need, GameState.tech_target])
 	var desk := Engine.get_main_loop().root.find_child("Desk", true, false) as Desk
 	check("desk_node", desk != null)
 	if desk != null:
@@ -1053,7 +1053,9 @@ func check_spec() -> void:
 	GameState.new_game()
 	GameState.load_tech_sample()
 	var trial: Dictionary = GameState.tech_trials[0]
-	check("b_trial", GameState.tech_trials.size() == 1 and str(trial.get("id", "")) == "K02" and int(trial.get("prog", 0)) == 2 and int(trial.get("need", 0)) == 3, str(trial))
+	var trial_keys: Array = trial.keys()
+	trial_keys.sort()
+	check("b_trial", GameState.tech_trials.size() == 1 and str(trial.get("id", "")) == "K02" and int(trial.get("prog", 0)) == 2 and int(trial.get("need", 0)) == 4 and trial_keys == ["id", "need", "prog"], str(trial))
 	var craft_mid := int(TechPlan.totals("E05").get("craft", -1))
 	trial["prog"] = 0
 	var craft_start := int(TechPlan.totals("E05").get("craft", -1))
@@ -1062,7 +1064,8 @@ func check_spec() -> void:
 	trial["prog"] = 2
 	check("b_craft", craft_mid == 120 and craft_start == 120 and craft_end == 120, "%d %d %d" % [craft_mid, craft_start, craft_end])
 	check("b_sheets", GameState.tech_blueprints == ["I05", "K04"] and TechPlan.view_state("I05") == "blueprint" and TechPlan.view_state("K04") == "blueprint")
-	check("b_power", GameState.battery == 46 and GameState.battery_cap() == 80 and int(GameState.resources.get("copper", 0)) == 14 and GameState.blueprint_cap() == 3)
+	check("b_power", GameState.battery == 46 and GameState.battery_bonus == 0 and GameState.battery_cap() == 80 and int(GameState.resources.get("copper", 0)) == 14 and GameState.blueprint_cap() == 3)
+	check("b9_view", TechPlan.view_state("A05") == "available" and TechPlan.view_state("I06") == "noprereq" and TechPlan.view_state("E04") == "noprereq")
 	check("b_sites", int(GameState.site_turns.get("mill", 0)) == 6 and int(GameState.site_turns.get("coal", 0)) == 4 and int(GameState.site_turns.get("coke", 0)) == 6, str(GameState.site_turns))
 	var row_i04: Dictionary = TechPlan.practice_row("I04")
 	var row_c06: Dictionary = TechPlan.practice_row("C06")
