@@ -337,6 +337,13 @@ func _paint_chapter() -> void:
 	stamp.add_theme_font_size_override("font_size", 13)
 	stamp.add_theme_color_override("font_color", Color("8e2a1e") if state == "done" else Color("6b5b48"))
 	_chapter_box.add_child(stamp)
+	var hint_text := GoalSystem.era3_hint()
+	if hint_text != "":
+		var hint := Label.new()
+		hint.text = hint_text
+		hint.add_theme_font_size_override("font_size", 13)
+		hint.add_theme_color_override("font_color", Color("6b5b48"))
+		_chapter_box.add_child(hint)
 	var sides: Array = ch.get("sides", [])
 	for side_v in sides:
 		var side := Label.new()

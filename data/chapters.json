@@ -80,9 +80,9 @@
       "art": "chapter_05_gewu",
       "years": "庆历五年正月 — 庆历七年六月",
       "lead": "边境暂歇，匠作院不歇。",
-      "main": "完成一项时代三科技",
+      "main": "画出一张时代三图纸",
       "sides": ["北境不失", "唃厮啰联兵"],
-      "check": "era3",
+      "check": "era3_blueprint",
       "battery": 10,
       "craft": 15
     },

@@ -63,6 +63,9 @@ func _ready() -> void:
 	eras = tech_doc.get("eras", [])
 	for tech_v in techs:
 		tech_by_id[str(tech_v.get("id", ""))] = tech_v
+	var practice_bad := check_practice_sites()
+	for bad_v in practice_bad:
+		push_error("实践门槛缺少 practice_site：%s" % str(bad_v))
 	firmware = tech_doc.get("firmware", [])
 	for fw_v in firmware:
 		var fw: Dictionary = fw_v
@@ -103,6 +106,20 @@ func _ready() -> void:
 	for feat_v in map.get("features", []):
 		var feat: Dictionary = feat_v
 		feature_hexes[Vector2i(int(feat.get("q", 0)), int(feat.get("r", 0)))] = feat
+
+
+func check_practice_sites() -> PackedStringArray:
+	var allowed := {"mill": true, "coal": true, "coke": true, "steel": true, "steam": true}
+	var bad := PackedStringArray()
+	for tech_v in techs:
+		var tech: Dictionary = tech_v
+		if str(tech.get("practice", "")) == "":
+			continue
+		var id := str(tech.get("id", ""))
+		var site := str(tech.get("practice_site", ""))
+		if site == "" or not allowed.has(site):
+			bad.append(id)
+	return bad
 
 
 func _load_dict(path: String) -> Dictionary:

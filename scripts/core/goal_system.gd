@@ -241,6 +241,8 @@ static func chapter_state(ch: Dictionary) -> String:
 		if xiping() >= 70 and _flag_any("heyi_accept", "heyi_cut", "heyi_refuse"):
 			return "done"
 		return "open"
+	if check == "era3_blueprint":
+		return _era3_blueprint()
 	if check == "era3":
 		if GameState._era_done_count(3) >= 1:
 			return "done"
@@ -249,6 +251,44 @@ static func chapter_state(ch: Dictionary) -> String:
 		if xiping_done() and _pacified("wangze"):
 			return "done"
 		return "open"
+	return "open"
+
+
+static func era3_hint() -> String:
+	var ch := current_chapter()
+	if str(ch.get("check", "")) != "era3_blueprint":
+		return ""
+	if not GameState.era_unlocked(3):
+		return "时代三 T68 开放"
+	if GameState.tech_blueprints.size() >= GameState.blueprint_cap():
+		return "图纸库已满，先去试制"
+	return ""
+
+
+static func _era3_blueprint() -> String:
+	var partial := false
+	var ready := false
+	for tech_v in DataDB.techs:
+		var tech: Dictionary = tech_v
+		if int(tech.get("era", 0)) != 3:
+			continue
+		var id := str(tech.get("id", ""))
+		if GameState.tech_done.has(id) or GameState.tech_blueprints.has(id):
+			return "done"
+		for trial_v in GameState.tech_trials:
+			var trial: Dictionary = trial_v
+			if str(trial.get("id", "")) == id:
+				return "done"
+		if GameState.tech_designing == id and GameState.tech_design_prog > 0:
+			partial = true
+		if GameState.tech_designing == id and GameState.tech_design_prog >= GameState.design_need(id) and GameState.tech_blueprints.size() >= GameState.blueprint_cap():
+			ready = true
+		if int(GameState.tech_paused.get(id, 0)) > 0:
+			partial = true
+	if ready:
+		return "done"
+	if partial:
+		return "partial"
 	return "open"
 
 

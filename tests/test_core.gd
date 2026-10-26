@@ -29,6 +29,7 @@ func run_tests() -> int:
 	check_city_close()
 	check_feedback()
 	check_spec()
+	check_round3()
 	if failed > 0:
 		push_error("失败 %d 项" % failed)
 	else:
@@ -1369,3 +1370,353 @@ func check_spec() -> void:
 		ui.goals.fly_time = 1.0
 	else:
 		check("c_fly", false, "no hud")
+
+
+func check_round3() -> void:
+	var date_line := "庆历六年春，格物图翻到第三卷「火器初兴」。坩埚炼钢、燧发机构都能画了。陛下，工匠们的眉毛，这回怕是真保不住了。"
+	var early_line := "时代二做满十一项，格物图提前翻到第三卷「火器初兴」。坩埚炼钢、燧发机构都能画了。陛下，工匠们的眉毛，这回怕是真保不住了。"
+	var gewu: Dictionary = DataDB.chapter_by_id.get("gewu", {})
+	check("ch5_text", str(gewu.get("main", "")) == "画出一张时代三图纸" and str(gewu.get("check", "")) == "era3_blueprint")
+	check("p_gate", GameState.PRACTICE_GATE == false and GameState.practice_gate == false)
+	GameState.new_game()
+	check("ch5_open", GoalSystem.chapter_state(gewu) == "open")
+	check("ch5_legacy", GoalSystem.chapter_state({"check": "era3"}) == "open")
+	GameState.tech_designing = "C07"
+	GameState.tech_design_prog = 1
+	check("ch5_partial", GoalSystem.chapter_state(gewu) == "partial")
+	GameState.tech_designing = ""
+	GameState.tech_design_prog = 0
+	GameState.tech_paused = {"E06": 4}
+	check("ch5_paused", GoalSystem.chapter_state(gewu) == "partial")
+	GameState.tech_paused = {}
+	GameState.tech_blueprints = ["C07"]
+	check("ch5_sheet", GoalSystem.chapter_state(gewu) == "done")
+	GameState.tech_blueprints = []
+	GameState.tech_trials = [{"id": "E06", "prog": 1, "need": 7}]
+	check("ch5_trial", GoalSystem.chapter_state(gewu) == "done")
+	GameState.tech_trials = []
+	GameState.tech_done.append("I07")
+	check("ch5_done_tech", GoalSystem.chapter_state(gewu) == "done")
+	check("ch5_legacy_done", GoalSystem.chapter_state({"check": "era3"}) == "done")
+	GameState.tech_done.erase("I07")
+	GameState.tech_blueprints = ["K02", "K04", "A05"]
+	GameState.tech_designing = "C07"
+	GameState.tech_design_prog = GameState.design_need("C07")
+	check("ch5_full", GoalSystem.chapter_state(gewu) == "done", str(GameState.tech_design_prog))
+	GameState.new_game()
+	GameState.tech_blueprints = ["K02"]
+	GameState.tech_designing = "K03"
+	GameState.tech_design_prog = 3
+	GameState.tech_trials = [{"id": "K04", "prog": 1, "need": 3}]
+	check("ch5_era2", GoalSystem.chapter_state(gewu) == "open")
+	GameState.new_game()
+	var craft0 := int(GameState.resources.get("craft", 0))
+	GoalSystem.grant_chapter(gewu, "done")
+	check("ch5_pay_done", int(GameState.resources.get("craft", 0)) == craft0 + 15 and GameState.battery_bonus == 10 and GameState.presearch_bonus == 10)
+	GoalSystem.grant_chapter(gewu, "done")
+	check("ch5_pay_once", int(GameState.resources.get("craft", 0)) == craft0 + 15 and GameState.battery_bonus == 10 and GameState.presearch_bonus == 10)
+	GameState.new_game()
+	var craft1 := int(GameState.resources.get("craft", 0))
+	GoalSystem.grant_chapter(gewu, "partial")
+	check("ch5_pay_partial", int(GameState.resources.get("craft", 0)) == craft1 + 8 and GameState.battery_bonus == 0 and GameState.presearch_bonus == 10)
+	GameState.new_game()
+	_stamp(65)
+	check("ch5_hint", GoalSystem.era3_hint() == "时代三 T68 开放", GoalSystem.era3_hint())
+	_stamp(68)
+	check("ch5_hint_open", GoalSystem.era3_hint() == "")
+	GameState.tech_blueprints = ["A01", "M01", "C01"]
+	check("ch5_hint_full", GoalSystem.era3_hint() == "图纸库已满，先去试制")
+	GameState.new_game()
+	_stamp(75)
+	GameState.tech_designing = "C07"
+	GameState.tech_design_prog = GameState.design_need("C07") - 1
+	GameState.battery = 40
+	GameState.tech_blueprints = []
+	GameState.finish_turn()
+	GoalSystem.on_turn()
+	var queued := false
+	for card_v in GameState.card_queue:
+		if str(card_v) == "end:gewu":
+			queued = true
+	check("ch5_tick", GameState.turn == 76 and GameState.tech_blueprints.has("C07") and GoalSystem.chapter_state(gewu) == "done" and queued, "turn %d sheets %s" % [GameState.turn, str(GameState.tech_blueprints)])
+	GameState.new_game()
+	GameState.chapter_rewarded["gewu"] = "done"
+	GameState.battery_bonus = 4
+	var kept := int(GameState.resources.get("craft", 0))
+	GoalSystem.grant_chapter(gewu, "partial")
+	check("ch5_settled", str(GameState.chapter_rewarded.get("gewu", "")) == "done" and GameState.battery_bonus == 4 and int(GameState.resources.get("craft", 0)) == kept)
+	var old_save: Dictionary = GameState.to_save()
+	old_save.erase("city_buildings")
+	old_save.erase("practice_said")
+	old_save["turn"] = 70
+	old_save["chapter_rewarded"] = {}
+	old_save["site_turns"] = {"mill": 3}
+	check("p17_load", GameState.from_save(old_save) and GameState.city_buildings.is_empty() and GameState.practice_said.is_empty() and int(GameState.site_turns.get("mill", 0)) == 3)
+	GameState.tech_blueprints = ["C07"]
+	check("ch5_old_live", GoalSystem.chapter_state(gewu) == "done" and not GameState.chapter_rewarded.has("gewu"))
+	check("ch5_t68", TechPlan._lock_label(3) == "T68开")
+	GameState.new_game()
+	var money0 := int(GameState.resources.get("money", 0))
+	var craft2 := int(GameState.resources.get("craft", 0))
+	check("p1_build", GameState.can_build("daming", "coalpit") == "" and GameState.build("daming", "coalpit") and GameState.notice.find("已建 · 煤场（大名）") >= 0, GameState.notice)
+	check("p1_paid", int(GameState.resources.get("money", 0)) == money0 - 80 and int(GameState.resources.get("craft", 0)) == craft2 - 30)
+	GameState.finish_turn()
+	check("p1_tick", int(GameState.site_turns.get("coal", 0)) == 1, str(GameState.site_turns))
+	for _i in 3:
+		GameState.finish_turn()
+		GameState.announce_turn()
+	check("p2_ready", int(GameState.site_turns.get("coal", 0)) == 4 and GameState.practice_ok("I04") and GameState.notice.find("实践够了 · 焦炭冶铁") >= 0, GameState.notice)
+	check("p2_said", GameState.practice_said.has("I04") and GameState.advisor_text.find("煤场跑够了") >= 0, GameState.advisor_text)
+	GameState.notice = ""
+	GameState.finish_turn()
+	GameState.announce_turn()
+	check("p2_once", GameState.notice.find("实践够了") < 0, GameState.notice)
+	GameState.new_game()
+	for _j in 10:
+		GameState.finish_turn()
+	check("p3_idle", GameState.site_turns.is_empty(), str(GameState.site_turns))
+	var money1 := int(GameState.resources.get("money", 0))
+	var craft3 := int(GameState.resources.get("craft", 0))
+	check("p4_coal", GameState.can_build("kaifeng", "coalpit") == "需煤矿")
+	check("p4_keep", int(GameState.resources.get("money", 0)) == money1 and int(GameState.resources.get("craft", 0)) == craft3)
+	var river := ""
+	var dry := ""
+	for city_v in DataDB.cities:
+		var city: Dictionary = city_v
+		if str(city.get("faction", "")) != "song":
+			continue
+		var cid := str(city.get("id", ""))
+		if GameState._city_has_river(cid) and river == "":
+			river = cid
+		if not GameState._city_has_river(cid) and dry == "":
+			dry = cid
+	check("p5_locked", river != "" and GameState.can_build(river, "watermill") == "待 齿轮与水磨规范", river)
+	GameState.tech_done.append("K01")
+	check("p5_river", GameState.can_build(river, "watermill") == "", GameState.can_build(river, "watermill"))
+	check("p5_dry", dry != "" and GameState.can_build(dry, "watermill") == "需河畔", dry)
+	var mills: Array = []
+	for city_v2 in DataDB.cities:
+		var city2: Dictionary = city_v2
+		var cid2 := str(city2.get("id", ""))
+		if GameState.can_build(cid2, "watermill") == "":
+			mills.append(cid2)
+		if mills.size() >= 4:
+			break
+	check("p6_cities", mills.size() >= 4, str(mills))
+	for n in 3:
+		GameState.build(str(mills[n]), "watermill")
+	GameState.site_turns = {}
+	GameState.finish_turn()
+	check("p6_three", int(GameState.site_turns.get("mill", 0)) == 3, str(GameState.site_turns))
+	GameState.build(str(mills[3]), "watermill")
+	GameState.finish_turn()
+	check("p6_cap", int(GameState.site_turns.get("mill", 0)) == 6, str(GameState.site_turns))
+	check("p7_again", GameState.can_build(str(mills[0]), "watermill") == "已建")
+	GameState.new_game()
+	GameState.tech_done.append("K01")
+	check("p8_build", GameState.build("yangzhou", "watermill"))
+	GameState.finish_turn()
+	check("p8_ran", int(GameState.site_turns.get("mill", 0)) == 1, str(GameState.site_turns))
+	Campaign.seize_yangzhou()
+	GameState.finish_turn()
+	GameState.finish_turn()
+	var yang: Array = GameState.city_buildings.get("yangzhou", [])
+	check("p8_lost", int(GameState.site_turns.get("mill", 0)) == 1 and yang.has("watermill"), str(GameState.site_turns))
+	GameState.new_game()
+	check("p9_build", GameState.can_build("xuzhou", "ironworks") == "" and GameState.build("xuzhou", "ironworks"), GameState.can_build("xuzhou", "ironworks"))
+	GameState.finish_turn()
+	check("p9_wait", int(GameState.site_turns.get("mill", 0)) == 0, str(GameState.site_turns))
+	GameState.tech_done.append("K02")
+	GameState.finish_turn()
+	check("p9_mill", int(GameState.site_turns.get("mill", 0)) == 1, str(GameState.site_turns))
+	GameState.new_game()
+	GameState.tech_blueprints = ["I04"]
+	GameState.resources["coal"] = 40
+	GameState.resources["craft"] = 200
+	GameState.site_turns = {"coal": 3}
+	check("p11_open", TechPlan.view_state("I04") == "blueprint", TechPlan.view_state("I04"))
+	GameState.practice_gate = true
+	check("p11_flag", TechPlan.view_state("I04") == "blocked" and TechPlan._blocked_text("I04") == "缺实践 3/4" and TechPlan._blocked_jump("I04") == "city", TechPlan._blocked_text("I04"))
+	check("p11_city", GameState.practice_city("I04") == "daming", GameState.practice_city("I04"))
+	var coal_before := int(GameState.resources.get("coal", 0))
+	var craft_before := int(GameState.resources.get("craft", 0))
+	var trials_before := GameState.tech_trials.size()
+	check("p10_flag", GameState.start_trial("I04") == false and GameState.tech_trials.size() == trials_before and int(GameState.resources.get("coal", 0)) == coal_before and int(GameState.resources.get("craft", 0)) == craft_before and GameState.notice == "实践不够 · 煤场 3/4", GameState.notice)
+	GameState.practice_gate = false
+	GameState.advisor_text = ""
+	GameState.line_history.erase("practice_short_I04")
+	check("p10_open", GameState.start_trial("I04") and GameState.tech_trials.size() == 1 and int(GameState.resources.get("coal", 0)) == coal_before - 20 and GameState.advisor_text.find("煤场还差 1 回合") >= 0 and GameState.line_history.has("practice_short_I04"), "trials %d coal %d text %s" % [GameState.tech_trials.size(), int(GameState.resources.get("coal", 0)), GameState.advisor_text])
+	GameState.tech_trials = []
+	GameState.tech_blueprints = ["I04"]
+	GameState.resources["coal"] = 40
+	GameState.resources["craft"] = 200
+	GameState.site_turns = {"coal": 4}
+	GameState.advisor_text = "quiet"
+	GameState.line_history.erase("practice_short_I04")
+	check("p12_ok", GameState.start_trial("I04") and GameState.advisor_text == "quiet" and GameState.practice_ok("I04"))
+	check("p14_free", GameState.practice_ok("K01"))
+	GameState.new_game()
+	GameState.tech_done.append("K04")
+	GameState.enact_edict("jiangyi")
+	check("p13_cut", GameState.practice_need("I07") == 9 and GameState.practice_need("K03") == 3 and GameState.practice_need("M08") == 2, "%d %d %d" % [GameState.practice_need("I07"), GameState.practice_need("K03"), GameState.practice_need("M08")])
+	GameState.new_game()
+	GameState.load_tech_sample()
+	var sample_i04: Dictionary = TechPlan.practice_row("I04")
+	var sample_c06: Dictionary = TechPlan.practice_row("C06")
+	var sample_i07: Dictionary = TechPlan.practice_row("I07")
+	var kaifeng_built: Array = GameState.city_buildings.get("kaifeng", [])
+	var daming_built: Array = GameState.city_buildings.get("daming", [])
+	check("p15_sample", GameState.site_turns.get("mill", 0) == 6 and GameState.site_turns.get("coal", 0) == 4 and GameState.site_turns.get("coke", 0) == 6 and bool(sample_i04.get("ok", false)) and bool(sample_c06.get("ok", false)) and not bool(sample_i07.get("ok", false)) and kaifeng_built.has("watermill") and daming_built.has("coalpit"), str(GameState.site_turns))
+	check("d21_sample", not GameState.event_flags.has("era3_open") and not GameState.event_flags.has("era3_tree_seen") and not GameState.line_history.has("era3_open") and int(GameState.tech_trials[0].get("prog", 0)) == 2 and int(GameState.tech_trials[0].get("need", 0)) == 4)
+	GameState.practice_said = ["I04"]
+	var packed: String = SaveManager.pack(GameState.to_save())
+	GameState.city_buildings = {}
+	GameState.practice_said = []
+	GameState.site_turns = {}
+	var loaded: Dictionary = SaveManager.unpack(packed)
+	var back_kf: Array = []
+	if GameState.from_save(loaded):
+		back_kf = GameState.city_buildings.get("kaifeng", [])
+	check("p16_round", back_kf.has("watermill") and GameState.practice_said.has("I04") and int(GameState.site_turns.get("coke", 0)) == 6, str(GameState.city_buildings))
+	GameState.new_game()
+	GameState.build("daming", "coalpit")
+	GameState.site_turns["coal"] = 3
+	GameState.tech_designing = "A01"
+	GameState.tech_design_prog = GameState.design_need("A01") - 1
+	GameState.battery = 30
+	GameState.battle_lines = []
+	GameState.finish_turn()
+	GameState.announce_turn()
+	check("p18_both", GameState.notice.find("图纸已成") >= 0 and GameState.notice.find("实践够了 · 焦炭冶铁") >= 0 and GameState.advisor_text.find("图纸画好了") >= 0 and GameState.advisor_text.find("跑够了") < 0, GameState.notice + " / " + GameState.advisor_text)
+	var tree := Engine.get_main_loop() as SceneTree
+	var ui := tree.get_first_node_in_group("game_ui") as GameUI
+	if ui != null and ui.desk != null:
+		GameState.new_game()
+		if ui.goals and ui.goals.blocking():
+			ui.goals.dismiss_card()
+		ui.open_city("daming")
+		var coal_btn: Button = ui.desk.debug_btns.get("build_daming_coalpit")
+		var iron_btn: Button = ui.desk.debug_btns.get("build_daming_ironworks")
+		var lines: Array = []
+		_walk_text(ui.desk, lines)
+		var joined := "\n".join(PackedStringArray(lines))
+		check("p19_coal", coal_btn != null and coal_btn.text.begins_with("建造（钱 80") and not coal_btn.disabled, coal_btn.text if coal_btn != null else "missing")
+		check("p19_iron", iron_btn != null and iron_btn.text.begins_with("建造（钱 100"), iron_btn.text if iron_btn != null else "missing")
+		check("p19_copy", joined.find("能建的和还锁着的。带实践的建筑每回合给门槛记一笔。") >= 0 and joined.find("可建") >= 0 and not ui.desk.debug_btns.has("build_daming_pasture"), joined)
+		ui.open_city("kaifeng")
+		var no_coal: Button = ui.desk.debug_btns.get("build_kaifeng_coalpit")
+		check("p19_block", no_coal != null and no_coal.disabled and no_coal.text == "需煤矿", no_coal.text if no_coal != null else "missing")
+		ui.desk.shut()
+	else:
+		check("p19_coal", false, "no ui")
+	var i04: Dictionary = DataDB.tech_by_id["I04"]
+	var saved_site := str(i04.get("practice_site", ""))
+	i04.erase("practice_site")
+	var bad := DataDB.check_practice_sites()
+	i04["practice_site"] = saved_site
+	check("p20_site", bad.has("I04") and DataDB.check_practice_sites().is_empty(), ",".join(bad))
+	GameState.new_game()
+	_stamp(67)
+	GameState.battle_lines = []
+	GameState.finish_turn()
+	GameState.announce_turn()
+	check("d14_toast", GameState.turn == 68 and GameState.notice.find("时代三 · 火器初兴 开了") >= 0 and GameState.advisor_text == date_line and GameState.advisor_mood == "smug" and GameState.event_flags.has("era3_open") and int(GameState.line_history.get("era3_open", 0)) == 68, GameState.notice + " / " + GameState.advisor_text)
+	GameState.notice = ""
+	GameState.finish_turn()
+	GameState.announce_turn()
+	check("d15_once", GameState.notice.find("时代三") < 0 and int(GameState.line_history.get("era3_open", 0)) == 68, GameState.notice)
+	var again: String = SaveManager.pack(GameState.to_save())
+	check("d16_load", GameState.from_save(SaveManager.unpack(again)) and GameState.event_flags.has("era3_open") and GameState.line_history.has("era3_open"))
+	GameState.notice = ""
+	GameState.battle_lines = []
+	GameState.finish_turn()
+	GameState.announce_turn()
+	check("d16_quiet", GameState.notice.find("时代三") < 0 and int(GameState.line_history.get("era3_open", 0)) == 68, GameState.notice)
+	GameState.new_game()
+	_stamp(67)
+	GameState.battle_lines = []
+	GameState.finish_turn()
+	GameState.battle_lines = ["延州城下打了一场。"]
+	GameState.announce_turn()
+	check("d19_battle", GameState.notice.find("时代三 · 火器初兴 开了") >= 0 and GameState.line_history.has("battle_brief") and not GameState.line_history.has("era3_open") and GameState.advisor_text.find("城下打起来了") >= 0, GameState.advisor_text)
+	GameState.notice = ""
+	GameState.battle_lines = []
+	GameState.finish_turn()
+	GameState.announce_turn()
+	check("d19_later", GameState.advisor_text == date_line and GameState.notice.find("时代三") < 0 and GameState.line_history.has("era3_open"), GameState.notice + " / " + GameState.advisor_text)
+	GameState.new_game()
+	_stamp(70)
+	var aged: Dictionary = GameState.to_save()
+	aged["advisor_text"] = "旧档"
+	if typeof(aged.get("event_flags", {})) == TYPE_DICTIONARY:
+		(aged["event_flags"] as Dictionary).erase("era3_open")
+		(aged["event_flags"] as Dictionary).erase("era3_tree_seen")
+	if typeof(aged.get("line_history", {})) == TYPE_DICTIONARY:
+		(aged["line_history"] as Dictionary).erase("era3_open")
+	check("d17_fill", GameState.from_save(aged) and GameState.event_flags.has("era3_open") and GameState.event_flags.has("era3_tree_seen") and int(GameState.line_history.get("era3_open", 0)) == 70 and GameState.advisor_text != date_line and GameState.notice.find("时代三") < 0, GameState.advisor_text)
+	GameState.notice = ""
+	GameState.battle_lines = []
+	GameState.advisor_text = "旧档"
+	GameState.finish_turn()
+	GameState.announce_turn()
+	check("d17_quiet", GameState.notice.find("时代三") < 0 and GameState.advisor_text != date_line and int(GameState.line_history.get("era3_open", 0)) == 70, GameState.notice + " / " + GameState.advisor_text)
+	GameState.new_game()
+	_stamp(67)
+	var young: Dictionary = GameState.to_save()
+	check("d18_keep", GameState.from_save(young) and not GameState.event_flags.has("era3_open") and not GameState.line_history.has("era3_open"))
+	GameState.battle_lines = []
+	GameState.finish_turn()
+	GameState.announce_turn()
+	check("d18_fire", GameState.turn == 68 and GameState.notice.find("时代三 · 火器初兴 开了") >= 0 and GameState.advisor_text == date_line, GameState.advisor_text)
+	var desk := tree.root.find_child("Desk", true, false) as Desk
+	if desk != null:
+		GameState.tech_tutorial_done = true
+		desk.tech_tutorial = -1
+		desk.tech_view = "focus"
+		desk.open("tech")
+		var board: Node = desk.host.get_child(0)
+		var left := int(board.call("era3_flash_left"))
+		var heads: Array = board.get("_flash_labels")
+		check("d22_flash", left > 1200 and left <= 1600 and GameState.event_flags.has("era3_tree_seen") and heads.size() == 2, "left %d heads %d" % [left, heads.size()])
+		desk.shut()
+		desk.open("tech")
+		var board2: Node = desk.host.get_child(0)
+		check("d22_second", int(board2.call("era3_flash_left")) == 0)
+		var flash_save: String = SaveManager.pack(GameState.to_save())
+		desk.shut()
+		GameState.from_save(SaveManager.unpack(flash_save))
+		GameState.tech_tutorial_done = true
+		desk.tech_tutorial = -1
+		desk.open("tech")
+		var board3: Node = desk.host.get_child(0)
+		check("d22_load", int(board3.call("era3_flash_left")) == 0 and GameState.event_flags.has("era3_tree_seen"))
+		desk.shut()
+	else:
+		check("d22_flash", false, "no desk")
+	GameState.new_game()
+	check("d23_clear", not GameState.event_flags.has("era3_open") and not GameState.event_flags.has("era3_tree_seen") and not GameState.line_history.has("era3_open"))
+	GameState.new_game()
+	_stamp(60)
+	var era2: Array = []
+	for tech_v in DataDB.techs:
+		var tech: Dictionary = tech_v
+		if int(tech.get("era", 0)) == 2:
+			era2.append(str(tech.get("id", "")))
+	for n2 in 10:
+		GameState.tech_done.append(str(era2[n2]))
+	GameState.tech_trials = [{"id": str(era2[10]), "prog": 0, "need": 1}]
+	GameState.tech_target = ""
+	GameState.tech_queue = []
+	GameState.battle_lines = []
+	GameState.finish_turn()
+	GameState.announce_turn()
+	check("d20_early", GameState.era_unlocked(3) and GameState._era_done_count(2) >= 11 and GameState.advisor_text == early_line and GameState.notice.find("时代三 · 火器初兴 开了") >= 0, GameState.advisor_text)
+	GameState.new_game()
+	GameState.build("daming", "coalpit")
+	var steps := 0
+	while steps < 85:
+		steps += 1
+		GameState.finish_turn()
+		GameState.announce_turn()
+	check("p21_turns", GameState.turn == 86 and int(GameState.site_turns.get("coal", 0)) == 85, "turn %d coal %s" % [GameState.turn, str(GameState.site_turns.get("coal", 0))])
+	GameState.practice_gate = false

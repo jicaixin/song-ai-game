@@ -39,9 +39,17 @@ var tutorial_bubble: Control
 var tutorial_key := ""
 var _choice: Control
 var _choice_dim: Control
+var _flash_labels: Array = []
+var _flash_until := 0
 
 
 func build() -> void:
+	_flash_labels = []
+	_flash_until = 0
+	set_process(false)
+	if GameState.arm_era3_flash():
+		_flash_until = Time.get_ticks_msec() + 1600
+		set_process(true)
 	theme = Settings.theme
 	_floor_theme()
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -601,6 +609,10 @@ func _build_drawer(x: float, y: float, w: float, h: float) -> void:
 		line.add_child(t)
 		var note := Kit.label(str(row.get("note", "")), "SmallLabel")
 		line.add_child(note)
+		if str(row.get("text", "")).begins_with("实践") and not bool(row.get("ok", false)):
+			var go := _text_button("去建造")
+			go.pressed.connect(_open_practice_city.bind(id))
+			line.add_child(go)
 		box.add_child(line)
 	box.add_child(Kit.label("效果", "H3Label"))
 	var effect := Kit.label(str(tech.get("effect", "")), "BodyLabel")
@@ -657,6 +669,7 @@ func _layout_focus() -> void:
 		var cap := Kit.label("%s %s  %d/%d" % [str(stage.get("name", "")), str(stage.get("subtitle", "")), prog.x, prog.y], "SmallLabel")
 		cap.position = Vector2(x, header_y)
 		cap.size = Vector2(cols * COL_W, 24)
+		_mark_era3_head(cap, stage)
 		graph.add_child(cap)
 		for tech_v in DataDB.techs:
 			var tech: Dictionary = tech_v
@@ -707,6 +720,7 @@ func _layout_overview() -> void:
 		var cap := Kit.label(title, "SmallLabel")
 		cap.position = Vector2(x, 4)
 		cap.size = Vector2(cols * 48.0, 22)
+		_mark_era3_head(cap, stage)
 		cap.clip_text = false
 		graph.add_child(cap)
 		for tech_v in DataDB.techs:
@@ -1291,6 +1305,45 @@ func _fit_size(_text: String, _width: float) -> int:
 	return 13
 
 
+func era3_flash_left() -> int:
+	return maxi(0, _flash_until - Time.get_ticks_msec())
+
+
+func _mark_era3_head(cap: Label, stage: Dictionary) -> void:
+	if _flash_until <= Time.get_ticks_msec():
+		return
+	if int(stage.get("era", 0)) != 3:
+		return
+	cap.add_theme_color_override("font_color", GOLD)
+	_flash_labels.append(cap)
+
+
+func _open_practice_city(id: String) -> void:
+	desk.open_city(GameState.practice_city(id))
+
+
+func _process(_delta: float) -> void:
+	if _flash_until <= 0:
+		set_process(false)
+		return
+	var now := Time.get_ticks_msec()
+	if now >= _flash_until:
+		for lab_v in _flash_labels:
+			var lab := lab_v as Label
+			if lab != null:
+				lab.remove_theme_color_override("font_color")
+		_flash_labels = []
+		_flash_until = 0
+		set_process(false)
+		return
+	var phase := 0.5 + 0.5 * sin(float(now) * 0.012)
+	var col := GOLD.lerp(Color("fff1c4"), phase)
+	for lab_v in _flash_labels:
+		var lab2 := lab_v as Label
+		if lab2 != null:
+			lab2.add_theme_color_override("font_color", col)
+
+
 func _lock_head(era: int) -> String:
 	if GameState.era_unlocked(era):
 		return "已开"
@@ -1388,7 +1441,10 @@ func _run(id: String) -> void:
 		_open_trial_confirm(id)
 		return
 	if jump == "city":
-		desk.open_city("kaifeng")
+		var dest := "kaifeng"
+		if GameState.practice_gate and GameState.tech_state(id) == "blueprint" and not GameState.practice_ok(id):
+			dest = GameState.practice_city(id)
+		desk.open_city(dest)
 	elif jump != "":
 		_jump(jump)
 

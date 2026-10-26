@@ -21,6 +21,8 @@ static func view_state(id: String) -> String:
 		return "queued"
 	if raw == "nopower":
 		return "blocked"
+	if raw == "blueprint" and GameState.practice_gate and not GameState.practice_ok(id):
+		return "blocked"
 	if raw == "blueprint" and not can_afford(id):
 		return "blocked"
 	return raw
@@ -328,18 +330,12 @@ static func practice_row(id: String) -> Dictionary:
 	var label := str(tech.get("practice", ""))
 	if label == "":
 		return {"ok": true, "have": 0, "need": 0, "label": ""}
-	var need := 0
-	var digits := ""
-	for i in label.length():
-		var ch := label.substr(i, 1)
-		if ch >= "0" and ch <= "9":
-			digits += ch
-		elif digits != "":
-			break
-	if digits != "":
-		need = int(digits)
-	var have := int(GameState.site_turns.get(_site_key(label), 0))
-	return {"ok": have >= need, "have": have, "need": need, "label": label}
+	return {
+		"ok": GameState.practice_ok(id),
+		"have": GameState.practice_have(id),
+		"need": GameState.practice_need(id),
+		"label": label,
+	}
 
 
 static func era_progress(era: int) -> Vector2i:
@@ -488,6 +484,8 @@ static func _trial(id: String) -> Dictionary:
 
 
 static func _blocked_text(id: String) -> String:
+	if GameState.practice_gate and GameState.tech_state(id) == "blueprint" and not GameState.practice_ok(id):
+		return "缺实践 %d/%d" % [GameState.practice_have(id), GameState.practice_need(id)]
 	if GameState.tech_designing == id and GameState.battery <= 0:
 		return "停电"
 	var craft_cost := int(DataDB.tech_by_id.get(id, {}).get("cost", {}).get("craft", 0))
@@ -498,15 +496,20 @@ static func _blocked_text(id: String) -> String:
 		return "缺%s%d/%d" % [str(short.get("name", "")), int(short.get("have", 0)), int(short.get("need", 0))]
 	var practice := practice_row(id)
 	if str(practice.get("label", "")) != "" and not bool(practice.get("ok", false)):
-		return "实践%d/%d" % [int(practice.get("have", 0)), int(practice.get("need", 0))]
+		return "缺实践 %d/%d" % [int(practice.get("have", 0)), int(practice.get("need", 0))]
 	return "受阻"
 
 
 static func _blocked_jump(id: String) -> String:
+	if GameState.practice_gate and GameState.tech_state(id) == "blueprint" and not GameState.practice_ok(id):
+		return "city"
 	if GameState.tech_designing == id and GameState.battery <= GameState.standby_cost():
 		return "console"
 	if not _short_material(id).is_empty():
 		return "industry"
+	var practice := practice_row(id)
+	if GameState.practice_gate and str(practice.get("label", "")) != "" and not bool(practice.get("ok", false)):
+		return "city"
 	return "workshop"
 
 

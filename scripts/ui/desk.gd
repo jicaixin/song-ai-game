@@ -375,12 +375,36 @@ func _page_workshop(box: VBoxContainer) -> void:
 		row.add_child(text)
 		text.add_child(Kit.label(str(tech.get("name", id)), "H3Label"))
 		text.add_child(Kit.label(_trial_cost(tech), "CaptionLabel"))
+		var practice: Dictionary = TechPlan.practice_row(id)
+		var practice_label := str(practice.get("label", ""))
+		if practice_label != "":
+			var have := int(practice.get("have", 0))
+			var need := int(practice.get("need", 0))
+			var status := Kit.label("实践 %d/%d" % [have, need], "SmallLabel")
+			if not bool(practice.get("ok", false)):
+				status.add_theme_color_override("font_color", Color("8e2a1e"))
+			text.add_child(status)
 		var act := Kit.button("开槽", "PrimaryButton")
-		act.custom_minimum_size = Vector2(88, 36)
+		act.custom_minimum_size = Vector2(120, 36)
 		act.disabled = GameState.tech_trials.size() >= open_slots
+		if GameState.practice_gate and practice_label != "" and not bool(practice.get("ok", false)):
+			act.text = "缺实践 %d/%d" % [int(practice.get("have", 0)), int(practice.get("need", 0))]
+			act.disabled = true
 		act.pressed.connect(GameState.start_trial.bind(id))
 		row.add_child(act)
 		list.add_child(card)
+	_practice_board(box)
+
+
+func _practice_board(box: VBoxContainer) -> void:
+	box.add_child(Kit.label("实践", "H3Label"))
+	var keys: PackedStringArray = PackedStringArray(["mill", "coal", "coke", "steel", "steam"])
+	for key in keys:
+		var have := int(GameState.site_turns.get(key, 0))
+		var name := str(GameState.PRACTICE_NAME.get(key, key))
+		var line := Kit.label("%s %d · %s" % [name, have, GameState.practice_tech_line(key)], "SmallLabel")
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(line)
 
 
 func _page_industry(box: VBoxContainer) -> void:
@@ -923,7 +947,7 @@ func _page_city(box: VBoxContainer) -> void:
 	box.add_child(Kit.label("%s · %s · 城墙 %d · 人口 %d" % [faction, str(city.get("circuit", "")), int(city.get("walls", 0)), int(city.get("pop", 0))], "H3Label"))
 	var output: Dictionary = city.get("output", {})
 	box.add_child(Kit.label("每回合 粮 %d · 钱 %d · 匠 %d" % [int(output.get("food", 0)), int(output.get("money", 0)), int(output.get("craft", 0))], "BodyLabel"))
-	box.add_child(Kit.label("能建的和还锁着的。这一页还不打地基。", "CaptionLabel"))
+	box.add_child(Kit.label("能建的和还锁着的。带实践的建筑每回合给门槛记一笔。", "SmallLabel"))
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(scroll)
@@ -942,8 +966,27 @@ func _page_city(box: VBoxContainer) -> void:
 			row.add_child(Kit.icon_rect(icon_name, 28))
 		var text := Kit.label("%s · %s" % [str(spec.get("name", "")), str(spec.get("effect", ""))], "BodyLabel")
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		row.add_child(text)
-		row.add_child(Kit.label("可建" if open else _lock_text(spec), "SmallLabel"))
+		var bid := str(spec.get("id", ""))
+		if GameState.practice_building(bid):
+			var note := Kit.label(GameState.practice_count_text(city_id, bid), "SmallLabel")
+			note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			note.custom_minimum_size = Vector2(220, 0)
+			row.add_child(note)
+			var why := GameState.can_build(city_id, bid)
+			var act := Kit.button(GameState.build_label(city_id, bid), "PrimaryButton")
+			act.custom_minimum_size = Vector2(220, 36)
+			act.disabled = why != ""
+			act.pressed.connect(_build_here.bind(city_id, bid))
+			row.add_child(act)
+			debug_btns["build_%s_%s" % [city_id, bid]] = act
+		else:
+			row.add_child(Kit.label("可建" if open else _lock_text(spec), "SmallLabel"))
+
+
+func _build_here(city_id: String, bid: String) -> void:
+	GameState.build(city_id, bid)
 
 
 func _lock_text(spec: Dictionary) -> String:

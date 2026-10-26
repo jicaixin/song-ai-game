@@ -548,6 +548,8 @@
         "coal": 20
       },
       "practice": "煤场运转 ≥4 回合",
+      "practice_site": "coal",
+      "practice_need": 4,
       "glyph": "bld_coke",
       "effect": "解锁焦炉：冶铁务消耗煤 → 铁 +50%",
       "history": "北方用煤冶铁，煤中硫分使铁变脆；先炼焦去硫是关键一步（宋代焦炭使用情况学界仍有讨论）",
@@ -624,6 +626,8 @@
         "wood": 10
       },
       "practice": "水磨坊运转 ≥3 回合",
+      "practice_site": "mill",
+      "practice_need": 3,
       "glyph": "g_spinning",
       "effect": "解锁纺织工场（作坊升级：钱 +3，匠 +1）；市舶司钱 +1；闽广城市可种棉",
       "history": "元代王祯《农书》记载水转大纺车，一般认为宋元之际已在麻纺区使用；宋代棉花主要在闽广、海南",
@@ -917,6 +921,8 @@
         "iron": 20
       },
       "practice": "水磨坊或河畔冶铁务运转 ≥6 回合",
+      "practice_site": "mill",
+      "practice_need": 6,
       "glyph": "bld_waterwheel",
       "effect": "解锁水轮电站（+12 电/座，最多 3 座，需电线连通；旱季与冬季结冰时 ×0.6）",
       "history": "宋代水碓、水磨、水排等水力机械普及",
@@ -945,6 +951,8 @@
         "wood": 20
       },
       "practice": "焦炉运转 ≥4 回合",
+      "practice_site": "coke",
+      "practice_need": 4,
       "glyph": "imp_rail",
       "effect": "解锁轨道改良：连接矿区的城市铁/煤 +50%，粮运 +",
       "history": "欧洲早期矿山轨道先用木轨、后用铸铁轨；宋代铸铁产能足以铸轨",
@@ -1000,6 +1008,8 @@
         "iron": 30
       },
       "practice": "焦炉累计运转 ≥12 回合",
+      "practice_site": "coke",
+      "practice_need": 12,
       "glyph": "bld_steelworks",
       "effect": "新资源“钢”；解锁炼钢厂（每回合 2 铁 + 2 煤 → 1 钢）",
       "history": "宋代钢主要靠灌钢、百炼，产量小、质量不匀",
@@ -1167,6 +1177,8 @@
         "steel": 10
       },
       "practice": "炼钢厂运转 ≥2 回合",
+      "practice_site": "steel",
+      "practice_need": 2,
       "glyph": "unit_musketeer_dark",
       "effect": "解锁燧发滑膛枪兵",
       "history": "宋代火器尚处火药箭、火球、火枪（喷火筒）阶段",
@@ -1224,6 +1236,8 @@
         "copper": 20
       },
       "practice": "蒸汽抽水站运转 ≥3 回合",
+      "practice_site": "steam",
+      "practice_need": 3,
       "glyph": "g_condenser",
       "effect": "Demo 终极：结局评分 +；解锁“蒸汽发电”全作预告；豆沙包隐藏日志片段",
       "history": "从大气式蒸汽机到分离冷凝式，是热效率的决定性一跳（欧洲约用了半个世纪）",

@@ -664,6 +664,63 @@ func _poll_tech_cmd() -> void:
 		desk.tech_tutorial = -1
 		desk.open("workshop")
 		return
+	if cmd == "shot_era3":
+		GameState.new_game()
+		_arm_shot()
+		_debug_turn(67)
+		GameState.battle_lines = []
+		GameState.finish_turn()
+		GameState.announce_turn()
+		if ui.desk:
+			ui.desk.shut()
+		if ui.goals:
+			ui.goals.collapsed = false
+			ui.goals.sync()
+		EventBus.state_changed.emit()
+		ui.toast_left = 30.0
+		return
+	if cmd == "shot_era3flash":
+		GameState.new_game()
+		_arm_shot()
+		_debug_turn(68)
+		GameState.event_flags.erase("era3_open")
+		GameState.event_flags.erase("era3_tree_seen")
+		GameState.line_history.erase("era3_open")
+		GameState.tech_tutorial_done = true
+		desk.tech_tutorial = -1
+		desk.tech_view = "focus"
+		desk.tech_show_legend = false
+		desk.open("tech")
+		return
+	if cmd == "shot_city":
+		GameState.new_game()
+		_arm_shot()
+		GameState.load_tech_sample()
+		desk.open_city("daming")
+		return
+	if cmd == "shot_ch5":
+		GameState.new_game()
+		_arm_shot()
+		_debug_turn(65)
+		if ui.goals:
+			ui.goals.collapsed = false
+			ui.goals.show_tab("chapter")
+			ui.goals.sync()
+		if ui.desk:
+			ui.desk.shut()
+		return
+	if cmd == "shot_ch5full":
+		GameState.new_game()
+		_arm_shot()
+		_debug_turn(68)
+		GameState.tech_blueprints = ["A01", "M01", "C01"]
+		if ui.goals:
+			ui.goals.collapsed = false
+			ui.goals.show_tab("chapter")
+			ui.goals.sync()
+		if ui.desk:
+			ui.desk.shut()
+		return
 	if cmd == "shot_tech" or cmd == "shot_swap" or cmd == "shot_hud":
 		_arm_shot()
 		GameState.load_tech_sample()

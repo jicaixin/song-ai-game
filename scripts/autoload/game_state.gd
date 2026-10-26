@@ -62,6 +62,35 @@ var end_warn_off := false
 var design_notice := ""
 var research_ping_until := 0
 var site_turns := {}
+# 试制暂不因实践不足而停工。材料产出接上后把 PRACTICE_GATE 改成 true。
+const PRACTICE_GATE := false
+const PRACTICE_PER_TURN_CAP := 3
+const PRACTICE_SITE := {
+	"watermill": "mill",
+	"coalpit": "coal",
+	"coke": "coke",
+	"steel": "steel",
+	"steampump": "steam",
+}
+const PRACTICE_BUILDING := {
+	"mill": "watermill",
+	"coal": "coalpit",
+	"coke": "coke",
+	"steel": "steel",
+	"steam": "steampump",
+}
+const PRACTICE_NAME := {
+	"mill": "水磨坊",
+	"coal": "煤场",
+	"coke": "焦炉",
+	"steel": "炼钢厂",
+	"steam": "蒸汽抽水站",
+}
+var practice_gate := false
+var city_buildings := {}
+var practice_said: Array = []
+var pending_practice: Array = []
+var era3_flash_until := 0
 var firmware_done: Array = []
 var edicts_done: Array = []
 var notice := ""
@@ -544,6 +573,7 @@ func finish_turn() -> void:
 	roll_weather()
 	apply_power()
 	_economy()
+	_practice_tick()
 	_research_tick()
 	restore_movement()
 	selected_uid = -1
@@ -568,46 +598,69 @@ func announce_turn() -> bool:
 	target_advisor_mood = ""
 	target_advisor_id = ""
 	target_added = []
-	if lines.is_empty() and blueprint == "" and started == "" and goal == "" and not _should_nag_research():
+	var practice_ids: Array = pending_practice.duplicate()
+	pending_practice = []
+	var practice_notice := ""
+	var practice_say := ""
+	if not practice_ids.is_empty():
+		practice_notice = "实践够了 · " + _practice_name_list(practice_ids)
+		practice_say = _practice_ready_line(practice_ids)
+	var era3_fresh: bool = era_unlocked(3) and not event_flags.has("era3_open")
+	if era3_fresh:
+		event_flags["era3_open"] = true
+	var era3_say: bool = era3_fresh or (event_flags.has("era3_open") and not line_history.has("era3_open"))
+	var nag: bool = _should_nag_research()
+	if lines.is_empty() and blueprint == "" and started == "" and goal == "" and practice_notice == "" and not era3_fresh and not era3_say and not nag:
 		return false
 	var bits: PackedStringArray = []
 	for line in lines:
 		bits.append(line)
+	if era3_fresh:
+		bits.append("时代三 · 火器初兴 开了")
 	if blueprint != "":
 		bits.append("图纸已成 · %s" % blueprint)
 	if started != "":
 		bits.append(started)
 	if goal != "":
 		bits.append(goal)
+	if practice_notice != "":
+		bits.append(practice_notice)
+	var nag_only: bool = nag and lines.is_empty() and blueprint == "" and started == "" and goal == "" and practice_notice == "" and not era3_say
+	if nag_only:
+		bits.append("电已满 · 选一份图纸")
 	if not bits.is_empty():
 		notice = "\n".join(bits)
 	if not lines.is_empty() and blueprint == "":
 		AdvisorSystem.present("城下打起来了。%s明细在上面。" % lines[0], "serious", "battle_brief")
 		return true
-	if lines.is_empty() and blueprint != "":
+	if not lines.is_empty() and blueprint != "":
+		AdvisorSystem.present("城下打了 %d 场，%s 的图纸也画好了。明细在上面。" % [lines.size(), blueprint], "serious", "battle_brief")
+		return true
+	if era3_say:
+		AdvisorSystem.present(_era3_open_line(), "smug", "era3_open")
+		return true
+	if blueprint != "":
 		var ready := "图纸画好了：%s。去匠作院试制吧。" % blueprint
 		if started != "":
 			ready += started
 		AdvisorSystem.present(ready, "smug", "blueprint_ready")
 		return true
-	if lines.is_empty() and blueprint == "" and started != "":
-		AdvisorSystem.present(started, "serious", "design_auto")
-		if goal == "":
-			notice = started
+	if practice_say != "":
+		AdvisorSystem.present(practice_say, "smug", "practice_ready")
 		return true
-	if lines.is_empty() and blueprint == "" and started == "" and goal != "":
+	if started != "":
+		AdvisorSystem.present(started, "serious", "design_auto")
+		return true
+	if goal != "":
 		if goal_line != "":
 			var mood := goal_mood if goal_mood != "" else "smug"
 			AdvisorSystem.present(goal_line, mood, goal_id)
-		notice = goal
 		return true
-	if not lines.is_empty() and blueprint != "":
-		AdvisorSystem.present("城下打了 %d 场，%s 的图纸也画好了。明细在上面。" % [lines.size(), blueprint], "serious", "battle_brief")
+	if nag_only:
+		research_idle_warned = true
+		AdvisorSystem.present("电库存满了，图纸还空着。按 T 选一份，别让蓄电池干耗着。", "serious", "power_nag")
 		return true
-	research_idle_warned = true
-	AdvisorSystem.present("电库存满了，图纸还空着。按 T 选一份，别让蓄电池干耗着。", "serious", "power_nag")
-	notice = "电已满 · 选一份图纸"
-	return true
+	return not bits.is_empty()
 
 
 func _should_nag_research() -> bool:
@@ -1244,6 +1297,11 @@ func _reset_research() -> void:
 	pending_blueprint = ""
 	research_idle_warned = false
 	site_turns = {}
+	practice_gate = PRACTICE_GATE
+	city_buildings = {}
+	practice_said = []
+	pending_practice = []
+	era3_flash_until = 0
 	blueprint_bonus = 0
 	firmware_done = []
 	edicts_done = []
@@ -1632,10 +1690,24 @@ func start_trial(id: String) -> bool:
 		EventBus.state_changed.emit()
 		return false
 	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	var practice_short: bool = not practice_ok(id)
+	if practice_short and practice_gate:
+		var blocked_have := practice_have(id)
+		var blocked_need := practice_need(id)
+		var blocked_name := str(PRACTICE_NAME.get(practice_site(id), "实践"))
+		_remind_practice_short(id, blocked_name, maxi(0, blocked_need - blocked_have))
+		notice = "实践不够 · %s %d/%d" % [blocked_name, blocked_have, blocked_need]
+		EventBus.state_changed.emit()
+		return false
 	if not _pay_trial(tech):
 		notice = "匠或材料不够"
 		EventBus.state_changed.emit()
 		return false
+	if practice_short:
+		var short_have := practice_have(id)
+		var short_need := practice_need(id)
+		var short_name := str(PRACTICE_NAME.get(practice_site(id), "实践"))
+		_remind_practice_short(id, short_name, maxi(0, short_need - short_have))
 	tech_blueprints.erase(id)
 	var cost: Dictionary = tech.get("cost", {})
 	var craft := int(cost.get("craft", 8))
@@ -1876,6 +1948,313 @@ func _recent_list(raw) -> Array:
 	return out
 
 
+func arm_era3_flash() -> bool:
+	if not era_unlocked(3) or event_flags.has("era3_tree_seen"):
+		return false
+	event_flags["era3_tree_seen"] = true
+	era3_flash_until = Time.get_ticks_msec() + 1600
+	return true
+
+
+func _era3_open_line() -> String:
+	var early: bool = _era_done_count(2) >= 11 and not Calendar.on_or_after(year, month, 1046, 3)
+	if early:
+		return "时代二做满十一项，格物图提前翻到第三卷「火器初兴」。坩埚炼钢、燧发机构都能画了。陛下，工匠们的眉毛，这回怕是真保不住了。"
+	return "庆历六年春，格物图翻到第三卷「火器初兴」。坩埚炼钢、燧发机构都能画了。陛下，工匠们的眉毛，这回怕是真保不住了。"
+
+
+func _quiet_era3() -> void:
+	if not era_unlocked(3) or event_flags.has("era3_open"):
+		return
+	event_flags["era3_open"] = true
+	event_flags["era3_tree_seen"] = true
+	line_history["era3_open"] = turn
+
+
+func practice_building(bid: String) -> bool:
+	return PRACTICE_SITE.has(bid) or bid == "ironworks"
+
+
+func practice_key_of(city_id: String, bid: String) -> String:
+	if PRACTICE_SITE.has(bid):
+		return str(PRACTICE_SITE[bid])
+	if bid == "ironworks" and tech_done.has("K02") and _city_has_river(city_id):
+		return "mill"
+	return ""
+
+
+func practice_site(id: String) -> String:
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	var site := str(tech.get("practice_site", ""))
+	if site != "":
+		return site
+	var label := str(tech.get("practice", ""))
+	if label == "":
+		return ""
+	return TechPlan._site_key(label)
+
+
+func practice_talent_scale(_id: String) -> float:
+	return 1.0
+
+
+func practice_need(id: String) -> int:
+	var base := _practice_base(id)
+	if base <= 0:
+		return 0
+	var scale := 1.0
+	if edicts_done.has("jiangyi"):
+		scale *= 0.75
+	scale *= practice_talent_scale(id)
+	return maxi(1, int(ceil(float(base) * scale)))
+
+
+func practice_have(id: String) -> int:
+	var site := practice_site(id)
+	if site == "":
+		return 0
+	return int(site_turns.get(site, 0))
+
+
+func practice_ok(id: String) -> bool:
+	if practice_site(id) == "":
+		return true
+	return practice_have(id) >= practice_need(id)
+
+
+func practice_city(id: String) -> String:
+	var bid := str(PRACTICE_BUILDING.get(practice_site(id), ""))
+	if bid == "":
+		return "kaifeng"
+	for city_v in DataDB.cities:
+		var city: Dictionary = city_v
+		var cid := str(city.get("id", ""))
+		if can_build(cid, bid) == "":
+			return cid
+	return "kaifeng"
+
+
+func practice_tech_line(key: String) -> String:
+	var parts := PackedStringArray()
+	for tech_v in DataDB.techs:
+		var tech: Dictionary = tech_v
+		var id := str(tech.get("id", ""))
+		if practice_site(id) != key:
+			continue
+		parts.append("%s %d/%d" % [str(tech.get("name", id)), practice_have(id), practice_need(id)])
+	return "、".join(parts)
+
+
+func practice_count_text(city_id: String, bid: String) -> String:
+	var key := practice_key_of(city_id, bid)
+	if key == "" and bid == "ironworks":
+		if not tech_done.has("K02"):
+			return "推广水力鼓风后计入水磨"
+		return "需河畔才计入水磨"
+	if key == "":
+		return ""
+	var have := int(site_turns.get(key, 0))
+	return "计入：%s %d · %s" % [str(PRACTICE_NAME.get(key, key)), have, practice_tech_line(key)]
+
+
+func can_build(city_id: String, bid: String) -> String:
+	var city := DataDB.city_by_id(city_id)
+	if city.is_empty() or str(city.get("faction", "")) != "song":
+		return "非宋城"
+	var spec := _building_spec(bid)
+	if spec.is_empty():
+		return "未开放"
+	if not building_unlocked(spec):
+		return building_lock_text(spec)
+	if _city_has_building(city_id, bid):
+		return "已建"
+	if bid == "watermill" and not _city_has_river(city_id):
+		return "需河畔"
+	if bid == "coalpit" and not _near_feature(city, "coal"):
+		return "需煤矿"
+	if bid == "ironworks" and not _near_feature(city, "iron"):
+		return "需铁矿"
+	if bid == "steampump" and not _near_feature(city, "coal") and not _near_feature(city, "iron"):
+		return "需煤矿"
+	var cost: Dictionary = spec.get("cost", {})
+	if int(resources.get("money", 0)) < int(cost.get("money", 0)):
+		return "缺钱"
+	if int(resources.get("craft", 0)) < int(cost.get("craft", 0)):
+		return "缺匠"
+	return ""
+
+
+func build_label(city_id: String, bid: String) -> String:
+	var why := can_build(city_id, bid)
+	if why != "":
+		return why
+	var spec := _building_spec(bid)
+	var cost: Dictionary = spec.get("cost", {})
+	return "建造（钱 %d · 匠 %d）" % [int(cost.get("money", 0)), int(cost.get("craft", 0))]
+
+
+func build(city_id: String, bid: String) -> bool:
+	if can_build(city_id, bid) != "":
+		return false
+	var spec := _building_spec(bid)
+	var cost: Dictionary = spec.get("cost", {})
+	resources["money"] = int(resources.get("money", 0)) - int(cost.get("money", 0))
+	resources["craft"] = int(resources.get("craft", 0)) - int(cost.get("craft", 0))
+	if not city_buildings.has(city_id):
+		city_buildings[city_id] = []
+	var built: Array = city_buildings[city_id]
+	built.append(bid)
+	city_buildings[city_id] = built
+	var city := DataDB.city_by_id(city_id)
+	var place := str(city.get("short", city.get("name", city_id)))
+	notice = "已建 · %s（%s）" % [str(spec.get("name", bid)), place]
+	EventBus.state_changed.emit()
+	return true
+
+
+func building_lock_text(spec: Dictionary) -> String:
+	var unlock := str(spec.get("unlock", ""))
+	if unlock.begins_with("edict_"):
+		return "待政令"
+	var tech: Dictionary = DataDB.tech_by_id.get(unlock, {})
+	if tech.is_empty():
+		return "未开放"
+	return "待 " + str(tech.get("name", unlock))
+
+
+func _practice_tick() -> void:
+	var before := _practice_ok_set()
+	var gain := {}
+	for city_id_v in city_buildings.keys():
+		var city_id := str(city_id_v)
+		var city := DataDB.city_by_id(city_id)
+		if str(city.get("faction", "")) != "song":
+			continue
+		var built: Array = city_buildings[city_id_v]
+		for bid_v in built:
+			var key := practice_key_of(city_id, str(bid_v))
+			if key == "":
+				continue
+			gain[key] = int(gain.get(key, 0)) + 1
+	for key_v in gain.keys():
+		var key := str(key_v)
+		var add := mini(int(gain[key_v]), PRACTICE_PER_TURN_CAP)
+		site_turns[key] = int(site_turns.get(key, 0)) + add
+	for id_v in _practice_ok_set().keys():
+		var id := str(id_v)
+		if before.has(id) or practice_said.has(id):
+			continue
+		practice_said.append(id)
+		pending_practice.append(id)
+
+
+func _practice_ok_set() -> Dictionary:
+	var out := {}
+	for tech_v in DataDB.techs:
+		var tech: Dictionary = tech_v
+		var id := str(tech.get("id", ""))
+		if practice_site(id) == "":
+			continue
+		if tech_done.has(id):
+			continue
+		if practice_ok(id):
+			out[id] = true
+	return out
+
+
+func _practice_base(id: String) -> int:
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	if tech.has("practice_need"):
+		return int(tech.get("practice_need", 0))
+	var label := str(tech.get("practice", ""))
+	var digits := ""
+	for i in label.length():
+		var ch := label.substr(i, 1)
+		if ch >= "0" and ch <= "9":
+			digits += ch
+		elif digits != "":
+			break
+	if digits == "":
+		return 0
+	return int(digits)
+
+
+func _practice_name_list(ids: Array) -> String:
+	var parts := PackedStringArray()
+	for id_v in ids:
+		var id := str(id_v)
+		var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+		parts.append(str(tech.get("name", id)))
+	return "、".join(parts)
+
+
+func _practice_ready_line(ids: Array) -> String:
+	if ids.size() >= 2:
+		return "两份门槛同时过了：%s。匠作院今天会很热闹。" % _practice_name_list(ids)
+	var id := str(ids[0])
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	var site_name := str(PRACTICE_NAME.get(practice_site(id), "门槛"))
+	return "%s跑够了，师傅们手上有了数。「%s」的实践这关过了，图纸一到就能开槽。" % [site_name, str(tech.get("name", id))]
+
+
+func _remind_practice_short(id: String, site_name: String, left: int) -> void:
+	var key := "practice_short_%s" % id
+	if line_history.has(key) and turn - int(line_history[key]) < 5:
+		return
+	AdvisorSystem.present("图纸是我画的，炉子得他们自己烧。%s还差 %d 回合。" % [site_name, left], "serious", key)
+
+
+func _city_has_building(city_id: String, bid: String) -> bool:
+	if not city_buildings.has(city_id):
+		return false
+	var built: Array = city_buildings[city_id]
+	return built.has(bid)
+
+
+func _building_spec(bid: String) -> Dictionary:
+	for spec_v in DataDB.buildings:
+		var spec: Dictionary = spec_v
+		if str(spec.get("id", "")) == bid:
+			return spec
+	return {}
+
+
+func _city_has_river(city_id: String) -> bool:
+	var city := DataDB.city_by_id(city_id)
+	if city.is_empty():
+		return false
+	var masks: Array = DataDB.river_masks.get(Vector2i(int(city.get("q", 0)), int(city.get("r", 0))), [])
+	if masks.size() < 2:
+		return false
+	return int(masks[0]) != 0 or int(masks[1]) != 0
+
+
+func _near_feature(city: Dictionary, feat_id: String) -> bool:
+	var origin := Vector2i(int(city.get("q", 0)), int(city.get("r", 0)))
+	for hex_v in DataDB.feature_hexes.keys():
+		var feat: Dictionary = DataDB.feature_hexes[hex_v]
+		if str(feat.get("id", "")) != feat_id:
+			continue
+		if HexGrid.distance(origin, hex_v) <= 2:
+			return true
+	return false
+
+
+func _building_map(raw) -> Dictionary:
+	var out := {}
+	if typeof(raw) != TYPE_DICTIONARY:
+		return out
+	var src: Dictionary = raw
+	for key_v in src.keys():
+		var ids: Array = []
+		var list = src[key_v]
+		if typeof(list) == TYPE_ARRAY:
+			for item_v in list:
+				ids.append(str(item_v))
+		out[str(key_v)] = ids
+	return out
+
+
 func building_unlocked(spec: Dictionary) -> bool:
 	var unlock := str(spec.get("unlock", "start"))
 	if unlock == "" or unlock == "start":
@@ -1925,6 +2304,8 @@ func to_save() -> Dictionary:
 		"end_warn_off": end_warn_off,
 		"research_idle_warned": research_idle_warned,
 		"site_turns": site_turns.duplicate(),
+		"city_buildings": city_buildings.duplicate(true),
+		"practice_said": practice_said.duplicate(),
 		"firmware_done": firmware_done.duplicate(),
 		"edicts_done": edicts_done.duplicate(),
 		"relations": relations.duplicate(),
@@ -2101,6 +2482,9 @@ func from_save(data: Dictionary) -> bool:
 	battle_lines = []
 	pending_blueprint = ""
 	site_turns = _int_dict(data.get("site_turns", {}))
+	city_buildings = _building_map(data.get("city_buildings", {}))
+	practice_said = _str_list(data.get("practice_said", []))
+	pending_practice = []
 	tech_trials = []
 	for trial_v in data.get("tech_trials", []):
 		if typeof(trial_v) != TYPE_DICTIONARY:
@@ -2171,6 +2555,7 @@ func from_save(data: Dictionary) -> bool:
 	presearch_full_said = int(data.get("presearch_full_said", -99))
 	food_start = int(data.get("food_start", int(resources.get("food", 0))))
 	produce_floor = -1
+	_quiet_era3()
 	_apply_seized()
 	if orders.is_empty():
 		GoalSystem.on_turn()
@@ -2209,6 +2594,9 @@ func load_tech_sample() -> void:
 	resources["copper"] = 14
 	resources["iron"] = 46
 	site_turns = {"mill": 6, "coal": 4, "coke": 6}
+	city_buildings = {"kaifeng": ["watermill"], "daming": ["coalpit"]}
+	practice_said = []
+	pending_practice = []
 	blueprint_bonus = 0
 	battery_bonus = 0
 	battery = 46
