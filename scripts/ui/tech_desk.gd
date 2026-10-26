@@ -1331,13 +1331,16 @@ func _process(_delta: float) -> void:
 		for lab_v in _flash_labels:
 			var lab := lab_v as Label
 			if lab != null:
+				# Dropping the override leaves the last pale gold cached.
 				lab.remove_theme_color_override("font_color")
+				lab.add_theme_color_override("font_color", MUTED)
+				lab.queue_redraw()
 		_flash_labels = []
 		_flash_until = 0
 		set_process(false)
 		return
 	var phase := 0.5 + 0.5 * sin(float(now) * 0.012)
-	var col := GOLD.lerp(Color("fff1c4"), phase)
+	var col := GOLD.lerp(Color("e8c56a"), phase)
 	for lab_v in _flash_labels:
 		var lab2 := lab_v as Label
 		if lab2 != null:

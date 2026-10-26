@@ -1678,6 +1678,20 @@ func check_round3() -> void:
 		var left := int(board.call("era3_flash_left"))
 		var heads: Array = board.get("_flash_labels")
 		check("d22_flash", left > 1200 and left <= 1600 and GameState.event_flags.has("era3_tree_seen") and heads.size() == 2, "left %d heads %d" % [left, heads.size()])
+		board.set("_flash_until", Time.get_ticks_msec() - 1)
+		board.call("_process", 0.016)
+		var ink_ok := heads.size() == 2
+		var ink_detail := ""
+		for lab_v in heads:
+			var lab := lab_v as Label
+			if lab == null or not is_instance_valid(lab):
+				ink_ok = false
+				continue
+			var col: Color = lab.get_theme_color("font_color")
+			ink_detail = col.to_html(false)
+			if col.r > 0.6 or col.g > 0.55 or col.b > 0.5:
+				ink_ok = false
+		check("d22_ink", ink_ok, ink_detail)
 		desk.shut()
 		desk.open("tech")
 		var board2: Node = desk.host.get_child(0)
