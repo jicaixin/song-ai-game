@@ -741,13 +741,6 @@ func _place_node(id: String, pos: Vector2, tile: bool) -> void:
 	face.prog = int(shown.x)
 	face.need = int(shown.y)
 	b.add_child(face)
-	var flag := _flag_text(id, state)
-	if flag != "" and not tile:
-		var chip := Kit.label(flag, "SmallLabel")
-		chip.position = Vector2(4, -16)
-		chip.add_theme_font_size_override("font_size", 13)
-		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		b.add_child(chip)
 	if tile:
 		var icon := TextureRect.new()
 		icon.texture = Kit.icon("tech_%s" % id)
@@ -1397,17 +1390,6 @@ func _node_progress(id: String, state: String) -> Vector2i:
 	return Vector2i(0, 1)
 
 
-func _flag_text(id: String, state: String) -> String:
-	var shown := _node_progress(id, state)
-	if state == "designing":
-		return "设计中 %d/%d" % [shown.x, shown.y]
-	if state == "trial":
-		return "试制 %d/%d" % [shown.x, shown.y]
-	if state == "queued":
-		return "排第 %d" % PLAN.queue_index(id)
-	return ""
-
-
 func _circ(n: int) -> String:
 	var marks := ["①", "②", "③"]
 	if n >= 1 and n <= marks.size():
@@ -1789,10 +1771,26 @@ class Face extends Control:
 	func _ring(color: Color) -> void:
 		var frac := clampf(float(prog) / float(maxi(1, need)), 0.0, 1.0)
 		if frac <= 0.0:
-			frac = 0.04
-		var center := size * 0.5
-		var radius := maxf(size.x, size.y) * 0.52
-		draw_arc(center, radius, -PI * 0.5, -PI * 0.5 + TAU * frac, 32, color, 3.0, true)
+			return
+		var inset := 3.0
+		var rect := Rect2(Vector2(inset, inset), size - Vector2(inset * 2.0, inset * 2.0))
+		var pts := PackedVector2Array([
+			rect.position,
+			Vector2(rect.end.x, rect.position.y),
+			rect.end,
+			Vector2(rect.position.x, rect.end.y),
+		])
+		var total := rect.size.x * 2.0 + rect.size.y * 2.0
+		var remain := total * frac
+		for i in 4:
+			if remain <= 0.4:
+				break
+			var a: Vector2 = pts[i]
+			var b: Vector2 = pts[(i + 1) % 4]
+			var length := a.distance_to(b)
+			var take := minf(remain, length)
+			draw_line(a, a.lerp(b, take / maxf(length, 0.001)), color, 2.5, true)
+			remain -= take
 
 	func _badge(at: Vector2) -> void:
 		var center := at + Vector2(9, 9)

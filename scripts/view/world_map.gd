@@ -1021,9 +1021,9 @@ func _add_pips(root: Node3D, unit: Dictionary) -> void:
 	var lab := Label3D.new()
 	lab.text = _pip_text(unit)
 	lab.font = Settings.banner_font
-	lab.font_size = 42
-	lab.pixel_size = 0.012
-	lab.position = Vector3(0.0, -0.42, 0.0)
+	lab.font_size = 48
+	lab.pixel_size = 0.02
+	lab.position = Vector3(0.0, 4.15, 0.0)
 	lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	lab.outline_size = 6
 	lab.outline_modulate = Color("1a2428")
@@ -1057,9 +1057,9 @@ func _add_garrison_badge(root: Node3D, n: int, cap: int) -> void:
 	var lab := Label3D.new()
 	lab.text = "%d/%d" % [n, cap]
 	lab.font = Settings.banner_font
-	lab.font_size = 36
-	lab.pixel_size = 0.014
-	lab.position = Vector3(0.72, 1.15, 0.0)
+	lab.font_size = 42
+	lab.pixel_size = 0.018
+	lab.position = Vector3(0.46, 4.85, 0.0)
 	lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	lab.modulate = Color("f4ead2")
 	lab.outline_size = 8

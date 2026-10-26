@@ -39,7 +39,7 @@ static func status_text(id: String) -> String:
 	if state == "done":
 		return "已成"
 	if state == "designing":
-		return "设计 %d/%d" % [GameState.tech_design_prog, GameState.design_need(id)]
+		return "设计中 %d/%d" % [GameState.tech_design_prog, GameState.design_need(id)]
 	if state == "queued":
 		return "排第%d" % queue_index(id)
 	if state == "available":

@@ -283,6 +283,21 @@ func _process(_delta: float) -> void:
 	})
 
 
+func _frame_yanzhou(map: Node) -> void:
+	map.set("overview", false)
+	map.set("zoom_index", 2)
+	map.set("_debug_dist", 0.0)
+	if map.has_method("_sync_grade"):
+		map.call("_sync_grade")
+	var yan: Dictionary = DataDB.city_by_id("yanzhou")
+	var world := HexGrid.axial_to_pixel(int(yan.q), int(yan.r))
+	map.set("look_xz", world)
+	if map.has_method("_place_camera"):
+		map.call("_place_camera")
+	if map.has_method("_seat_toward"):
+		map.call("_seat_toward", world, Vector2(640, 280))
+
+
 func _arm_shot() -> void:
 	GameState.tutorial_done = true
 	GameState.playing = true
@@ -516,29 +531,30 @@ func _poll_tech_cmd() -> void:
 		_arm_shot()
 		GameState.weather_id = "clear"
 		var shi := GameState.unit_by_name("石元孙部")
-		var liu := GameState.unit_by_name("刘平部")
 		var yan: Dictionary = DataDB.city_by_id("yanzhou")
 		var city := Vector2i(int(yan.q), int(yan.r))
 		GameState.set_pos(int(shi.uid), city)
-		liu.mp = int(liu.max_mp)
-		GameState.selected_uid = int(liu.uid)
+		GameState.selected_uid = -1
+		if ui.desk:
+			ui.desk.shut()
+		ui.close_tile_menu()
 		var map := get_tree().get_first_node_in_group("world_map")
 		if map:
 			map.call("full_refresh")
-			map.call("focus_world", HexGrid.axial_to_pixel(city.x, city.y))
-			map.call("_open_menu", city, TileActions.plan(city, int(liu.uid)))
+			_frame_yanzhou(map)
 		EventBus.state_changed.emit()
 		return
 	if cmd == "shot_pips":
 		_arm_shot()
 		GameState.weather_id = "clear"
+		GameState.selected_uid = -1
 		if ui.desk:
 			ui.desk.shut()
 		ui.close_tile_menu()
 		var map2 := get_tree().get_first_node_in_group("world_map")
 		if map2:
 			map2.call("full_refresh")
-			map2.call("focus_city", "yanzhou")
+			_frame_yanzhou(map2)
 		EventBus.state_changed.emit()
 		return
 	if cmd == "shot_endwarn":
