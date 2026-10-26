@@ -227,6 +227,7 @@ func _wang_f1() -> bool:
 
 
 func _spend_power() -> void:
+	_auto_build()
 	if GameState.tech_designing == "":
 		for tech_v in DataDB.techs:
 			var tech: Dictionary = tech_v
@@ -240,6 +241,27 @@ func _spend_power() -> void:
 	for bid_v in pending:
 		if GameState.start_trial(str(bid_v)):
 			return
+
+
+func _auto_build() -> void:
+	if GameState.turn < 2:
+		return
+	GameState.build("daming", "coalpit")
+	GameState.build("daming", "ironworks")
+	GameState.build("luoyang", "saltpeter")
+	if not GameState._any_building("lumberyard"):
+		for city_v in DataDB.cities:
+			var city: Dictionary = city_v
+			var cid := str(city.get("id", ""))
+			if GameState.build(cid, "lumberyard"):
+				break
+	if GameState.turn >= 10:
+		GameState.build("mingzhou", "shibosi")
+	if GameState.tech_done.has("I03"):
+		GameState.build("hongzhou", "copperbath")
+		GameState.build("guangzhou", "copperbath")
+	if GameState.tech_done.has("I04"):
+		GameState.build("daming", "coke")
 
 
 func _record(flags: Array[bool], first: Dictionary) -> bool:

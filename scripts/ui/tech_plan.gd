@@ -21,7 +21,7 @@ static func view_state(id: String) -> String:
 		return "queued"
 	if raw == "nopower":
 		return "blocked"
-	if raw == "blueprint" and GameState.practice_gate and not GameState.practice_ok(id):
+	if raw == "blueprint" and GameState.practice_gate_on and not GameState.practice_ok(id):
 		return "blocked"
 	if raw == "blueprint" and not can_afford(id):
 		return "blocked"
@@ -39,22 +39,20 @@ static func status_text(id: String) -> String:
 	var state := view_state(id)
 	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
 	if state == "done":
-		return "已成"
+		return "已完成"
 	if state == "designing":
-		return "设计中 %d/%d" % [GameState.tech_design_prog, GameState.design_need(id)]
-	if state == "queued":
-		return "排第%d" % queue_index(id)
-	if state == "available":
-		return "可设计"
+		return "设计 %d/%d 电" % [GameState.tech_design_prog, GameState.design_need(id)]
+	if state == "queued" or state == "available":
+		return "可设计 · %d 电" % GameState.design_need(id)
 	if state == "noprereq":
-		return "缺前置×%d" % missing_prereq_count(id)
+		return "缺：%s" % short_name(_first_missing(id))
 	if state == "blocked":
 		return _blocked_text(id)
 	if state == "blueprint":
-		return "待试制"
+		return "有图纸 · 试制 %d 回合" % _trial_turns(id)
 	if state == "trial":
 		var trial := _trial(id)
-		return "试制 %d/%d" % [int(trial.get("prog", 0)), int(trial.get("need", 1))]
+		return "试制 %d/%d 回合" % [int(trial.get("prog", 0)), int(trial.get("need", 1))]
 	return _lock_label(int(tech.get("era", 1)))
 
 
@@ -87,11 +85,7 @@ static func show_target_link(id: String) -> bool:
 	if GameState.tech_target == id:
 		return false
 	var state := view_state(id)
-	if state == "done" or state == "locked" or state == "noprereq":
-		return false
-	if state == "blueprint" or state == "trial" or state == "designing" or state == "queued" or state == "available" or state == "blocked":
-		return true
-	return false
+	return state == "available" or state == "queued" or state == "designing" or state == "noprereq" or state == "blocked"
 
 
 static func run_primary(id: String) -> String:
@@ -484,7 +478,7 @@ static func _trial(id: String) -> Dictionary:
 
 
 static func _blocked_text(id: String) -> String:
-	if GameState.practice_gate and GameState.tech_state(id) == "blueprint" and not GameState.practice_ok(id):
+	if GameState.practice_gate_on and GameState.tech_state(id) == "blueprint" and not GameState.practice_ok(id):
 		return "缺实践 %d/%d" % [GameState.practice_have(id), GameState.practice_need(id)]
 	if GameState.tech_designing == id and GameState.battery <= 0:
 		return "停电"
@@ -493,7 +487,7 @@ static func _blocked_text(id: String) -> String:
 		return "缺匠"
 	var short := _short_material(id)
 	if not short.is_empty():
-		return "缺%s%d/%d" % [str(short.get("name", "")), int(short.get("have", 0)), int(short.get("need", 0))]
+		return "缺%s %d/%d" % [str(short.get("name", "")), int(short.get("have", 0)), int(short.get("need", 0))]
 	var practice := practice_row(id)
 	if str(practice.get("label", "")) != "" and not bool(practice.get("ok", false)):
 		return "缺实践 %d/%d" % [int(practice.get("have", 0)), int(practice.get("need", 0))]
@@ -501,14 +495,14 @@ static func _blocked_text(id: String) -> String:
 
 
 static func _blocked_jump(id: String) -> String:
-	if GameState.practice_gate and GameState.tech_state(id) == "blueprint" and not GameState.practice_ok(id):
+	if GameState.practice_gate_on and GameState.tech_state(id) == "blueprint" and not GameState.practice_ok(id):
 		return "city"
 	if GameState.tech_designing == id and GameState.battery <= GameState.standby_cost():
 		return "console"
 	if not _short_material(id).is_empty():
 		return "industry"
 	var practice := practice_row(id)
-	if GameState.practice_gate and str(practice.get("label", "")) != "" and not bool(practice.get("ok", false)):
+	if GameState.practice_gate_on and str(practice.get("label", "")) != "" and not bool(practice.get("ok", false)):
 		return "city"
 	return "workshop"
 
@@ -541,10 +535,205 @@ static func _missing_sheet(id: String) -> String:
 
 static func _lock_label(era: int) -> String:
 	if era >= 3:
-		return "T68开"
+		return "第 68 回合开"
 	if era == 2:
-		return "T31开"
+		return "第 31 回合开"
 	return "未开"
+
+
+static func short_name(id: String) -> String:
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	var given := str(tech.get("short", ""))
+	if given != "":
+		return given
+	var name := str(tech.get("name", id))
+	if name.length() <= 5:
+		return name
+	return name.substr(0, 5)
+
+
+static func _trial_turns(id: String) -> int:
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	var cost: Dictionary = tech.get("cost", {})
+	return maxi(2, int(ceil(float(int(cost.get("craft", 8))) / 12.0)))
+
+
+static func _first_missing(id: String) -> String:
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	for pre_v in tech.get("prereq", []):
+		var pre := str(pre_v)
+		if not GameState.tech_done.has(pre):
+			return pre
+	return ""
+
+
+static func corner(id: String) -> String:
+	var state := view_state(id)
+	if state == "blocked":
+		return "阻"
+	if state == "done":
+		return "√"
+	if state == "designing":
+		return "设"
+	if state == "trial":
+		return "试"
+	if state == "blueprint":
+		return "图"
+	if state == "noprereq":
+		return "缺%d" % missing_prereq_count(id)
+	if state == "locked":
+		return "锁"
+	return ""
+
+
+static func card_status(id: String) -> String:
+	var state := view_state(id)
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	if state == "noprereq":
+		return "缺前置 · 还差 %d 项" % missing_prereq_count(id)
+	if state == "available":
+		if GameState.tech_designing == "":
+			return "可设计 · 设计槽空着"
+		return "可设计 · 设计槽占用，可排队（%d/%d）" % [GameState.tech_queue.size(), GameState.QUEUE_CAP]
+	if state == "queued":
+		return "在队列第 %d 位" % queue_index(id)
+	if state == "designing":
+		var left := maxi(0, GameState.design_need(id) - GameState.tech_design_prog)
+		return "设计中 %d/%d 电 · 约 %d 回合" % [GameState.tech_design_prog, GameState.design_need(id), int(ceil(float(left) / 10.0))]
+	if state == "blueprint":
+		if GameState.tech_trials.size() < GameState.trial_slots():
+			return "有图纸 · 可以开试制"
+		return "有图纸 · 等试制槽"
+	if state == "blocked":
+		return _blocked_text(id)
+	if state == "trial":
+		var trial := _trial(id)
+		return "试制中 第 %d/%d 回合" % [int(trial.get("prog", 0)), int(trial.get("need", 1))]
+	if state == "done":
+		return "已完成"
+	var era := int(tech.get("era", 1))
+	if era >= 3:
+		var total := era_progress(2)
+		return "时代三 · 第 68 回合或本时代完成 11/%d 开放" % int(total.y)
+	return "时代二 · 第 31 回合开"
+
+
+static func card_action(id: String) -> Dictionary:
+	var state := view_state(id)
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	var out := {"text": "", "enabled": false, "hint": "", "jump": ""}
+	if state == "available":
+		if GameState.tech_designing == "":
+			out["text"] = "开始设计"
+			out["enabled"] = true
+		elif GameState.tech_queue.size() >= GameState.QUEUE_CAP:
+			out["text"] = "加入队列"
+			out["hint"] = "队列已满 3/3"
+		else:
+			out["text"] = "加入队列"
+			out["enabled"] = true
+			out["hint"] = "排第 %d 位 · 换下当前设计" % (GameState.tech_queue.size() + 1)
+			out["jump"] = "swap"
+		return out
+	if state == "queued":
+		out["text"] = "移出队列"
+		out["enabled"] = true
+		if queue_index(id) > 1:
+			out["hint"] = "提前一位"
+			out["jump"] = "bump"
+		return out
+	if state == "designing":
+		out["text"] = "暂停设计"
+		out["enabled"] = true
+		return out
+	if state == "noprereq":
+		var miss := _first_missing(id)
+		var miss_tech: Dictionary = DataDB.tech_by_id.get(miss, {})
+		out["text"] = "开始设计"
+		out["hint"] = "先完成：%s" % str(miss_tech.get("name", miss))
+		out["jump"] = miss
+		return out
+	if state == "blueprint":
+		out["text"] = "开始试制"
+		var cost: Dictionary = tech.get("cost", {})
+		var paid := "开工付清 匠 %d" % int(cost.get("craft", 0))
+		var mats: Dictionary = tech.get("materials", {})
+		for key_v in mats.keys():
+			paid += "、%s %d" % [str(MAT_NAME.get(str(key_v), str(key_v))), int(mats[key_v])]
+		out["hint"] = paid
+		if GameState.tech_trials.size() >= GameState.trial_slots():
+			out["hint"] = "试制槽 %d/%d 满" % [GameState.tech_trials.size(), GameState.trial_slots()]
+		elif can_afford(id):
+			out["enabled"] = true
+		return out
+	if state == "blocked":
+		out["text"] = "去补齐"
+		out["enabled"] = true
+		out["hint"] = _blocked_text(id)
+		out["jump"] = "blocked"
+		return out
+	if state == "trial":
+		var trial := _trial(id)
+		out["text"] = "查看试制"
+		out["enabled"] = true
+		out["hint"] = "第 %d/%d 回合" % [int(trial.get("prog", 0)), int(trial.get("need", 1))]
+		out["jump"] = "workshop"
+		return out
+	if state == "done":
+		if unlocks_building(id):
+			out["text"] = "去推广"
+			out["enabled"] = true
+			out["jump"] = "city"
+		else:
+			out["hint"] = "已完成"
+		return out
+	out["text"] = "开始设计"
+	out["hint"] = _lock_label(int(tech.get("era", 1)))
+	return out
+
+
+static func target_preview(id: String) -> Dictionary:
+	var chain: Array = []
+	for id_v in spine(id):
+		var step := str(id_v)
+		if not GameState.tech_done.has(step):
+			chain.append(step)
+	var now: Array = []
+	var later: Array = []
+	_preview_collect(id, now, later, {})
+	now.sort_custom(func(a: String, b: String) -> bool: return GameState.design_need(a) < GameState.design_need(b))
+	return {
+		"chain": chain,
+		"now": now,
+		"later": later.size(),
+		"room": GameState.QUEUE_CAP - GameState.tech_queue.size(),
+		"old_target": GameState.tech_target,
+	}
+
+
+static func _preview_collect(id: String, now: Array, later: Array, seen: Dictionary) -> void:
+	if id == "" or seen.has(id):
+		return
+	seen[id] = true
+	if GameState.tech_done.has(id) or GameState.tech_blueprints.has(id):
+		return
+	if GameState._is_trialing(id) or GameState.tech_designing == id:
+		return
+	if view_state(id) == "available":
+		if not GameState.tech_queue.has(id):
+			now.append(id)
+		return
+	later.append(id)
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	for pre_v in tech.get("prereq", []):
+		_preview_collect(str(pre_v), now, later, seen)
+
+
+static func route_start(target: String) -> String:
+	var chain := spine(target)
+	if chain.is_empty():
+		return ""
+	return str(chain[0])
 
 
 static func _site_key(label: String) -> String:

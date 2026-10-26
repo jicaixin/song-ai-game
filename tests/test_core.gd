@@ -30,6 +30,8 @@ func run_tests() -> int:
 	check_feedback()
 	check_spec()
 	check_round3()
+	check_industry()
+	check_desk_a()
 	if failed > 0:
 		push_error("失败 %d 项" % failed)
 	else:
@@ -990,7 +992,7 @@ func check_tech() -> void:
 		check("tech_focus", desk.mode == "tech" and desk.debug_btns.has("node_E05") and desk.debug_btns.has("tech_accept"))
 		var locked: Button = desk.debug_btns.get("node_I07")
 		var locked_a := locked.modulate.a if locked != null else -1.0
-		check("locked_alpha", locked != null and is_equal_approx(locked_a, 0.65), str(locked_a))
+		check("locked_alpha", locked != null and is_equal_approx(locked_a, 0.6), str(locked_a))
 		var small: Array = []
 		_walk_tech_font(desk, small)
 		check("tech_font", small.is_empty(), ",".join(small))
@@ -1319,13 +1321,13 @@ func check_spec() -> void:
 		desk.tech_tutorial = -1
 		desk.open("tech")
 		var board: Node = desk.host.get_child(0)
-		check("d7_lock", board.has_method("_lock_head") and str(board.call("_lock_head", 3)) == "T68开" and TechPlan._lock_label(3) == "T68开")
+		check("d7_lock", board.has_method("_lock_head") and str(board.call("_lock_head", 3)) == "第 68 回合开" and TechPlan._lock_label(3) == "第 68 回合开")
 		var lines: Array = []
 		_walk_text(desk, lines)
 		var joined := "\n".join(PackedStringArray(lines))
 		var old_turn := "第 75 " + "回合"
 		var old_lock := "T75" + "开"
-		check("d7_copy", joined.find("第 68 回合") >= 0 and joined.find(old_turn) < 0 and joined.find(old_lock) < 0 and joined.find("T68开") >= 0, joined)
+		check("d7_copy", joined.find("第 68 回合") >= 0 and joined.find(old_turn) < 0 and joined.find(old_lock) < 0 and joined.find("第 68 回合开") >= 0, joined)
 		_stamp(68)
 		check("d8_open", str(board.call("_lock_head", 3)) == "已开")
 		desk.shut()
@@ -1377,7 +1379,7 @@ func check_round3() -> void:
 	var early_line := "时代二做满十一项，格物图提前翻到第三卷「火器初兴」。坩埚炼钢、燧发机构都能画了。陛下，工匠们的眉毛，这回怕是真保不住了。"
 	var gewu: Dictionary = DataDB.chapter_by_id.get("gewu", {})
 	check("ch5_text", str(gewu.get("main", "")) == "画出一张时代三图纸" and str(gewu.get("check", "")) == "era3_blueprint")
-	check("p_gate", GameState.PRACTICE_GATE == false and GameState.practice_gate == false)
+	check("p_gate", GameState.practice_gate_on == false)
 	GameState.new_game()
 	check("ch5_open", GoalSystem.chapter_state(gewu) == "open")
 	check("ch5_legacy", GoalSystem.chapter_state({"check": "era3"}) == "open")
@@ -1454,7 +1456,7 @@ func check_round3() -> void:
 	check("p17_load", GameState.from_save(old_save) and GameState.city_buildings.is_empty() and GameState.practice_said.is_empty() and int(GameState.site_turns.get("mill", 0)) == 3)
 	GameState.tech_blueprints = ["C07"]
 	check("ch5_old_live", GoalSystem.chapter_state(gewu) == "done" and not GameState.chapter_rewarded.has("gewu"))
-	check("ch5_t68", TechPlan._lock_label(3) == "T68开")
+	check("ch5_t68", TechPlan._lock_label(3) == "第 68 回合开")
 	GameState.new_game()
 	var money0 := int(GameState.resources.get("money", 0))
 	var craft2 := int(GameState.resources.get("craft", 0))
@@ -1535,14 +1537,14 @@ func check_round3() -> void:
 	GameState.resources["craft"] = 200
 	GameState.site_turns = {"coal": 3}
 	check("p11_open", TechPlan.view_state("I04") == "blueprint", TechPlan.view_state("I04"))
-	GameState.practice_gate = true
+	GameState.practice_gate_on = true
 	check("p11_flag", TechPlan.view_state("I04") == "blocked" and TechPlan._blocked_text("I04") == "缺实践 3/4" and TechPlan._blocked_jump("I04") == "city", TechPlan._blocked_text("I04"))
 	check("p11_city", GameState.practice_city("I04") == "daming", GameState.practice_city("I04"))
 	var coal_before := int(GameState.resources.get("coal", 0))
 	var craft_before := int(GameState.resources.get("craft", 0))
 	var trials_before := GameState.tech_trials.size()
 	check("p10_flag", GameState.start_trial("I04") == false and GameState.tech_trials.size() == trials_before and int(GameState.resources.get("coal", 0)) == coal_before and int(GameState.resources.get("craft", 0)) == craft_before and GameState.notice == "实践不够 · 煤场 3/4", GameState.notice)
-	GameState.practice_gate = false
+	GameState.practice_gate_on = false
 	GameState.advisor_text = ""
 	GameState.line_history.erase("practice_short_I04")
 	check("p10_open", GameState.start_trial("I04") and GameState.tech_trials.size() == 1 and int(GameState.resources.get("coal", 0)) == coal_before - 20 and GameState.advisor_text.find("煤场还差 1 回合") >= 0 and GameState.line_history.has("practice_short_I04"), "trials %d coal %d text %s" % [GameState.tech_trials.size(), int(GameState.resources.get("coal", 0)), GameState.advisor_text])
@@ -1733,4 +1735,588 @@ func check_round3() -> void:
 		GameState.finish_turn()
 		GameState.announce_turn()
 	check("p21_turns", GameState.turn == 86 and int(GameState.site_turns.get("coal", 0)) == 85, "turn %d coal %s" % [GameState.turn, str(GameState.site_turns.get("coal", 0))])
-	GameState.practice_gate = false
+	GameState.practice_gate_on = false
+
+
+func check_industry() -> void:
+	var steel_bar := false
+	for row_v in GameUI.RES_BAR:
+		var row: Array = row_v
+		if str(row[0]) == "steel":
+			steel_bar = true
+	check("m10_bar", steel_bar)
+	GameState.new_game()
+	check("m2_geo", GameState.can_build("chanzhou", "coalpit") == "需煤矿", GameState.can_build("chanzhou", "coalpit"))
+	check("m1_build", GameState.build("daming", "coalpit"))
+	for _i in 4:
+		GameState.finish_turn()
+	check("m1_coal", int(GameState.resources.get("coal", 0)) == 20 and GameState.last_event.find("煤+2") >= 0, GameState.last_event + " coal %d" % int(GameState.resources.get("coal", 0)))
+	GameState.new_game()
+	check("m3_build", GameState.build("xuzhou", "ironworks"))
+	var iron0 := int(GameState.resources.get("iron", 0))
+	GameState.finish_turn()
+	check("m3_iron", int(GameState.resources.get("iron", 0)) == iron0 + 2, str(GameState.resources.get("iron", 0)))
+	GameState.new_game()
+	GameState.tech_done.append("I04")
+	GameState.city_buildings = {"daming": ["ironworks", "coke"]}
+	GameState.resources["coal"] = 5
+	GameState.resources["iron"] = 40
+	GameState.finish_turn()
+	check("m4_yield", int(GameState.resources.get("coal", 0)) == 4 and int(GameState.resources.get("iron", 0)) == 43 and int(GameState.industry_ran.get("coke", 0)) == 1 and int(GameState.site_turns.get("coke", 0)) == 1, "coal %d iron %d ran %s site %s" % [int(GameState.resources.get("coal", 0)), int(GameState.resources.get("iron", 0)), str(GameState.industry_ran), str(GameState.site_turns)])
+	GameState.new_game()
+	GameState.tech_done.append("I04")
+	GameState.city_buildings = {"daming": ["ironworks", "coke"]}
+	GameState.resources["coal"] = 0
+	GameState.resources["iron"] = 40
+	GameState.line_history.erase("stall_coke")
+	GameState.advisor_text = ""
+	GameState.finish_turn()
+	var stall_turn := int(GameState.line_history.get("stall_coke", -1))
+	check("m5_stall", int(GameState.resources.get("iron", 0)) == 42 and int(GameState.resources.get("coal", 0)) == 0 and int(GameState.site_turns.get("coke", 0)) == 0 and GameState.advisor_text.find("焦炉断煤了") >= 0 and GameState.industry_line("daming", "coke") == "停工：缺煤", GameState.advisor_text)
+	GameState.finish_turn()
+	check("m5_once", int(GameState.site_turns.get("coke", 0)) == 0 and int(GameState.line_history.get("stall_coke", -1)) == stall_turn, str(GameState.site_turns))
+	GameState.new_game()
+	GameState.tech_done.append("I04")
+	GameState.resources["money"] = 5000
+	GameState.resources["craft"] = 500
+	check("m6_build", GameState.build("kaifeng", "coke"))
+	GameState.resources["coal"] = 3
+	GameState.resources["iron"] = 40
+	GameState.finish_turn()
+	check("m6_coke", int(GameState.resources.get("coal", 0)) == 2 and int(GameState.resources.get("iron", 0)) == 40 and int(GameState.site_turns.get("coke", 0)) == 1 and GameState.industry_line("kaifeng", "coke").find("同城无冶铁务") >= 0, GameState.industry_line("kaifeng", "coke"))
+	GameState.new_game()
+	GameState.tech_done.append("I03")
+	GameState.resources["money"] = 5000
+	GameState.resources["craft"] = 500
+	check("m7_build", GameState.build("hongzhou", "copperbath"), GameState.can_build("hongzhou", "copperbath"))
+	GameState.resources["iron"] = 4
+	GameState.resources["copper"] = 10
+	GameState.finish_turn()
+	check("m7_copper", int(GameState.resources.get("iron", 0)) == 2 and int(GameState.resources.get("copper", 0)) == 11, "iron %d copper %d" % [int(GameState.resources.get("iron", 0)), int(GameState.resources.get("copper", 0))])
+	GameState.resources["iron"] = 1
+	GameState.finish_turn()
+	check("m7_stall", int(GameState.resources.get("iron", 0)) == 1 and int(GameState.resources.get("copper", 0)) == 11 and GameState.industry_line("hongzhou", "copperbath") == "停工：缺铁", GameState.industry_line("hongzhou", "copperbath"))
+	GameState.tech_done.append("I03")
+	check("m8_hang", GameState.can_build("hangzhou", "copperbath") == "需铜矿", GameState.can_build("hangzhou", "copperbath"))
+	GameState.new_game()
+	GameState.resources["money"] = 5000
+	GameState.resources["craft"] = 500
+	check("m9_build", GameState.build("mingzhou", "shibosi"))
+	GameState.finish_turn()
+	check("m9_sulfur", int(GameState.resources.get("sulfur", 0)) == 1 and not GameState.industry_button("hangzhou", "shibosi") and not GameState.industry_button("guangzhou", "shibosi"), str(GameState.resources.get("sulfur", 0)))
+	GameState.new_game()
+	GameState.tech_done.append("I07")
+	GameState.city_buildings = {"kaifeng": ["steel"]}
+	GameState.resources["iron"] = 2
+	GameState.resources["coal"] = 2
+	GameState.finish_turn()
+	check("m10_steel", int(GameState.resources.get("steel", 0)) == 1 and int(GameState.resources.get("iron", 0)) == 0 and int(GameState.resources.get("coal", 0)) == 0, "steel %d iron %d coal %d" % [int(GameState.resources.get("steel", 0)), int(GameState.resources.get("iron", 0)), int(GameState.resources.get("coal", 0))])
+	GameState.new_game()
+	GameState.build("daming", "coalpit")
+	GameState.finish_turn()
+	var coal_live := int(GameState.resources.get("coal", 0))
+	var site_live := int(GameState.site_turns.get("coal", 0))
+	var seized: Dictionary = DataDB.city_by_id("daming")
+	seized["faction"] = "rebel"
+	GameState.finish_turn()
+	check("m11_lost", int(GameState.resources.get("coal", 0)) == coal_live and int(GameState.site_turns.get("coal", 0)) == site_live, "coal %d site %d" % [int(GameState.resources.get("coal", 0)), int(GameState.site_turns.get("coal", 0))])
+	seized["faction"] = "song"
+	GameState.finish_turn()
+	check("m11_back", int(GameState.resources.get("coal", 0)) == coal_live + 2 and int(GameState.site_turns.get("coal", 0)) == site_live + 1, "coal %d site %d" % [int(GameState.resources.get("coal", 0)), int(GameState.site_turns.get("coal", 0))])
+	var packed: Dictionary = GameState.to_save()
+	GameState.resources["coal"] = 1
+	GameState.city_buildings = {}
+	check("m12_round", GameState.from_save(packed) and int(GameState.resources.get("coal", 0)) == coal_live + 2 and GameState._city_has_building("daming", "coalpit"))
+	var legacy: Dictionary = GameState.to_save()
+	legacy.erase("city_buildings")
+	check("m12_old", GameState.from_save(legacy) and GameState.city_buildings.is_empty())
+	var coal_old := int(GameState.resources.get("coal", 0))
+	GameState.finish_turn()
+	check("m12_quiet", GameState.city_buildings.is_empty() and int(GameState.resources.get("coal", 0)) == coal_old)
+	GameState.new_game()
+	GameState.tech_blueprints = ["I04"]
+	GameState.resources["coal"] = 40
+	GameState.resources["craft"] = 200
+	GameState.site_turns = {"coal": 0}
+	GameState.practice_gate_on = false
+	check("m13_open", GameState.start_trial("I04"))
+	GameState.tech_trials = []
+	GameState.tech_blueprints = ["I04"]
+	GameState.resources["coal"] = 40
+	GameState.resources["craft"] = 200
+	GameState.practice_gate_on = true
+	GameState.line_history.erase("practice_short_I04")
+	check("m13_shut", GameState.start_trial("I04") == false and GameState.notice == "实践不够 · 煤场 0/4", GameState.notice)
+	GameState.practice_gate_on = false
+	GameState.new_game()
+	GameState.turn = 2
+	var sweep := preload("res://scripts/core/sweep.gd").new()
+	sweep._auto_build()
+	var built_dm: Array = GameState.city_buildings.get("daming", [])
+	var built_ly: Array = GameState.city_buildings.get("luoyang", [])
+	check("m14_auto", built_dm.has("coalpit") and built_dm.has("ironworks") and built_ly.has("saltpeter") and GameState._any_building("lumberyard") and GameState.practice_gate_on == false, str(GameState.city_buildings))
+	GameState.new_game()
+	check("m15_yan", GameState.can_build("yanzhou", "saltpeter") == "需硝矿", GameState.can_build("yanzhou", "saltpeter"))
+	check("m15_build", GameState.build("luoyang", "saltpeter"))
+	for _k in 6:
+		GameState.finish_turn()
+	check("m15_salt", int(GameState.resources.get("saltpeter", 0)) == 10 and GameState.last_event.find("硝+1") >= 0, GameState.last_event)
+	GameState.new_game()
+	GameState.tech_blueprints = ["M05"]
+	GameState.resources["saltpeter"] = 9
+	GameState.resources["sulfur"] = 5
+	GameState.resources["craft"] = 200
+	check("m16_short", GameState.start_trial("M05") == false)
+	GameState.resources["saltpeter"] = 10
+	GameState.tech_blueprints = ["M05"]
+	check("m16_pay", GameState.start_trial("M05") and int(GameState.resources.get("saltpeter", 0)) == 0, str(GameState.resources.get("saltpeter", 0)))
+	GameState.new_game()
+	check("m17_kai", GameState.can_build("kaifeng", "lumberyard") == "需森林", GameState.can_build("kaifeng", "lumberyard"))
+	var wood0 := int(GameState.resources.get("wood", 0))
+	check("m17_build", GameState.build("hangzhou", "lumberyard"), GameState.can_build("hangzhou", "lumberyard"))
+	GameState.finish_turn()
+	check("m17_wood", int(GameState.resources.get("wood", 0)) == wood0 + 2, str(GameState.resources.get("wood", 0)))
+	GameState.new_game()
+	GameState.tech_blueprints = ["K02"]
+	GameState.resources["wood"] = 14
+	GameState.resources["craft"] = 200
+	check("m18_short", GameState.start_trial("K02") == false and int(GameState.resources.get("wood", 0)) == 14)
+	GameState.resources["money"] = 5000
+	GameState.resources["craft"] = 500
+	check("m18_yard", GameState.build("hangzhou", "lumberyard"))
+	GameState.finish_turn()
+	GameState.resources["craft"] = 200
+	check("m18_pay", int(GameState.resources.get("wood", 0)) >= 15 and GameState.start_trial("K02"), str(GameState.resources.get("wood", 0)))
+	var tree := Engine.get_main_loop() as SceneTree
+	var ui := tree.get_first_node_in_group("game_ui") as GameUI
+	if ui != null and ui.desk != null:
+		GameState.new_game()
+		if ui.goals and ui.goals.blocking():
+			ui.goals.dismiss_card()
+		ui.open_city("chanzhou")
+		var blocked: Button = ui.desk.debug_btns.get("build_chanzhou_coalpit")
+		check("m2_btn", blocked != null and blocked.disabled and blocked.text == "需煤矿", blocked.text if blocked != null else "missing")
+		ui.open_city("hangzhou")
+		check("m9_btn", not ui.desk.debug_btns.has("build_hangzhou_shibosi"))
+		ui.desk.shut()
+		ui.open_desk("industry")
+		var lines: Array = []
+		_walk_text(ui.desk, lines)
+		var joined := "\n".join(PackedStringArray(lines))
+		check("m_blurb", joined.find("推广后去城里建对应的坊，才有产量。") >= 0, joined)
+		ui.desk.shut()
+	else:
+		check("m2_btn", false, "no ui")
+
+
+func check_desk_a() -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	var ui := tree.get_first_node_in_group("game_ui") as GameUI
+	if ui == null or ui.desk == null:
+		check("g_desk", false, "no desk")
+		return
+	var desk := ui.desk
+	GameState.new_game()
+	if ui.goals and ui.goals.blocking():
+		ui.goals.dismiss_card()
+	GameState.load_tech_sample()
+	desk.tech_scroll = -1
+	desk.tech_scroll_era = -1
+	desk.tech_view = "focus"
+	desk.tech_tutorial = -1
+	desk.tech_show_legend = false
+	desk.tech_show_parts = false
+	desk.picked = ""
+	desk.tech_fold = ""
+	desk.open("tech")
+	var board: Node = _tech_board(desk)
+	check("g_board", board != null)
+	if board == null:
+		desk.shut()
+		return
+	var box: Dictionary = board.layout_box
+	check("g1_header", int(box.get("header_h", 0)) == 48, str(box))
+	check("g1_left", int(box.get("left_w", 0)) == 288, str(box))
+	check("g1_tree", int(box.get("tree_h", 0)) == 596, str(box))
+	check("g1_foot", int(box.get("footer_h", 0)) == 76, str(box))
+	check("g1_scroll", desk.tech_scroll == 856 and board.scroll.scroll_horizontal == 856, "%s / %s" % [desk.tech_scroll, board.scroll.scroll_horizontal])
+	check("g1_vscroll", board.scroll.vertical_scroll_mode == ScrollContainer.SCROLL_MODE_SHOW_NEVER)
+	var node_a05: Button = desk.debug_btns.get("node_A05")
+	check("g1_node", node_a05 != null and node_a05.size == Vector2(156, 44), str(node_a05.size if node_a05 != null else Vector2.ZERO))
+	var locked_n := 0
+	for key_v in desk.debug_btns.keys():
+		var key := str(key_v)
+		if not key.begins_with("node_"):
+			continue
+		var btn: Button = desk.debug_btns[key]
+		if btn != null and is_equal_approx(btn.modulate.a, 0.6):
+			locked_n += 1
+	check("g1_chips", locked_n == 8 and desk.debug_btns.has("node_K07") and not desk.debug_btns.has("node_X01"), str(locked_n))
+	var page := _desk_text(desk)
+	check("g1_rows", page.contains("农") and page.contains("工") and page.contains("械") and page.contains("商") and page.contains("军") and page.contains("电"))
+	check("g1_next", page.contains("时代三 · 后继") and page.contains("第 68 回合开"))
+	var small: Array = []
+	_walk_tech_font(desk, small)
+	check("g2_font", small.is_empty(), ",".join(small))
+	check("g2_nine", _font_of(desk, "水排鼓风与水力锻锤") == 13, str(_font_of(desk, "水排鼓风与水力锻锤")))
+	var route_err := _routes_ok(board)
+	check("g3_routes", route_err == "", route_err)
+	check("g4_a05", str(_face_prop(desk, "A05", "corner")) == "")
+	check("g4_i05", str(_face_prop(desk, "I05", "corner")) == "图")
+	check("g4_k02", str(_face_prop(desk, "K02", "corner")) == "试")
+	check("g4_k03", str(_face_prop(desk, "K03", "corner")) == "设")
+	check("g4_a06", str(_face_prop(desk, "A06", "corner")) == "缺1")
+	check("g4_i07", str(_face_prop(desk, "I07", "corner")) == "锁")
+	check("g4_count", TechPlan.missing_prereq_count("A06") == 1)
+	GameState.tech_queue.append("A05")
+	desk._fill()
+	check("g5_badge", int(_face_prop(desk, "A05", "queue_n")) == 1 and str(_face_prop(desk, "E05", "state")) != "queued")
+	var queued_bad := false
+	for key_v2 in desk.debug_btns.keys():
+		var key2 := str(key_v2)
+		if not key2.begins_with("node_"):
+			continue
+		var id2 := key2.substr(5)
+		var qn := int(_face_prop(desk, id2, "queue_n"))
+		if qn > 0 and TechPlan.view_state(id2) != "queued":
+			queued_bad = true
+		if TechPlan.view_state(id2) == "queued" and qn != GameState.tech_queue.find(id2) + 1:
+			queued_bad = true
+	check("g5_only", not queued_bad)
+	page = _desk_text(desk)
+	check("g5_left", page.contains("①苜蓿轮作"))
+	GameState.tech_queue.clear()
+	desk.picked = "E05"
+	desk._fill()
+	board = _tech_board(desk)
+	var lines := str(board._target_lines("E05"))
+	board._open_target_confirm("E05")
+	var shown := _desk_text(board._choice)
+	check("g6_dialog", shown.contains(lines) and shown.contains("确定") and shown.contains("取消"), shown)
+	board._confirm_target("E05")
+	desk._fill()
+	check("g6_target", GameState.tech_target == "E05")
+	check("g6_start", str(_face_prop(desk, "K02", "route_mark")) == "起" and bool(_face_prop(desk, "K02", "route")))
+	check("g6_mark", str(_face_prop(desk, "E05", "route_mark")) == "标" and bool(_face_prop(desk, "K05", "route")) and str(_face_prop(desk, "K05", "route_mark")) == "")
+	check("g6_no_end", not _desk_text(desk).contains("终"))
+	GameState.load_tech_sample()
+	GameState.tech_queue = ["C01", "C02", "A01"]
+	GameState.tech_target = ""
+	desk.picked = "A06"
+	desk.tech_fold = ""
+	desk._fill()
+	board = _tech_board(desk)
+	var full := str(board._target_lines("A06"))
+	check("g7_copy", full.contains("队列已满 3/3，新路线等空位。原来排着的 3 项不动，不想要可以在左栏队列里移出。") and not full.contains("会移出"), full)
+	var before: Array = GameState.tech_queue.duplicate()
+	board._confirm_target("A06")
+	check("g7_keep", GameState.tech_target == "A06" and GameState.tech_queue == before, str(GameState.tech_queue))
+	GameState.load_tech_sample()
+	GameState.tech_queue = ["K03"]
+	GameState.tech_target = ""
+	desk._fill()
+	board = _tech_board(desk)
+	var roomy := str(board._target_lines("A06"))
+	check("g8_copy", roomy.contains("现在排入 1 项：苜蓿轮作与牧监") and roomy.contains("其余 1 项前置齐后自动排入。"), roomy)
+	board._confirm_target("A06")
+	check("g8_queue", GameState.tech_target == "A06" and GameState.tech_queue.has("A05") and not GameState.tech_queue.has("A06"), str(GameState.tech_queue))
+	GameState.load_tech_sample()
+	desk.picked = ""
+	GameState.tech_target = ""
+	desk.tech_fold = ""
+	desk._fill()
+	board = _tech_board(desk)
+	board._on_node("A06")
+	board = _tech_board(desk)
+	page = _desk_text(desk)
+	var verb: Button = desk.debug_btns.get("tech_verb")
+	check("g9_card", desk.picked == "A06" and verb != null and verb.disabled and verb.text == "开始设计" and page.contains("先完成：苜蓿轮作与牧监") and page.contains("设为目标") and page.contains("史册") and page.contains("关闭"), page)
+	var jump: Button = _button_text(desk, "先完成：苜蓿轮作与牧监")
+	check("g10_link", jump != null)
+	if jump != null:
+		jump.pressed.emit()
+	check("g10_card", desk.picked == "A05")
+	var hist: Button = desk.debug_btns.get("tech_history")
+	if hist != null:
+		hist.pressed.emit()
+	page = _desk_text(desk)
+	check("g11_hist", desk.tech_fold == "history" and page.contains("豆沙包能做的 / 大宋得自己做的") and page.contains("返回"), page)
+	var back: Button = _button_text(desk, "返回")
+	if back != null:
+		back.pressed.emit()
+	check("g11_back", desk.tech_fold == "" and desk.picked == "A05")
+	board = _tech_board(desk)
+	var picked_before := desk.picked
+	check("g12_method", not board.has_method("_on_node_input"))
+	var right := InputEventMouseButton.new()
+	right.button_index = MOUSE_BUTTON_RIGHT
+	right.pressed = true
+	right.position = Vector2(30, 30)
+	board._on_paper_input(right)
+	check("g12_right", desk.picked == picked_before and desk.tech_fold == "")
+	desk.picked = ""
+	desk._fill()
+	board = _tech_board(desk)
+	var designing := GameState.tech_designing
+	board._on_node("A05")
+	board = _tech_board(desk)
+	check("g13_open", desk.picked == "A05" and GameState.tech_designing == designing)
+	board._on_node("A05")
+	check("g13_shut", desk.picked == "" and GameState.tech_designing == designing)
+	board = _tech_board(desk)
+	board._apply_scroll(400)
+	var wheel := InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_UP
+	wheel.pressed = true
+	wheel.position = board.scroll.get_global_position() + Vector2(20, 20)
+	board._input(wheel)
+	check("g14_wheel", desk.tech_scroll == 293, str(desk.tech_scroll))
+	wheel.shift_pressed = true
+	board._input(wheel)
+	check("g14_shift", desk.tech_scroll == 186, str(desk.tech_scroll))
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = Vector2(200, 80)
+	board._on_paper_input(press)
+	var drag := InputEventMouseMotion.new()
+	drag.button_mask = MOUSE_BUTTON_MASK_LEFT
+	drag.position = Vector2(120, 80)
+	board._on_paper_input(drag)
+	check("g14_drag", desk.tech_scroll == 266, str(desk.tech_scroll))
+	var key := InputEventKey.new()
+	key.keycode = KEY_LEFT
+	key.pressed = true
+	board._input(key)
+	check("g14_key", desk.tech_scroll == 52, str(desk.tech_scroll))
+	var ctrl := InputEventMouseButton.new()
+	ctrl.ctrl_pressed = true
+	ctrl.pressed = true
+	ctrl.button_index = MOUSE_BUTTON_WHEEL_DOWN
+	board._input(ctrl)
+	check("g14_ctrl", desk.tech_view == "overview")
+	desk.tech_view = "focus"
+	desk._fill()
+	board = _tech_board(desk)
+	board._minimap_to(0.0)
+	check("g15_map", desk.tech_scroll == 0, str(desk.tech_scroll))
+	GameState.load_tech_sample()
+	desk.tech_scroll = -1
+	desk.tech_scroll_era = -1
+	desk.tech_view = "focus"
+	desk.picked = ""
+	desk._fill()
+	page = _desk_text(desk)
+	check("g16_trial", page.contains("第 2/4 回合") and page.contains("匠 40、木 15 已付") and page.contains("第 2 槽 · 颁布「开格物院」后开放") and page.contains("图纸库 2/3"), page)
+	var libs := _lib_count(desk)
+	check("g17_lib", int(libs.get("real", 0)) == 3 and int(libs.get("preview", 0)) == 2 and is_equal_approx(float(libs.get("w", 0)), 48.0), str(libs))
+	GameState.chapter_rewarded["liao"] = "done"
+	GameState.blueprint_bonus = 1
+	desk._fill()
+	page = _desk_text(desk)
+	libs = _lib_count(desk)
+	check("g18_lib", page.contains("图纸库 2/4") and int(libs.get("real", 0)) == 4 and int(libs.get("preview", 0)) == 1 and str(libs.get("title", "")) == "第四章", str(libs) + page)
+	GameState.chapter_rewarded = {"liao": "partial"}
+	GameState.blueprint_bonus = 0
+	desk._fill()
+	page = _desk_text(desk)
+	libs = _lib_count(desk)
+	check("g19_lib", page.contains("图纸库 2/3") and int(libs.get("real", 0)) == 3 and int(libs.get("preview", 0)) == 1 and str(libs.get("title", "")) == "第四章", str(libs))
+	GameState.new_game()
+	if ui.goals and ui.goals.blocking():
+		ui.goals.dismiss_card()
+	_stamp(68)
+	GameState.event_flags.erase("era3_tree_seen")
+	desk.tech_scroll = -1
+	desk.tech_scroll_era = -1
+	desk.tech_view = "focus"
+	desk.picked = ""
+	desk.open("tech")
+	board = _tech_board(desk)
+	check("g20_flash", GameState.event_flags.has("era3_tree_seen") and board.era3_flash_left() > 0, str(board.era3_flash_left()))
+	desk.shut()
+	desk.open("tech")
+	board = _tech_board(desk)
+	check("g20_once", board.era3_flash_left() == 0)
+	var packed := SaveManager.pack(GameState.to_save())
+	GameState.event_flags.erase("era3_tree_seen")
+	GameState.from_save(SaveManager.unpack(packed))
+	desk.tech_scroll = -1
+	desk.open("tech")
+	board = _tech_board(desk)
+	check("g20_save", board.era3_flash_left() == 0 and GameState.event_flags.has("era3_tree_seen"))
+	GameState.new_game()
+	if ui.goals and ui.goals.blocking():
+		ui.goals.dismiss_card()
+	_stamp(67)
+	desk.tech_scroll = -1
+	desk.tech_scroll_era = -1
+	desk.tech_view = "focus"
+	desk.picked = ""
+	desk.open("tech")
+	page = _desk_text(desk)
+	var tip := ""
+	var locked: Button = desk.debug_btns.get("node_I07")
+	if locked != null:
+		tip = locked.tooltip_text
+	check("g21_copy", page.contains("时代三：第 68 回合 或 本时代完成 11/17 开放") and page.contains("第 68 回合开") and tip.contains("第 68 回合开") and not page.contains("T75") and not tip.contains("T75"), page)
+	_stamp(68)
+	desk.tech_scroll_era = -1
+	desk.tech_view = "focus"
+	desk._fill()
+	board = _tech_board(desk)
+	var spot: Rect2 = board.graph.spots.get("X01", Rect2())
+	check("g22_x01", desk.debug_btns.has("node_X01") and is_equal_approx(spot.position.x, 12.0 * 214.0) and not _desk_text(desk).contains("后继"), str(spot))
+	page = _desk_text(desk)
+	check("g23_edict", page.contains("「开格物院」") and not page.contains("颁布格物院"))
+	var workshop := FileAccess.get_file_as_string("res://scripts/ui/desk.gd")
+	check("g23_desk", workshop.contains("第二槽要在朝堂颁布「开格物院」。") and workshop.contains("「开格物院」还没颁布，这一槽锁着。"))
+	GameState.load_tech_sample()
+	GameState.battery = 0
+	GameState.resources["iron"] = 3
+	GameState.resources["saltpeter"] = 40
+	if not GameState.tech_blueprints.has("M06"):
+		GameState.tech_blueprints.append("M06")
+	desk.tech_view = "focus"
+	desk.tech_scroll_era = 2
+	desk.picked = ""
+	desk._fill()
+	check("g24_power", str(_face_prop(desk, "K03", "corner")) == "阻" and TechPlan.status_text("K03") == "停电")
+	check("g24_mat", str(_face_prop(desk, "M06", "corner")) == "阻" and TechPlan.status_text("M06") == "缺铁 3/15", TechPlan.status_text("M06"))
+	check("g24_legend", _desk_text(desk).contains("阻 受阻"))
+	GameState.tech_target = "E05"
+	GameState.tech_queue = ["A05"]
+	desk.tech_view = "overview"
+	desk.picked = ""
+	desk._fill()
+	page = _desk_text(desk)
+	check("g25_lock", page.contains("锁 · 第 68 回合开"))
+	check("g25_queue", int(_face_prop(desk, "A05", "queue_n")) == 1)
+	check("g25_route", bool(_face_prop(desk, "K02", "route")) and str(_face_prop(desk, "E05", "route_mark")) == "标" and str(_face_prop(desk, "K02", "route_mark")) == "起")
+	desk.shut()
+	GameState.new_game()
+
+
+func _tech_board(desk: Desk) -> Node:
+	if desk.host.get_child_count() == 0:
+		return null
+	return desk.host.get_child(0)
+
+
+func _desk_text(node: Node) -> String:
+	var lines: Array = []
+	_walk_text(node, lines)
+	return "\n".join(PackedStringArray(lines))
+
+
+func _font_of(node: Node, text: String) -> int:
+	if node is Label and str((node as Label).text) == text:
+		return (node as Control).get_theme_font_size("font_size")
+	for child in node.get_children():
+		var found := _font_of(child, text)
+		if found > 0:
+			return found
+	return 0
+
+
+func _face_prop(desk: Desk, id: String, prop: String):
+	var btn: Button = desk.debug_btns.get("node_" + id)
+	if btn == null:
+		return null
+	for child in btn.get_children():
+		if child.get("queue_n") != null and child.get("corner") != null:
+			return child.get(prop)
+	return null
+
+
+func _button_text(node: Node, text: String) -> Button:
+	if node is Button and str((node as Button).text) == text:
+		return node
+	for child in node.get_children():
+		var found := _button_text(child, text)
+		if found != null:
+			return found
+	return null
+
+
+func _lib_count(node: Node) -> Dictionary:
+	var out := {"real": 0, "preview": 0, "w": 0.0, "title": ""}
+	_lib_walk(node, out)
+	return out
+
+
+func _lib_walk(node: Node, out: Dictionary) -> void:
+	if node.has_meta("lib_kind"):
+		if str(node.get_meta("lib_kind")) == "preview":
+			out["preview"] = int(out["preview"]) + 1
+			if node is Control:
+				for child in node.get_children():
+					if child is VBoxContainer and child.get_child_count() > 0 and child.get_child(0) is Label:
+						out["title"] = str((child.get_child(0) as Label).text)
+		else:
+			out["real"] = int(out["real"]) + 1
+			out["w"] = float(node.get_meta("lib_w"))
+	for child in node.get_children():
+		_lib_walk(child, out)
+
+
+func _routes_ok(board) -> String:
+	var spots: Dictionary = board.graph.spots
+	for edge_v in board.graph.edges:
+		var edge: Dictionary = edge_v
+		var pre := str(edge.get("from", ""))
+		var id := str(edge.get("to", ""))
+		var pa: Dictionary = DataDB.tech_by_id.get(pre, {})
+		var pb: Dictionary = DataDB.tech_by_id.get(id, {})
+		var span := absi(int(pb.get("col", 1)) - int(pa.get("col", 1)))
+		var cross := int(pa.get("era", 1)) != int(pb.get("era", 1))
+		var route := {}
+		for route_v in board.edge_routes:
+			var item: Dictionary = route_v
+			if str(item.get("from", "")) == pre and str(item.get("to", "")) == id:
+				route = item
+				break
+		if route.is_empty():
+			return "无线 %s %s" % [pre, id]
+		if span >= 3 or cross:
+			if not bool(route.get("stub", false)):
+				return "应改小签 %s %s" % [pre, id]
+			continue
+		if bool(route.get("stub", false)):
+			continue
+		var pts: PackedVector2Array = route.get("pts", PackedVector2Array())
+		if pts.size() < 2:
+			return "空线 %s %s" % [pre, id]
+		for i in pts.size() - 1:
+			var a: Vector2 = pts[i]
+			var b: Vector2 = pts[i + 1]
+			if absf(a.x - b.x) > 0.2 and absf(a.y - b.y) > 0.2:
+				return "斜线 %s %s" % [pre, id]
+			if _seg_hits(a, b, spots):
+				return "穿节点 %s %s" % [pre, id]
+	return ""
+
+
+func _seg_hits(a: Vector2, b: Vector2, spots: Dictionary) -> bool:
+	for id_v in spots.keys():
+		var rect: Rect2 = spots[id_v]
+		var inner := Rect2(rect.position + Vector2(1, 1), rect.size - Vector2(2, 2))
+		if inner.size.x <= 1.0 or inner.size.y <= 1.0:
+			continue
+		var min_x := minf(a.x, b.x)
+		var max_x := maxf(a.x, b.x)
+		var min_y := minf(a.y, b.y)
+		var max_y := maxf(a.y, b.y)
+		if absf(a.y - b.y) < 0.2:
+			if a.y <= inner.position.y or a.y >= inner.end.y:
+				continue
+			if max_x <= inner.position.x or min_x >= inner.end.x:
+				continue
+			return true
+		if absf(a.x - b.x) < 0.2:
+			if a.x <= inner.position.x or a.x >= inner.end.x:
+				continue
+			if max_y <= inner.position.y or min_y >= inner.end.y:
+				continue
+			return true
+	return false

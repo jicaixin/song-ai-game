@@ -62,8 +62,7 @@ var end_warn_off := false
 var design_notice := ""
 var research_ping_until := 0
 var site_turns := {}
-# 试制暂不因实践不足而停工。材料产出接上后把 PRACTICE_GATE 改成 true。
-const PRACTICE_GATE := false
+# 试制暂不因实践不足而停工。验收通过并且 John 试玩之后再把 practice_gate_on 改成 true。
 const PRACTICE_PER_TURN_CAP := 3
 const PRACTICE_SITE := {
 	"watermill": "mill",
@@ -86,10 +85,25 @@ const PRACTICE_NAME := {
 	"steel": "炼钢厂",
 	"steam": "蒸汽抽水站",
 }
-var practice_gate := false
+var practice_gate_on := false
 var city_buildings := {}
+var industry_ran := {}
+var industry_on := {}
+var industry_note := {}
+var industry_clause := ""
+var material_hint := ""
 var practice_said: Array = []
 var pending_practice: Array = []
+const ORE_RADIUS := {"coal": 2, "iron": 2, "copper": 4, "saltpeter": 3}
+const INDUSTRY_MATS := [
+	["coal", "煤"],
+	["iron", "铁"],
+	["copper", "铜"],
+	["sulfur", "硫"],
+	["steel", "钢"],
+	["saltpeter", "硝"],
+	["wood", "木"],
+]
 var era3_flash_until := 0
 var firmware_done: Array = []
 var edicts_done: Array = []
@@ -497,8 +511,10 @@ func _pour_design(overflow: int) -> int:
 			if not _gain_blueprint(tech_designing):
 				tech_design_prog = need
 				return left
-			var done: Dictionary = DataDB.tech_by_id.get(tech_designing, {})
-			pending_blueprint = str(done.get("name", tech_designing))
+			var done_id := tech_designing
+			var done: Dictionary = DataDB.tech_by_id.get(done_id, {})
+			pending_blueprint = str(done.get("name", done_id))
+			_arm_material_hint(done_id, false)
 			tech_designing = ""
 			tech_design_prog = 0
 	return left
@@ -573,8 +589,11 @@ func finish_turn() -> void:
 	roll_weather()
 	apply_power()
 	_economy()
+	_industry()
 	_practice_tick()
 	_research_tick()
+	if industry_clause != "" and last_event.find(industry_clause) < 0:
+		last_event += industry_clause
 	restore_movement()
 	selected_uid = -1
 	inspected_uid = -1
@@ -641,6 +660,9 @@ func announce_turn() -> bool:
 		return true
 	if blueprint != "":
 		var ready := "图纸画好了：%s。去匠作院试制吧。" % blueprint
+		if material_hint != "":
+			ready += material_hint
+			material_hint = ""
 		if started != "":
 			ready += started
 		AdvisorSystem.present(ready, "smug", "blueprint_ready")
@@ -1297,8 +1319,13 @@ func _reset_research() -> void:
 	pending_blueprint = ""
 	research_idle_warned = false
 	site_turns = {}
-	practice_gate = PRACTICE_GATE
+	practice_gate_on = false
 	city_buildings = {}
+	industry_ran = {}
+	industry_on = {}
+	industry_note = {}
+	industry_clause = ""
+	material_hint = ""
 	practice_said = []
 	pending_practice = []
 	era3_flash_until = 0
@@ -1691,7 +1718,7 @@ func start_trial(id: String) -> bool:
 		return false
 	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
 	var practice_short: bool = not practice_ok(id)
-	if practice_short and practice_gate:
+	if practice_short and practice_gate_on:
 		var blocked_have := practice_have(id)
 		var blocked_need := practice_need(id)
 		var blocked_name := str(PRACTICE_NAME.get(practice_site(id), "实践"))
@@ -1701,6 +1728,7 @@ func start_trial(id: String) -> bool:
 		return false
 	if not _pay_trial(tech):
 		notice = "匠或材料不够"
+		_arm_material_hint(id, true)
 		EventBus.state_changed.emit()
 		return false
 	if practice_short:
@@ -1818,6 +1846,7 @@ func _research_tick() -> void:
 				pending_blueprint = str(tech.get("name", id))
 				notice = "图纸已成 · %s" % pending_blueprint
 				last_event = notice
+				_arm_material_hint(id, false)
 				tech_designing = ""
 				tech_design_prog = 0
 				_pull_queue()
@@ -2076,6 +2105,14 @@ func can_build(city_id: String, bid: String) -> String:
 		return "需铁矿"
 	if bid == "steampump" and not _near_feature(city, "coal") and not _near_feature(city, "iron"):
 		return "需煤矿"
+	if bid == "copperbath" and not _near_feature(city, "copper"):
+		return "需铜矿"
+	if bid == "saltpeter" and not _near_feature(city, "saltpeter"):
+		return "需硝矿"
+	if bid == "lumberyard" and not _near_forest(city):
+		return "需森林"
+	if bid == "shibosi" and city_id != "mingzhou":
+		return "仅明州"
 	var cost: Dictionary = spec.get("cost", {})
 	if int(resources.get("money", 0)) < int(cost.get("money", 0)):
 		return "缺钱"
@@ -2122,6 +2159,136 @@ func building_lock_text(spec: Dictionary) -> String:
 	return "待 " + str(tech.get("name", unlock))
 
 
+func industry_line(city_id: String, bid: String) -> String:
+	return str(industry_note.get("%s|%s" % [city_id, bid], ""))
+
+
+func industry_button(city_id: String, bid: String) -> bool:
+	if practice_building(bid):
+		return true
+	if bid == "copperbath" or bid == "saltpeter" or bid == "lumberyard":
+		return true
+	return bid == "shibosi" and city_id == "mingzhou"
+
+
+func _industry() -> void:
+	industry_ran = {}
+	industry_on = {}
+	industry_note = {}
+	industry_clause = ""
+	var before := {}
+	for pair_v in INDUSTRY_MATS:
+		var pair: Array = pair_v
+		before[str(pair[0])] = int(resources.get(str(pair[0]), 0))
+	for city_v in DataDB.cities:
+		var city: Dictionary = city_v
+		if str(city.get("faction", "")) != "song":
+			continue
+		var city_id := str(city.get("id", ""))
+		if not city_buildings.has(city_id):
+			continue
+		var built: Array = city_buildings[city_id]
+		if built.has("coalpit"):
+			_add_res("coal", 2)
+			_mark_ran(city_id, "coalpit", "本回合 煤 +2")
+		if built.has("ironworks"):
+			_add_res("iron", 2)
+			_mark_ran(city_id, "ironworks", "本回合 铁 +2")
+		if built.has("steampump"):
+			if _near_feature(city, "coal"):
+				_add_res("coal", 2)
+				_mark_ran(city_id, "steampump", "本回合 煤 +2")
+			else:
+				_add_res("iron", 2)
+				_mark_ran(city_id, "steampump", "本回合 铁 +2")
+		if built.has("shibosi") and city_id == "mingzhou":
+			_add_res("sulfur", 1)
+			_mark_ran(city_id, "shibosi", "本回合 硫 +1")
+		if built.has("saltpeter"):
+			_add_res("saltpeter", 1)
+			_mark_ran(city_id, "saltpeter", "本回合 硝 +1")
+		if built.has("lumberyard"):
+			_add_res("wood", 2)
+			_mark_ran(city_id, "lumberyard", "本回合 木 +2")
+		if built.has("watermill"):
+			_mark_ran(city_id, "watermill", "本回合 运转")
+	for city_v2 in DataDB.cities:
+		var city2: Dictionary = city_v2
+		if str(city2.get("faction", "")) != "song":
+			continue
+		var city_id2 := str(city2.get("id", ""))
+		if not city_buildings.has(city_id2):
+			continue
+		var built2: Array = city_buildings[city_id2]
+		if not built2.has("coke"):
+			continue
+		if int(resources.get("coal", 0)) >= 1:
+			_add_res("coal", -1)
+			_mark_ran(city_id2, "coke", "")
+			if built2.has("ironworks"):
+				_add_res("iron", 1)
+				industry_note["%s|coke" % city_id2] = "本回合 煤 -1 · 铁 +1"
+			else:
+				industry_note["%s|coke" % city_id2] = "本回合 煤 -1 · 同城无冶铁务"
+		else:
+			industry_note["%s|coke" % city_id2] = "停工：缺煤"
+			_say_once("焦炉断煤了", "serious", "stall_coke")
+	for city_v3 in DataDB.cities:
+		var city3: Dictionary = city_v3
+		if str(city3.get("faction", "")) != "song":
+			continue
+		var city_id3 := str(city3.get("id", ""))
+		if not city_buildings.has(city_id3):
+			continue
+		var built3: Array = city_buildings[city_id3]
+		if not built3.has("copperbath"):
+			continue
+		if int(resources.get("iron", 0)) >= 2:
+			_add_res("iron", -2)
+			_add_res("copper", 1)
+			_mark_ran(city_id3, "copperbath", "本回合 铁 -2 · 铜 +1")
+		else:
+			industry_note["%s|copperbath" % city_id3] = "停工：缺铁"
+			_say_once("胆铜场缺铁了", "serious", "stall_copper")
+	for city_v4 in DataDB.cities:
+		var city4: Dictionary = city_v4
+		if str(city4.get("faction", "")) != "song":
+			continue
+		var city_id4 := str(city4.get("id", ""))
+		if not city_buildings.has(city_id4):
+			continue
+		var built4: Array = city_buildings[city_id4]
+		if not built4.has("steel"):
+			continue
+		if int(resources.get("iron", 0)) >= 2 and int(resources.get("coal", 0)) >= 2:
+			_add_res("iron", -2)
+			_add_res("coal", -2)
+			_add_res("steel", 1)
+			_mark_ran(city_id4, "steel", "本回合 铁 -2 · 煤 -2 · 钢 +1")
+		else:
+			var miss := PackedStringArray()
+			if int(resources.get("iron", 0)) < 2:
+				miss.append("缺铁")
+			if int(resources.get("coal", 0)) < 2:
+				miss.append("缺煤")
+			industry_note["%s|steel" % city_id4] = "停工：" + "、".join(miss)
+			_say_once("炼钢厂缺料了", "serious", "stall_steel")
+	var bits := PackedStringArray()
+	for pair_v2 in INDUSTRY_MATS:
+		var pair2: Array = pair_v2
+		var key := str(pair2[0])
+		var delta := int(resources.get(key, 0)) - int(before.get(key, 0))
+		if delta == 0:
+			continue
+		if delta > 0:
+			bits.append("%s+%d" % [str(pair2[1]), delta])
+		else:
+			bits.append("%s%d" % [str(pair2[1]), delta])
+	if not bits.is_empty():
+		industry_clause = " · " + " ".join(bits)
+		last_event += industry_clause
+
+
 func _practice_tick() -> void:
 	var before := _practice_ok_set()
 	var gain := {}
@@ -2132,8 +2299,11 @@ func _practice_tick() -> void:
 			continue
 		var built: Array = city_buildings[city_id_v]
 		for bid_v in built:
-			var key := practice_key_of(city_id, str(bid_v))
+			var bid := str(bid_v)
+			var key := practice_key_of(city_id, bid)
 			if key == "":
+				continue
+			if not industry_ran_here(city_id, bid):
 				continue
 			gain[key] = int(gain.get(key, 0)) + 1
 	for key_v in gain.keys():
@@ -2231,11 +2401,96 @@ func _city_has_river(city_id: String) -> bool:
 
 func _near_feature(city: Dictionary, feat_id: String) -> bool:
 	var origin := Vector2i(int(city.get("q", 0)), int(city.get("r", 0)))
+	var radius := int(ORE_RADIUS.get(feat_id, 2))
 	for hex_v in DataDB.feature_hexes.keys():
 		var feat: Dictionary = DataDB.feature_hexes[hex_v]
 		if str(feat.get("id", "")) != feat_id:
 			continue
-		if HexGrid.distance(origin, hex_v) <= 2:
+		if HexGrid.distance(origin, hex_v) <= radius:
+			return true
+	return false
+
+
+func _near_forest(city: Dictionary) -> bool:
+	var origin := Vector2i(int(city.get("q", 0)), int(city.get("r", 0)))
+	if DataDB.terrain_id(origin.x, origin.y) == "forest":
+		return true
+	for n in HexGrid.neighbors_of(origin):
+		if DataDB.terrain_id(n.x, n.y) == "forest":
+			return true
+		for n2 in HexGrid.neighbors_of(n):
+			if HexGrid.distance(origin, n2) <= 2 and DataDB.terrain_id(n2.x, n2.y) == "forest":
+				return true
+	return false
+
+
+func industry_ran_here(city_id: String, bid: String) -> bool:
+	return bool(industry_on.get("%s|%s" % [city_id, bid], false))
+
+
+func _mark_ran(city_id: String, bid: String, note: String) -> void:
+	industry_ran[bid] = int(industry_ran.get(bid, 0)) + 1
+	industry_on["%s|%s" % [city_id, bid]] = true
+	if note != "":
+		industry_note["%s|%s" % [city_id, bid]] = note
+
+
+func _add_res(key: String, n: int) -> void:
+	resources[key] = int(resources.get(key, 0)) + n
+
+
+func _say_once(text: String, mood: String, id: String) -> void:
+	if line_history.has(id):
+		return
+	AdvisorSystem.present(text, mood, id)
+
+
+func _arm_material_hint(id: String, say_now: bool) -> void:
+	var text := _material_hint_text(id)
+	if text == "":
+		return
+	var key := _material_hint_key(id)
+	if line_history.has(key):
+		return
+	if say_now:
+		AdvisorSystem.present(text, "serious", key)
+		return
+	line_history[key] = turn
+	material_hint = text
+
+
+func _material_hint_key(id: String) -> String:
+	if id == "I04":
+		return "mat_I04"
+	if id == "E02" or id == "E04" or id == "E06" or id == "E07":
+		return "mat_copper"
+	if id == "M05":
+		return "mat_M05"
+	return "mat_wood"
+
+
+func _material_hint_text(id: String) -> String:
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	var mats: Dictionary = tech.get("materials", {})
+	var coal_need := int(mats.get("coal", 0))
+	var copper_need := int(mats.get("copper", 0))
+	var salt_need := int(mats.get("saltpeter", 0))
+	var wood_need := int(mats.get("wood", 0))
+	if id == "I04" and coal_need > int(resources.get("coal", 0)) and not _any_building("coalpit"):
+		return "煤不够 20。去大名建个煤场，四回合就够。"
+	if (id == "E02" or id == "E04" or id == "E06" or id == "E07") and copper_need > int(resources.get("copper", 0)):
+		return "铜不够。去洪州或广州建胆铜场。"
+	if id == "M05" and salt_need > int(resources.get("saltpeter", 0)):
+		return "硝不够。去洛阳建硝场。"
+	if wood_need > int(resources.get("wood", 0)):
+		return "木不够。去有森林的城建木场。"
+	return ""
+
+
+func _any_building(bid: String) -> bool:
+	for city_id_v in city_buildings.keys():
+		var built: Array = city_buildings[city_id_v]
+		if built.has(bid):
 			return true
 	return false
 

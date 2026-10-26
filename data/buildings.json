@@ -107,7 +107,7 @@
         "money": 120,
         "craft": 30
       },
-      "effect": "钱 +4",
+      "effect": "明州：硫 +1",
       "icon": "bld_maritime"
     },
     {
@@ -146,7 +146,7 @@
     {
       "id": "saltpeter",
       "name": "硝场",
-      "unlock": "M05",
+      "unlock": "start",
       "cost": {
         "money": 60,
         "craft": 30
@@ -162,7 +162,7 @@
         "money": 120,
         "craft": 50
       },
-      "effect": "冶铁务铁产量 +50%",
+      "effect": "扣煤 1，同城冶铁务铁 +1",
       "icon": "bld_coke"
     },
     {
@@ -173,7 +173,7 @@
         "money": 250,
         "craft": 120
       },
-      "effect": "铁与煤炼钢",
+      "effect": "2 铁、2 煤 → 1 钢",
       "icon": "bld_steelworks"
     },
     {
@@ -217,7 +217,7 @@
         "money": 70,
         "craft": 25
       },
-      "effect": "河畔：钱 +2，匠 +1",
+      "effect": "河畔运转，计入水磨",
       "icon": "bld_watermill"
     },
     {
@@ -271,6 +271,17 @@
       "cost": {},
       "effect": "试制槽 +1；学子晋升 ×2",
       "icon": "bld_gewuyuan"
+    },
+    {
+      "id": "lumberyard",
+      "name": "木场",
+      "unlock": "start",
+      "cost": {
+        "money": 80,
+        "craft": 30
+      },
+      "effect": "木 +2",
+      "icon": "bld_workshop"
     }
   ]
 }

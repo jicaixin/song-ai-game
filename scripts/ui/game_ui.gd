@@ -20,6 +20,7 @@ const RES_BAR := [
 	["copper", "res_copper", "HudNumberLabel", Color("f3e9d2")],
 	["sulfur", "res_sulfur", "HudNumberLabel", Color("f3e9d2")],
 	["saltpeter", "res_saltpeter", "HudNumberLabel", Color("f3e9d2")],
+	["steel", "res_steel", "HudNumberLabel", Color("f3e9d2")],
 ]
 const WX_ICON := {
 	"clear": "wx_sunny",
@@ -894,6 +895,10 @@ func _cancel_detail() -> void:
 
 
 func hide_modals() -> void:
+	if desk and desk.mode == "tech" and desk.host.get_child_count() > 0:
+		var board := desk.host.get_child(0)
+		if board.has_method("consume_escape") and bool(board.call("consume_escape")):
+			return
 	if end_confirm != null and is_instance_valid(end_confirm) and end_confirm.visible:
 		TurnManager.dismiss_confirm()
 		return

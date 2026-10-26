@@ -2,6 +2,7 @@ class_name TechDesk
 extends Control
 
 const PLAN = preload("res://scripts/ui/tech_plan.gd")
+const GoalSystem = preload("res://scripts/core/goal_system.gd")
 
 const PAPER := Color("f3ead6")
 const INK := Color("2a241c")
@@ -12,11 +13,18 @@ const CYAN := Color("1f7f8c")
 const OCHRE := Color("8a4e22")
 const MUTED := Color("76685a")
 const HEADER := Color("1c2826")
-const NODE_W := 136.0
-const NODE_H := 42.0
-const ROW_H := 96.0
-const COL_W := 146.0
-const LOCKED_A := 0.65
+const HEADER_H := 48.0
+const FOOTER_H := 76.0
+const LEFT_W := 288.0
+const NAME_W := 40.0
+const STAGE_H := 32.0
+const NODE_W := 156.0
+const NODE_H := 44.0
+const ROW_H := 94.0
+const COL_W := 214.0
+const NEXT_W := 96.0
+const LOCKED_A := 0.6
+const CARD_W := 296.0
 const TALENT_PID := {
 	"燕肃": "yan_su",
 	"毕昇": "bi_sheng",
@@ -41,6 +49,12 @@ var _choice: Control
 var _choice_dim: Control
 var _flash_labels: Array = []
 var _flash_until := 0
+var edge_routes: Array = []
+var route_marks := {}
+var layout_box := {}
+var _drag := false
+var _press := Vector2.ZERO
+var _drag_from := 0
 
 
 func build() -> void:
@@ -67,7 +81,7 @@ func build() -> void:
 	add_child(bg)
 	if desk.tech_legend_bar < 0:
 		desk.tech_legend_bar = 1 if GameState.turn <= 10 else 0
-	var header_h := 92.0 if desk.tech_view == "overview" else 56.0
+	var header_h := 92.0 if desk.tech_view == "overview" else HEADER_H
 	_build_header(header_h)
 	_build_footer()
 	_build_body(header_h)
@@ -102,7 +116,11 @@ func _build_header(header_h: float) -> void:
 		var chip := Kit.label("%s  %d/%d" % [era_name, prog.x, prog.y], "H3Label")
 		chip.add_theme_color_override("font_color", Color("e7c98a"))
 		row.add_child(chip)
-		var next := Kit.label("时代三：第 68 回合或 11/17 开启", "CaptionLabel")
+		var era2 := PLAN.era_progress(2)
+		var next_text := "时代三 · 火器初兴 已开"
+		if not GameState.era_unlocked(3):
+			next_text = "时代三：第 68 回合 或 本时代完成 11/%d 开放" % int(era2.y)
+		var next := Kit.label(next_text, "CaptionLabel")
 		next.add_theme_color_override("font_color", Color("d9cbb6"))
 		row.add_child(next)
 	else:
@@ -118,9 +136,9 @@ func _build_header(header_h: float) -> void:
 	overview.pressed.connect(_set_view.bind("overview"))
 	row.add_child(overview)
 	desk.debug_btns["tech_overview"] = overview
-	var help := _header_button("?", false)
-	help.custom_minimum_size = Vector2(40, 36)
-	help.pressed.connect(_rewatch)
+	var help := _header_button("图例", false)
+	help.custom_minimum_size = Vector2(64, 36)
+	help.pressed.connect(_show_legend)
 	row.add_child(help)
 	desk.debug_btns["tech_help"] = help
 	var close := _header_button("×", false)
@@ -205,30 +223,28 @@ func _filter_row(row: HBoxContainer) -> void:
 
 func _build_body(header_h: float) -> void:
 	var top := header_h
-	var height := 720.0 - header_h - 32.0
-	var left_w := 0.0 if desk.tech_view == "overview" else 300.0
-	var drawer_w := 0.0
-	if desk.tech_view != "overview" and desk.picked != "":
-		drawer_w = 360.0
+	var foot := FOOTER_H if desk.tech_view != "overview" else 32.0
+	var height := 720.0 - header_h - foot
+	var left_w := 0.0 if desk.tech_view == "overview" else LEFT_W
 	if left_w > 0.0:
 		var left := PanelContainer.new()
-		left.position = Vector2(8, top + 8)
-		left.size = Vector2(left_w - 12, height - 16)
+		left.position = Vector2(0, top)
+		left.size = Vector2(left_w, height)
 		left.add_theme_stylebox_override("panel", _flat(Color("f7f1e4"), Color("e0d3b8"), 8, 0))
 		add_child(left)
 		var scroller := ScrollContainer.new()
 		scroller.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		scroller.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		scroller.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		scroller.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 		left.add_child(scroller)
 		var box := VBoxContainer.new()
 		box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		box.add_theme_constant_override("separation", 8)
 		scroller.add_child(box)
 		_left(box)
-		call_deferred("_fit_guide", left, box)
 	var tree_x := left_w
-	var tree_w := 1280.0 - left_w - drawer_w
+	var tree_w := 1280.0 - left_w
 	var tree_paper := ColorRect.new()
 	tree_paper.color = PAPER
 	tree_paper.position = Vector2(tree_x, top)
@@ -238,14 +254,12 @@ func _build_body(header_h: float) -> void:
 	var host := HBoxContainer.new()
 	host.position = Vector2(tree_x, top)
 	host.size = Vector2(tree_w, height)
-	host.add_theme_constant_override("separation", 4)
+	host.add_theme_constant_override("separation", 0)
 	add_child(host)
-	if desk.tech_view != "overview":
-		_era_rails(host, height)
 	var gutter := VBoxContainer.new()
-	gutter.custom_minimum_size = Vector2(28, height)
+	gutter.custom_minimum_size = Vector2(NAME_W if desk.tech_view != "overview" else 28.0, height)
 	host.add_child(gutter)
-	gutter.add_child(_spacer(32))
+	gutter.add_child(_spacer(STAGE_H if desk.tech_view != "overview" else 28.0))
 	for b_v in DataDB.branches:
 		var b: Dictionary = b_v
 		if str(b.get("id", "")) == "zhong":
@@ -260,10 +274,12 @@ func _build_body(header_h: float) -> void:
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	scroll.gui_input.connect(_on_tree_input)
 	host.add_child(scroll)
 	graph = Graph.new()
 	graph.board = self
-	graph.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	graph.mouse_filter = Control.MOUSE_FILTER_STOP
+	graph.gui_input.connect(_on_paper_input)
 	scroll.add_child(graph)
 	if desk.tech_view == "overview":
 		_layout_overview()
@@ -272,131 +288,33 @@ func _build_body(header_h: float) -> void:
 	graph.custom_minimum_size = graph.need
 	graph.size = graph.need
 	_paint_fade()
-	var center_id := desk.picked
-	if center_id == "" or not graph.spots.has(center_id):
-		center_id = GameState.tech_designing
-	if center_id != "" and graph.spots.has(center_id):
-		var sx: float = graph.spots[center_id].position.x
-		scroll.scroll_horizontal = int(maxf(0.0, sx - 280.0))
-	elif desk.tech_scroll > 0:
-		scroll.scroll_horizontal = desk.tech_scroll
-	if drawer_w > 0.0:
-		_build_drawer(1280.0 - drawer_w, top, drawer_w, height)
+	var era_now := PLAN.current_era()
+	if desk.tech_scroll < 0 or desk.tech_scroll_era != era_now:
+		desk.tech_scroll = _default_scroll(era_now)
+		desk.tech_scroll_era = era_now
+	_apply_scroll(desk.tech_scroll)
+	_bring_into_view(desk.picked)
+	_bring_into_view(GameState.tech_designing)
+	layout_box = {
+		"header_h": header_h,
+		"left_w": left_w,
+		"tree_w": tree_w,
+		"tree_h": height,
+		"footer_h": foot,
+		"scroll": scroll.scroll_horizontal,
+	}
+	if desk.tech_view != "overview" and desk.picked != "":
+		_build_card(desk.picked)
 
 
 func _left(box: VBoxContainer) -> void:
-	box.add_child(_section_title("1  正在做"))
-	var now := VBoxContainer.new()
-	now.add_theme_constant_override("separation", 4)
-	box.add_child(now)
-	anchors["now"] = now
-	now.add_child(Kit.label("设计槽 %d/1" % (0 if GameState.tech_designing == "" else 1), "H3Label"))
-	if GameState.tech_designing == "":
-		var empty := Kit.label("选一份图纸", "H3Label")
-		empty.add_theme_color_override("font_color", CINNABAR)
-		now.add_child(empty)
-		anchors["design"] = empty
-	else:
-		var id := GameState.tech_designing
-		var tech: Dictionary = DataDB.tech_by_id.get(id, {})
-		var need := GameState.design_need(id)
-		var left := maxi(0, need - GameState.tech_design_prog)
-		var head_row := HBoxContainer.new()
-		head_row.add_theme_constant_override("separation", 6)
-		now.add_child(head_row)
-		var row := _text_button("设计  %s" % str(tech.get("name", id)))
-		row.pressed.connect(_focus_tech.bind(id))
-		head_row.add_child(row)
-		anchors["design"] = row
-		var pause := Kit.button("暂停", "Button")
-		pause.custom_minimum_size = Vector2(64, 32)
-		pause.pressed.connect(_pause_design)
-		head_row.add_child(pause)
-		var bar := ProgressBar.new()
-		bar.theme_type_variation = "NodeBarDesign"
-		bar.max_value = float(maxi(1, need))
-		bar.value = float(GameState.tech_design_prog)
-		bar.show_percentage = false
-		bar.custom_minimum_size = Vector2(0, 8)
-		now.add_child(bar)
-		now.add_child(Kit.label("电 %d/%d    约 %d 回合" % [GameState.tech_design_prog, need, int(ceil(float(left) / 10.0))], "CaptionLabel"))
-	var qn := 1
-	for id_v in GameState.tech_queue:
-		var qid := str(id_v)
-		var tech2: Dictionary = DataDB.tech_by_id.get(qid, {})
-		var qrow := HBoxContainer.new()
-		qrow.add_theme_constant_override("separation", 4)
-		now.add_child(qrow)
-		var mark := Kit.label("%s %s" % [_circ(qn), str(tech2.get("name", qid))], "SmallLabel")
-		mark.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		qrow.add_child(mark)
-		var up := Kit.button("↑", "Button")
-		up.custom_minimum_size = Vector2(36, 32)
-		up.disabled = qn <= 1
-		up.pressed.connect(_bump_queue.bind(qid))
-		qrow.add_child(up)
-		var drop := Kit.button("移出", "Button")
-		drop.custom_minimum_size = Vector2(64, 32)
-		drop.pressed.connect(_drop_queue.bind(qid))
-		qrow.add_child(drop)
-		desk.debug_btns["queue_up_%d" % qn] = up
-		desk.debug_btns["queue_drop_%d" % qn] = drop
-		qn += 1
-	now.add_child(Kit.label("试制槽 %d/%d" % [GameState.tech_trials.size(), GameState.trial_slots()], "H3Label"))
-	var trials := VBoxContainer.new()
-	trials.add_theme_constant_override("separation", 2)
-	now.add_child(trials)
-	anchors["trial"] = trials
-	for trial_v in GameState.tech_trials:
-		var trial: Dictionary = trial_v
-		var id2 := str(trial.get("id", ""))
-		var tech3: Dictionary = DataDB.tech_by_id.get(id2, {})
-		var who := str(tech3.get("talent", ""))
-		var line := "试制  %s  %d/%d" % [str(tech3.get("name", id2)), int(trial.get("prog", 0)), int(trial.get("need", 1))]
-		if who != "":
-			line += "  " + who
-		var brow := _link_row(line, "workshop")
-		var face := _talent_face(who)
-		if face != null:
-			var wrap := HBoxContainer.new()
-			wrap.add_theme_constant_override("separation", 6)
-			wrap.alignment = BoxContainer.ALIGNMENT_CENTER
-			wrap.add_child(face)
-			wrap.add_child(brow)
-			trials.add_child(wrap)
-		else:
-			trials.add_child(brow)
-		var tbar := ProgressBar.new()
-		tbar.theme_type_variation = "NodeBarTrial"
-		tbar.max_value = float(maxi(1, int(trial.get("need", 1))))
-		tbar.value = float(int(trial.get("prog", 0)))
-		tbar.show_percentage = false
-		tbar.custom_minimum_size = Vector2(0, 8)
-		trials.add_child(tbar)
-	var open_slots := maxi(0, GameState.trial_slots() - GameState.tech_trials.size())
-	for _slot in open_slots:
-		var empty_slot := _text_button("空槽 · 去匠作院")
-		empty_slot.pressed.connect(_jump.bind("workshop"))
-		trials.add_child(empty_slot)
-	if GameState.trial_slots() < 2:
-		trials.add_child(Kit.label("颁布格物院后开", "SmallLabel"))
-	var prints := VBoxContainer.new()
-	now.add_child(prints)
-	anchors["prints"] = prints
-	if GameState.tech_blueprints.is_empty():
-		prints.add_child(Kit.label("图纸库 0/%d" % GameState.blueprint_cap(), "SmallLabel"))
-	else:
-		var names := ""
-		for id_v in GameState.tech_blueprints:
-			var tech4: Dictionary = DataDB.tech_by_id.get(str(id_v), {})
-			if names != "":
-				names += "、"
-			names += str(tech4.get("name", str(id_v)))
-		prints.add_child(_link_row("图纸库 %d/%d  %s" % [GameState.tech_blueprints.size(), GameState.blueprint_cap(), names], "workshop"))
+	box.add_child(_design_block())
+	box.add_child(_queue_block())
+	box.add_child(_trial_block())
+	box.add_child(_library_block())
 	if GameState.tech_target != "":
 		box.add_child(_target_card())
 	else:
-		box.add_child(_section_title("2  豆沙包建议"))
 		var sug := PLAN.suggestion()
 		if str(sug.get("id", "")) == "":
 			box.add_child(_none_card())
@@ -404,19 +322,202 @@ func _left(box: VBoxContainer) -> void:
 			var card := _advice_card(str(sug.get("title", "")), str(sug.get("reason", "")), bool(sug.get("telegraph", false)), true)
 			box.add_child(card)
 			anchors["accept"] = card
-	box.add_child(_section_title("3  还缺"))
-	var blocks: Array = PLAN.blockers()
-	if blocks.is_empty():
-		var ok := Kit.label("一切顺利，本月没有卡住的材料。", "SmallLabel")
-		ok.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		box.add_child(ok)
-	for item_v in blocks:
-		var item: Dictionary = item_v
-		box.add_child(_blocker(item))
-	box.add_child(_section_title("4  读图"))
-	var how := Kit.label("金边是已成，青框是正在画。点一格看说明。按 T 关闭这张图。电满了就别空着槽。", "SmallLabel")
-	how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(how)
+
+
+func _design_block() -> Control:
+	var box := VBoxContainer.new()
+	box.custom_minimum_size = Vector2(264, 96)
+	box.add_theme_constant_override("separation", 2)
+	var head := HBoxContainer.new()
+	box.add_child(head)
+	head.add_child(Kit.label("设计槽 %d/1" % (0 if GameState.tech_designing == "" else 1), "H3Label"))
+	var pad := Control.new()
+	pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(pad)
+	head.add_child(Kit.label("第 %d 回合" % GameState.turn, "SmallLabel"))
+	anchors["now"] = box
+	if GameState.tech_designing == "":
+		var empty := Kit.label("选一份图纸", "H3Label")
+		empty.add_theme_color_override("font_color", CINNABAR)
+		box.add_child(empty)
+		anchors["design"] = empty
+		return box
+	var id := GameState.tech_designing
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	var need := GameState.design_need(id)
+	var left := maxi(0, need - GameState.tech_design_prog)
+	var row := _text_button(str(tech.get("name", id)))
+	row.pressed.connect(_on_node.bind(id))
+	box.add_child(row)
+	anchors["design"] = row
+	var pause := Kit.button("暂停", "Button")
+	pause.custom_minimum_size = Vector2(64, 32)
+	pause.pressed.connect(_pause_design)
+	box.add_child(pause)
+	var bar := ProgressBar.new()
+	bar.theme_type_variation = "NodeBarDesign"
+	bar.max_value = float(maxi(1, need))
+	bar.value = float(GameState.tech_design_prog)
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 8)
+	box.add_child(bar)
+	box.add_child(Kit.label("电 %d/%d · 约 %d 回合" % [GameState.tech_design_prog, need, int(ceil(float(left) / 10.0))], "SmallLabel"))
+	return box
+
+
+func _queue_block() -> Control:
+	var box := VBoxContainer.new()
+	box.custom_minimum_size = Vector2(264, 48)
+	var head := HBoxContainer.new()
+	box.add_child(head)
+	head.add_child(Kit.label("队列 %d/%d" % [GameState.tech_queue.size(), GameState.QUEUE_CAP], "H3Label"))
+	if GameState.tech_queue.size() >= GameState.QUEUE_CAP:
+		var full := Kit.label("满", "SmallLabel")
+		full.add_theme_color_override("font_color", CINNABAR)
+		head.add_child(full)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	box.add_child(row)
+	for i in GameState.QUEUE_CAP:
+		var text := "%s—" % _circ(i + 1)
+		var qid := ""
+		if i < GameState.tech_queue.size():
+			qid = str(GameState.tech_queue[i])
+			text = "%s%s" % [_circ(i + 1), PLAN.short_name(qid)]
+		var chip := _text_button(text)
+		if qid != "":
+			chip.pressed.connect(_on_node.bind(qid))
+		row.add_child(chip)
+	return box
+
+
+func _trial_block() -> Control:
+	var box := VBoxContainer.new()
+	box.custom_minimum_size = Vector2(264, 152)
+	var head := HBoxContainer.new()
+	box.add_child(head)
+	var slots := GameState.trial_slots()
+	head.add_child(Kit.label("试制槽 %d/%d" % [GameState.tech_trials.size(), slots], "H3Label"))
+	if slots < 2:
+		var pad := Control.new()
+		pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		head.add_child(pad)
+		head.add_child(Kit.label("开格物院后 2 槽", "SmallLabel"))
+	anchors["trial"] = box
+	for trial_v in GameState.tech_trials:
+		var trial: Dictionary = trial_v
+		var id := str(trial.get("id", ""))
+		var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+		var brow := _link_row(str(tech.get("name", id)), "workshop")
+		box.add_child(brow)
+		var tbar := ProgressBar.new()
+		tbar.theme_type_variation = "NodeBarTrial"
+		tbar.max_value = float(maxi(1, int(trial.get("need", 1))))
+		tbar.value = float(int(trial.get("prog", 0)))
+		tbar.show_percentage = false
+		tbar.custom_minimum_size = Vector2(0, 8)
+		box.add_child(tbar)
+		box.add_child(Kit.label("第 %d/%d 回合" % [int(trial.get("prog", 0)), int(trial.get("need", 1))], "SmallLabel"))
+		var who := str(tech.get("talent", ""))
+		var paid := _paid_text(tech)
+		var note := who
+		if paid != "":
+			note = paid if note == "" else "%s · %s" % [note, paid]
+		if note != "":
+			box.add_child(Kit.label(note, "SmallLabel"))
+	var open_slots := maxi(0, slots - GameState.tech_trials.size())
+	for _slot in open_slots:
+		var empty_slot := _text_button("空槽 · 去匠作院")
+		empty_slot.pressed.connect(_jump.bind("workshop"))
+		box.add_child(empty_slot)
+	if slots < 2:
+		box.add_child(Kit.label("第 2 槽 · 颁布「开格物院」后开放", "SmallLabel"))
+	return box
+
+
+func _paid_text(tech: Dictionary) -> String:
+	var cost: Dictionary = tech.get("cost", {})
+	var bits := PackedStringArray()
+	bits.append("匠 %d" % int(cost.get("craft", 0)))
+	var mats: Dictionary = tech.get("materials", {})
+	for key_v in mats.keys():
+		var key := str(key_v)
+		bits.append("%s %d" % [str(PLAN.MAT_NAME.get(key, key)), int(mats[key_v])])
+	return "、".join(bits) + " 已付"
+
+
+func _library_block() -> Control:
+	var box := VBoxContainer.new()
+	box.custom_minimum_size = Vector2(264, 88)
+	var cap := GameState.blueprint_cap()
+	var head := HBoxContainer.new()
+	box.add_child(head)
+	head.add_child(Kit.label("图纸库 %d/%d" % [GameState.tech_blueprints.size(), cap], "H3Label"))
+	var hint := ""
+	if not GameState.tech_blueprints.is_empty():
+		if GameState.tech_trials.size() >= GameState.trial_slots():
+			hint = "等试制槽空出"
+		else:
+			hint = "可以开试制"
+	if hint != "":
+		var pad := Control.new()
+		pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		head.add_child(pad)
+		head.add_child(Kit.label(hint, "SmallLabel"))
+	var previews := _preview_chapters()
+	var n := mini(5, cap + previews.size())
+	var gap := 6.0
+	var cell_w := (264.0 - gap * float(n - 1)) / float(maxi(1, n))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", int(gap))
+	box.add_child(row)
+	anchors["prints"] = row
+	for i in cap:
+		var cell := PanelContainer.new()
+		cell.custom_minimum_size = Vector2(cell_w, 60)
+		cell.set_meta("lib_kind", "real")
+		cell.set_meta("lib_w", cell_w)
+		var inner := CenterContainer.new()
+		cell.add_child(inner)
+		if i < GameState.tech_blueprints.size():
+			var id := str(GameState.tech_blueprints[i])
+			var btn := _text_button(PLAN.short_name(id))
+			btn.pressed.connect(_on_node.bind(id))
+			inner.add_child(btn)
+		else:
+			inner.add_child(Kit.label("空", "SmallLabel"))
+		row.add_child(cell)
+	for title_v in previews:
+		var title := str(title_v)
+		var cell2 := PanelContainer.new()
+		cell2.custom_minimum_size = Vector2(cell_w, 60)
+		cell2.set_meta("lib_kind", "preview")
+		cell2.set_meta("lib_w", cell_w)
+		cell2.tooltip_text = "%s主目标完成后 +1 格（只完成一半不给）" % title
+		var inner2 := VBoxContainer.new()
+		cell2.add_child(inner2)
+		inner2.add_child(Kit.label(title, "SmallLabel"))
+		inner2.add_child(Kit.label("奖励", "SmallLabel"))
+		row.add_child(cell2)
+	return box
+
+
+func _preview_chapters() -> PackedStringArray:
+	var out := PackedStringArray()
+	var pairs := [["liao", "第二章"], ["heyi", "第四章"]]
+	for pair_v in pairs:
+		var pair: Array = pair_v
+		var ch: Dictionary = DataDB.chapter_by_id.get(str(pair[0]), {})
+		if ch.is_empty():
+			continue
+		if GameState.chapter_rewarded.has(str(pair[0])):
+			continue
+		var state := str(GoalSystem.chapter_state(ch))
+		if state == "done" or state == "partial" or state == "fail":
+			continue
+		out.append(str(pair[1]))
+	return out
+
 
 
 func _fit_guide(panel: PanelContainer, box: VBoxContainer) -> void:
@@ -480,6 +581,7 @@ func _none_card() -> PanelContainer:
 
 func _target_card() -> PanelContainer:
 	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(264, 140)
 	card.add_theme_stylebox_override("panel", _flat(Color("e7f4f6"), CYAN, 8, 2))
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 4)
@@ -489,53 +591,23 @@ func _target_card() -> PanelContainer:
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(title)
 	var sum: Dictionary = PLAN.totals(GameState.tech_target)
-	var chain: Array = sum.get("chain", [])
-	var path := "路径 %d 项：" % chain.size()
-	var first := true
-	for id_v in chain:
-		var id := str(id_v)
-		var node: Dictionary = DataDB.tech_by_id.get(id, {})
-		if not first:
-			path += " → "
-		first = false
-		path += str(node.get("name", id))
-		var st := GameState.tech_state(id)
-		if st == "trial":
-			path += "（试制）"
-		elif st == "designing":
-			path += "（设计）"
-	var path_lab := Kit.label(path, "CaptionLabel")
-	path_lab.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(path_lab)
-	box.add_child(Kit.label("总电 %d    总匠 %d" % [int(sum.get("power", 0)), int(sum.get("craft", 0))], "H3Label"))
-	box.add_child(Kit.label("预计约 %d 回合（T%d 前后）" % [int(sum.get("months", 0)), int(sum.get("eta", 0))], "SmallLabel"))
-	var auto := Kit.label("自动排队中：路线上前置一完成就进队列", "CaptionLabel")
-	auto.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(auto)
-	var waiting: Array = GameState.target_waiting()
-	if not waiting.is_empty():
-		var wait_names := ""
-		for wait_id_v in waiting:
-			var wait_node: Dictionary = DataDB.tech_by_id.get(str(wait_id_v), {})
-			if wait_names != "":
-				wait_names += "、"
-			wait_names += str(wait_node.get("name", str(wait_id_v)))
-		var hold := Kit.label("等队列空位：%s。下回合补上。" % wait_names, "CaptionLabel")
-		hold.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		box.add_child(hold)
+	var chain: Array = PLAN.spine(GameState.tech_target)
+	var route := ""
+	if chain.size() >= 2:
+		var head: Dictionary = DataDB.tech_by_id.get(str(chain[0]), {})
+		var tail: Dictionary = DataDB.tech_by_id.get(str(chain[chain.size() - 1]), {})
+		route = "起 %s → 标 %s" % [str(head.get("name", "")), str(tail.get("name", ""))]
+	elif chain.size() == 1:
+		route = "标 %s" % str(tech.get("name", GameState.tech_target))
+	if route != "":
+		var path_lab := Kit.label(route, "SmallLabel")
+		path_lab.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(path_lab)
+	box.add_child(Kit.label("总电 %d · 总匠 %d · 约 %d 回合" % [int(sum.get("power", 0)), int(sum.get("craft", 0)), int(sum.get("months", 0))], "SmallLabel"))
 	var short := _target_gap(GameState.tech_target)
 	if short != "":
 		var gap := _link_row("卡点：" + short, "industry")
 		box.add_child(gap)
-	var sug := PLAN.suggestion()
-	if str(sug.get("id", "")) != "" and str(sug.get("kind", "")) != "target":
-		var why := Kit.label(str(sug.get("title", "")), "CaptionLabel")
-		why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		box.add_child(why)
-		var act := Kit.button("采纳", "PrimaryButton")
-		act.pressed.connect(_adopt)
-		box.add_child(act)
-		desk.debug_btns["tech_accept"] = act
 	var cancel := Kit.button("取消目标", "Button")
 	cancel.pressed.connect(_clear_target)
 	box.add_child(cancel)
@@ -656,53 +728,137 @@ func _fold(box: VBoxContainer, id: String, key: String, title: String, body_text
 
 func _layout_focus() -> void:
 	var era := PLAN.current_era()
-	var x := 8.0
-	var header_y := 4.0
+	var last_col := 0
+	var prev_era := 0
 	for stage_v in DataDB.stages:
 		var stage: Dictionary = stage_v
-		if int(stage.get("era", 0)) != era:
+		var stage_era := int(stage.get("era", 0))
+		if stage_era > era:
 			continue
 		var col_from := int(stage.get("col_from", 1))
 		var col_to := int(stage.get("col_to", col_from))
-		var cols := col_to - col_from + 1
+		last_col = maxi(last_col, col_to)
+		var x := float(col_from - 1) * COL_W
 		var prog := PLAN.stage_progress(int(stage.get("id", 0)))
 		var cap := Kit.label("%s %s  %d/%d" % [str(stage.get("name", "")), str(stage.get("subtitle", "")), prog.x, prog.y], "SmallLabel")
-		cap.position = Vector2(x, header_y)
-		cap.size = Vector2(cols * COL_W, 24)
+		cap.position = Vector2(x, 0)
+		cap.size = Vector2(float(col_to - col_from + 1) * COL_W, STAGE_H)
 		_mark_era3_head(cap, stage)
 		graph.add_child(cap)
-		for tech_v in DataDB.techs:
-			var tech: Dictionary = tech_v
-			if int(tech.get("stage", 0)) != int(stage.get("id", 0)):
-				continue
-			var id := str(tech.get("id", ""))
-			var col := int(tech.get("col", col_from)) - col_from
-			var row := _branch_row(str(tech.get("branch", "")))
-			if row < 0:
-				continue
-			var y := 32.0 + float(row) * ROW_H + _slot_y(str(tech.get("slot", "c")))
-			var pos := Vector2(x + float(col) * COL_W, y)
-			_place_node(id, pos, false)
-		x += float(cols) * COL_W + 12.0
-	var cap2 := Kit.label("后继  %s" % _lock_head(era + 1), "SmallLabel")
-	cap2.position = Vector2(x, header_y)
-	cap2.size = Vector2(COL_W, 24)
-	graph.add_child(cap2)
-	var stack := {}
-	for tech_v2 in DataDB.techs:
-		var tech2: Dictionary = tech_v2
-		var id2 := str(tech2.get("id", ""))
-		if not PLAN.is_frontier(id2, era):
+		if prev_era != 0 and stage_era != prev_era:
+			var rule := ColorRect.new()
+			rule.color = GOLD
+			rule.position = Vector2(x - 2.0, 0)
+			rule.size = Vector2(2, STAGE_H + 6.0 * ROW_H)
+			rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			graph.add_child(rule)
+		elif prev_era == stage_era:
+			var thin := ColorRect.new()
+			thin.color = Color("d8cbb0")
+			thin.position = Vector2(x, 0)
+			thin.size = Vector2(1, STAGE_H + 6.0 * ROW_H)
+			thin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			graph.add_child(thin)
+		prev_era = stage_era
+	for tech_v in DataDB.techs:
+		var tech: Dictionary = tech_v
+		if int(tech.get("era", 1)) > era:
 			continue
-		var row2 := _branch_row(str(tech2.get("branch", "")))
-		if row2 < 0:
+		var id := str(tech.get("id", ""))
+		var row := _branch_row(str(tech.get("branch", "")))
+		if row < 0 and str(tech.get("branch", "")) == "zhong" and era >= 3:
+			row = 5
+		if row < 0:
 			continue
-		var n := int(stack.get(row2, 0))
-		stack[row2] = n + 1
-		var y2 := 32.0 + float(row2) * ROW_H + (4.0 if n == 0 else 48.0)
-		_place_node(id2, Vector2(x, y2), false)
-	graph.need = Vector2(x + COL_W + 8.0, 32.0 + 6.0 * ROW_H)
+		var col := int(tech.get("col", 1))
+		var pos := Vector2(float(col - 1) * COL_W, STAGE_H + float(row) * ROW_H + _slot_y(str(tech.get("slot", "c"))))
+		_place_node(id, pos, false)
+	var width := float(last_col) * COL_W
+	if era < 3:
+		_layout_next(era, width)
+		width += NEXT_W
+	graph.need = Vector2(width, STAGE_H + 6.0 * ROW_H)
 	_build_edges()
+
+
+func _layout_next(era: int, x: float) -> void:
+	var head := Kit.label("时代%s · 后继" % _era_han(era + 1), "SmallLabel")
+	head.position = Vector2(x, 0)
+	head.size = Vector2(NEXT_W, 16)
+	graph.add_child(head)
+	var sub := Kit.label(_lock_head(era + 1), "SmallLabel")
+	sub.position = Vector2(x, 16)
+	sub.size = Vector2(NEXT_W, 16)
+	graph.add_child(sub)
+	var buckets := {}
+	for tech_v in DataDB.techs:
+		var tech: Dictionary = tech_v
+		if int(tech.get("era", 1)) != era + 1:
+			continue
+		var id := str(tech.get("id", ""))
+		var row := _branch_row(str(tech.get("branch", "")))
+		if row < 0:
+			continue
+		if not buckets.has(row):
+			buckets[row] = []
+		var list: Array = buckets[row]
+		list.append(tech)
+	for row_v in buckets.keys():
+		var row := int(row_v)
+		var list: Array = buckets[row]
+		list.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a.get("col", 0)) < int(b.get("col", 0)))
+		var shown := 0
+		for tech_v2 in list:
+			if shown >= 2:
+				break
+			var tech2: Dictionary = tech_v2
+			var id2 := str(tech2.get("id", ""))
+			var pos := Vector2(x + 4.0 + float(shown) * 44.0, STAGE_H + float(row) * ROW_H + 8.0)
+			_place_chip(id2, pos)
+			shown += 1
+
+
+func _place_chip(id: String, pos: Vector2) -> void:
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.flat = true
+	var empty := StyleBoxEmpty.new()
+	for slot in ["normal", "hover", "pressed", "focus", "disabled"]:
+		b.add_theme_stylebox_override(slot, empty)
+	var wh := Vector2(40, 64)
+	b.custom_minimum_size = wh
+	b.size = wh
+	b.position = pos
+	b.tooltip_text = "%s\n%s" % [str(tech.get("name", id)), PLAN.status_text(id)]
+	b.pressed.connect(_on_node.bind(id))
+	b.mouse_entered.connect(_on_enter.bind(id))
+	b.mouse_exited.connect(_on_exit.bind(id))
+	graph.add_child(b)
+	var face := Face.new()
+	face.state = "locked"
+	face.tile = false
+	face.corner = "锁"
+	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	face.size = wh
+	b.add_child(face)
+	var col := VBoxContainer.new()
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.position = Vector2(2, 2)
+	col.size = Vector2(36, 60)
+	b.add_child(col)
+	col.add_child(Kit.icon_rect("tech_%s" % id, 24))
+	var short := PLAN.short_name(id)
+	if short.length() > 4:
+		short = short.substr(0, 4)
+	var nm := Kit.label(short, "SmallLabel")
+	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(nm)
+	b.modulate.a = LOCKED_A
+	nodes[id] = b
+	graph.spots[id] = Rect2(pos, wh)
+	desk.debug_btns["node_" + id] = b
 
 
 func _layout_overview() -> void:
@@ -716,7 +872,7 @@ func _layout_overview() -> void:
 		var done := prog.x == prog.y and prog.y > 0
 		var title := "%s %s %d/%d" % [str(stage.get("name", "")), "齐" if done else str(stage.get("subtitle", "")), prog.x, prog.y]
 		if not GameState.era_unlocked(int(stage.get("era", 1))):
-			title = "%s 锁" % str(stage.get("name", ""))
+			title = "锁 · %s" % _lock_head(int(stage.get("era", 1)))
 		var cap := Kit.label(title, "SmallLabel")
 		cap.position = Vector2(x, 4)
 		cap.size = Vector2(cols * 48.0, 22)
@@ -754,7 +910,6 @@ func _place_node(id: String, pos: Vector2, tile: bool) -> void:
 	b.position = pos
 	b.tooltip_text = "%s\n%s" % [str(tech.get("name", id)), PLAN.status_text(id)]
 	b.pressed.connect(_on_node.bind(id))
-	b.gui_input.connect(_on_node_input.bind(id))
 	b.mouse_entered.connect(_on_enter.bind(id))
 	b.mouse_exited.connect(_on_exit.bind(id))
 	graph.add_child(b)
@@ -768,6 +923,14 @@ func _place_node(id: String, pos: Vector2, tile: bool) -> void:
 	var shown := _node_progress(id, state)
 	face.prog = int(shown.x)
 	face.need = int(shown.y)
+	face.corner = PLAN.corner(id)
+	face.raw = GameState.tech_state(id)
+	face.selected = desk.picked == id
+	var mark := _route_mark(id)
+	face.route = mark != "off"
+	face.route_mark = "" if mark == "off" else mark
+	if mark != "off":
+		route_marks[id] = mark
 	b.add_child(face)
 	if tile:
 		var icon := TextureRect.new()
@@ -792,7 +955,7 @@ func _place_node(id: String, pos: Vector2, tile: bool) -> void:
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_theme_constant_override("separation", 4)
 		b.add_child(row)
-		row.add_child(Kit.icon_rect("tech_%s" % id, 22))
+		row.add_child(Kit.icon_rect("tech_%s" % id, 26))
 		var col := VBoxContainer.new()
 		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_child(col)
@@ -806,14 +969,7 @@ func _place_node(id: String, pos: Vector2, tile: bool) -> void:
 		var sub := HBoxContainer.new()
 		sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		col.add_child(sub)
-		var st := TextureRect.new()
-		st.texture = Kit.piece("st3_%s" % _icon_state(state))
-		st.custom_minimum_size = Vector2(12, 12)
-		st.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		st.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		st.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		sub.add_child(st)
-		var sl := Kit.label(PLAN.status_text(id), "CaptionLabel")
+		var sl := Kit.label(PLAN.status_text(id), "SmallLabel")
 		sl.clip_text = false
 		sl.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
 		sl.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -840,14 +996,18 @@ func _build_edges() -> void:
 			if not graph.spots.has(pre):
 				continue
 			var kind := "miss"
+			var pre_state := GameState.tech_state(pre)
 			var adjacent := on_path.has(id) and on_path.has(pre) and _adjacent(chain, pre, id)
 			if adjacent and not GameState.tech_done.has(id):
 				kind = "path"
-			elif GameState.tech_done.has(pre):
+			elif GameState.tech_done.has(pre) and GameState.tech_done.has(id):
 				kind = "done"
-			elif GameState.tech_state(pre) == "blueprint":
+			elif GameState.tech_done.has(pre):
+				kind = "open"
+			elif pre_state == "blueprint" or pre_state == "trial" or GameState.tech_designing == pre:
 				kind = "sheet"
 			graph.edges.append({"from": pre, "to": id, "kind": kind})
+	_route_edges()
 
 
 func _paint_fade() -> void:
@@ -865,46 +1025,70 @@ func _paint_fade() -> void:
 		if state == "locked":
 			alpha = LOCKED_A
 		if fade or filtered:
-			alpha = 0.3
+			alpha = 0.5
 		b.modulate = Color(1, 1, 1, alpha)
 	if graph:
 		graph.queue_redraw()
 
 
 func _build_footer() -> void:
+	var foot_h := 32.0 if desk.tech_view == "overview" else FOOTER_H
 	var bar := ColorRect.new()
 	bar.color = Color("2a241c")
-	bar.position = Vector2(0, 688)
-	bar.size = Vector2(1280, 32)
+	bar.position = Vector2(0, 720.0 - foot_h)
+	bar.size = Vector2(1280, foot_h)
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bar)
-	var row := HBoxContainer.new()
-	row.position = Vector2(12, 690)
-	row.size = Vector2(1256, 28)
-	row.add_theme_constant_override("separation", 10)
-	add_child(row)
-	if desk.tech_legend_bar == 1:
-		for pair_v in [["st3_done", "已完成"], ["st3_designing", "研发中"], ["st3_available", "可设计"], ["st3_noprereq", "缺前置"], ["st3_blocked", "受阻"], ["st3_blueprint", "待试制"], ["st3_trial", "试制中"], ["st3_locked", "未开"]]:
-			var pair: Array = pair_v
-			row.add_child(_footer_chip(str(pair[0]), str(pair[1])))
-	var pad := Control.new()
-	pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(pad)
-	var legend := _text_button("图例" if desk.tech_legend_bar == 0 else "收起图例")
-	legend.add_theme_color_override("font_color", CREAM)
-	legend.pressed.connect(_toggle_bar)
-	row.add_child(legend)
-	desk.debug_btns["tech_legend_bar"] = legend
-	var sheet := _text_button("状态表")
-	sheet.add_theme_color_override("font_color", CREAM)
-	sheet.pressed.connect(_show_legend)
-	row.add_child(sheet)
-	desk.debug_btns["tech_legend"] = sheet
-	var parts := _text_button("组件")
-	parts.add_theme_color_override("font_color", CREAM)
-	parts.pressed.connect(_show_parts)
-	row.add_child(parts)
-	desk.debug_btns["tech_parts"] = parts
+	if desk.tech_view == "overview":
+		var sheet := _text_button("状态表")
+		sheet.add_theme_color_override("font_color", CREAM)
+		sheet.position = Vector2(1100, 720.0 - foot_h + 2)
+		sheet.pressed.connect(_show_legend)
+		add_child(sheet)
+		desk.debug_btns["tech_legend"] = sheet
+		return
+	var map := MiniMap.new()
+	map.board = self
+	map.position = Vector2(12, 720.0 - foot_h + 8)
+	map.size = Vector2(280, 60)
+	map.custom_minimum_size = Vector2(280, 60)
+	add_child(map)
+	desk.debug_btns["tech_minimap"] = map
+	var era_box := VBoxContainer.new()
+	era_box.position = Vector2(300, 720.0 - foot_h + 6)
+	era_box.size = Vector2(150, 64)
+	add_child(era_box)
+	var cur := PLAN.current_era()
+	for era in [1, 2, 3]:
+		var prog := PLAN.era_progress(era)
+		var open := GameState.era_unlocked(era)
+		var mark := "●" if era == cur else ("▶" if era > cur else "◀")
+		var tail := "%d/%d" % [prog.x, prog.y] if open else "未开"
+		var btn := _text_button("%s 时代%s %s" % [mark, _era_han(era), tail])
+		btn.add_theme_color_override("font_color", Color("e7c98a") if era == cur else CREAM)
+		btn.pressed.connect(_scroll_era.bind(era))
+		era_box.add_child(btn)
+	var legend := VBoxContainer.new()
+	legend.position = Vector2(460, 720.0 - foot_h + 4)
+	legend.size = Vector2(700, 68)
+	add_child(legend)
+	var title := Kit.label("图例（常驻）", "SmallLabel")
+	title.add_theme_color_override("font_color", CREAM)
+	legend.add_child(title)
+	var cells := HBoxContainer.new()
+	cells.add_theme_constant_override("separation", 8)
+	legend.add_child(cells)
+	for word_v in ["√ 已完成", "试 试制中", "图 已有图纸", "设 设计中", "可设计", "缺 缺前置", "阻 受阻", "锁 时代未开", "目标路线", "① 在队列中"]:
+		var lab := Kit.label(str(word_v), "SmallLabel")
+		lab.add_theme_color_override("font_color", CREAM)
+		cells.add_child(lab)
+	if OS.is_debug_build():
+		var parts := _text_button("组件")
+		parts.add_theme_color_override("font_color", CREAM)
+		parts.position = Vector2(1180, 720.0 - foot_h + 4)
+		parts.pressed.connect(_show_parts)
+		add_child(parts)
+		desk.debug_btns["tech_parts"] = parts
 
 
 func _build_legend() -> void:
@@ -1223,6 +1407,13 @@ func _spacer(h: float) -> Control:
 	return c
 
 
+func _era_han(era: int) -> String:
+	var marks := ["一", "二", "三", "四"]
+	if era >= 1 and era <= marks.size():
+		return str(marks[era - 1])
+	return str(era)
+
+
 func _era_name(era: int) -> String:
 	for era_v in DataDB.eras:
 		var row: Dictionary = era_v
@@ -1287,10 +1478,10 @@ func _branch_row(id: String) -> int:
 
 func _slot_y(slot: String) -> float:
 	if slot == "u":
-		return 4.0
+		return 1.0
 	if slot == "d":
-		return ROW_H - NODE_H - 4.0
-	return (ROW_H - NODE_H) * 0.5
+		return 49.0
+	return 25.0
 
 
 func _icon_state(state: String) -> String:
@@ -1301,7 +1492,9 @@ func _icon_state(state: String) -> String:
 	return state
 
 
-func _fit_size(_text: String, _width: float) -> int:
+func _fit_size(text: String, _width: float) -> int:
+	if text.length() <= 8:
+		return 14
 	return 13
 
 
@@ -1351,8 +1544,8 @@ func _lock_head(era: int) -> String:
 	if GameState.era_unlocked(era):
 		return "已开"
 	if era >= 3:
-		return "T68开"
-	return "T31开"
+		return "第 68 回合开"
+	return "第 31 回合开"
 
 
 func _adjacent(chain: Array, a: String, b: String) -> bool:
@@ -1431,8 +1624,7 @@ func _clear_target() -> void:
 
 
 func _make_target(id: String) -> void:
-	desk.picked = id
-	PLAN.set_target(id)
+	_open_target_confirm(id)
 
 
 func _run(id: String) -> void:
@@ -1445,7 +1637,7 @@ func _run(id: String) -> void:
 		return
 	if jump == "city":
 		var dest := "kaifeng"
-		if GameState.practice_gate and GameState.tech_state(id) == "blueprint" and not GameState.practice_ok(id):
+		if GameState.practice_gate_on and GameState.tech_state(id) == "blueprint" and not GameState.practice_ok(id):
 			dest = GameState.practice_city(id)
 		desk.open_city(dest)
 	elif jump != "":
@@ -1521,7 +1713,8 @@ func _open_trial_confirm(id: String) -> void:
 	if bits.is_empty():
 		bits.append("匠 0")
 	var used := "%d/%d" % [GameState.tech_trials.size(), GameState.trial_slots()]
-	var lines := "开试制要花 %s，占 1 个试制槽（%s）。" % ["、".join(bits), used]
+	var turns := maxi(2, int(ceil(float(craft) / 12.0)))
+	var lines := "开试制要花 %s，占 1 个试制槽（%s）。\n开工一次付清：%s；工期 %d 回合；占 1 个试制槽（%s）。" % ["、".join(bits), used, "、".join(bits), turns, used]
 	_open_choice(lines, "开始试制", true, "", _start_trial.bind(id), _start_trial.bind(""))
 
 
@@ -1533,8 +1726,10 @@ func _open_choice(lines: String, yes_text: String, yes_on: bool, why: String, ye
 	add_child(dim)
 	var panel := PanelContainer.new()
 	panel.position = Vector2(340, 180)
-	panel.custom_minimum_size = Vector2(600, 240)
-	panel.size = Vector2(600, 280)
+	panel.custom_minimum_size = Vector2(296 if yes_text == "确定" else 600, 160)
+	panel.size = Vector2(320 if yes_text == "确定" else 600, 280)
+	if yes_text == "确定":
+		panel.position = Vector2(480, 200)
 	panel.add_theme_stylebox_override("panel", _flat(CREAM, Color("1f7f8c"), 10, 2))
 	add_child(panel)
 	var box := VBoxContainer.new()
@@ -1542,7 +1737,7 @@ func _open_choice(lines: String, yes_text: String, yes_on: bool, why: String, ye
 	panel.add_child(box)
 	var body := Kit.label(lines, "BodyLabel")
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.custom_minimum_size = Vector2(560, 72)
+	body.custom_minimum_size = Vector2(280 if yes_text == "确定" else 560, 72)
 	box.add_child(body)
 	if why != "":
 		var note := Kit.label(why, "CaptionLabel")
@@ -1560,10 +1755,10 @@ func _open_choice(lines: String, yes_text: String, yes_on: bool, why: String, ye
 	var alt_btn := Kit.button("先做这个", "Button")
 	alt_btn.custom_minimum_size = Vector2(140, 40)
 	alt_btn.pressed.connect(alt)
-	if yes_text == "开始试制":
+	if yes_text == "开始试制" or yes_text == "确定":
 		alt_btn.visible = false
 	row.add_child(alt_btn)
-	var no_btn := Kit.button("算了", "Button")
+	var no_btn := Kit.button("取消" if yes_text == "确定" else "算了", "Button")
 	no_btn.custom_minimum_size = Vector2(100, 40)
 	no_btn.pressed.connect(_dismiss_choice)
 	row.add_child(no_btn)
@@ -1571,9 +1766,14 @@ func _open_choice(lines: String, yes_text: String, yes_on: bool, why: String, ye
 	desk.debug_btns["tech_swap"] = alt_btn
 	desk.debug_btns["tech_no"] = no_btn
 	if yes_on:
-		yes_btn.grab_focus.call_deferred()
+		_focus_later.call_deferred(yes_btn)
 	_choice = panel
 	_choice_dim = dim
+
+
+func _focus_later(btn: Button) -> void:
+	if btn != null and is_instance_valid(btn) and btn.is_inside_tree():
+		btn.grab_focus()
 
 
 func _queue_behind(id: String) -> void:
@@ -1659,29 +1859,16 @@ func _on_query(text: String) -> void:
 
 
 func _on_node(id: String) -> void:
-	var now := Time.get_ticks_msec()
-	var dbl := desk.tech_click_id == id and now - desk.tech_click_ms < 450
-	desk.tech_click_id = id
-	desk.tech_click_ms = now
 	_remember_scroll()
-	if dbl and desk.tech_view != "overview":
-		_run(id)
-		return
-	desk.picked = id
-	if desk.tech_view == "overview":
-		desk.tech_view = "focus"
+	if desk.picked == id and desk.tech_view != "overview":
+		desk.picked = ""
+		desk.tech_fold = ""
+	else:
+		desk.picked = id
+		desk.tech_fold = ""
+		if desk.tech_view == "overview":
+			desk.tech_view = "focus"
 	desk._fill()
-
-
-func _on_node_input(event: InputEvent, id: String) -> void:
-	if event is InputEventMouseButton:
-		var mb := event as InputEventMouseButton
-		if mb.pressed and mb.button_index == MOUSE_BUTTON_RIGHT:
-			desk.picked = id
-			desk.tech_fold = "history"
-			if desk.tech_view == "overview":
-				desk.tech_view = "focus"
-			desk._fill()
 
 
 func _on_enter(id: String) -> void:
@@ -1721,17 +1908,648 @@ func _input(event: InputEvent) -> void:
 				yes.pressed.emit()
 			get_viewport().set_input_as_handled()
 			return
+	if event is InputEventKey and event.pressed and scroll != null:
+		var key2 := event as InputEventKey
+		if key2.keycode == KEY_LEFT:
+			_apply_scroll(desk.tech_scroll - int(COL_W))
+			get_viewport().set_input_as_handled()
+			return
+		if key2.keycode == KEY_RIGHT:
+			_apply_scroll(desk.tech_scroll + int(COL_W))
+			get_viewport().set_input_as_handled()
+			return
+	if event is InputEventPanGesture and scroll != null:
+		var pan := event as InputEventPanGesture
+		_apply_scroll(desk.tech_scroll + int(pan.delta.x))
+		get_viewport().set_input_as_handled()
+		return
 	if not (event is InputEventMouseButton):
 		return
 	var mb := event as InputEventMouseButton
-	if not mb.ctrl_pressed or not mb.pressed:
+	if mb.ctrl_pressed and mb.pressed:
+		var vp := get_viewport()
+		if vp:
+			vp.set_input_as_handled()
+		if mb.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_set_view("focus")
+		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_set_view("overview")
 		return
-	if mb.button_index == MOUSE_BUTTON_WHEEL_UP:
-		_set_view("focus")
+	if mb.pressed and (mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+		if scroll == null:
+			return
+		var over := scroll.get_global_rect().has_point(mb.global_position)
+		if not over and scroll.size.x < 2.0:
+			over = true
+		if not over:
+			return
+		var step := -107 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else 107
+		_apply_scroll(desk.tech_scroll + step)
 		get_viewport().set_input_as_handled()
-	elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-		_set_view("overview")
-		get_viewport().set_input_as_handled()
+
+
+func _default_scroll(era: int) -> int:
+	for stage_v in DataDB.stages:
+		var stage: Dictionary = stage_v
+		if int(stage.get("era", 0)) == era:
+			return (int(stage.get("col_from", 1)) - 1) * int(COL_W)
+	return 0
+
+
+func _view_w() -> float:
+	return 952.0
+
+
+func _apply_scroll(n: int) -> void:
+	if graph == null:
+		desk.tech_scroll = n
+		return
+	var max_s := int(maxf(0.0, graph.need.x - _view_w()))
+	n = clampi(n, 0, max_s)
+	desk.tech_scroll = n
+	if scroll == null:
+		return
+	var bar := scroll.get_h_scroll_bar()
+	bar.max_value = maxf(graph.need.x, _view_w())
+	bar.page = _view_w()
+	scroll.scroll_horizontal = n
+
+
+func _bring_into_view(id: String) -> void:
+	if id == "" or graph == null or not graph.spots.has(id):
+		return
+	var rect: Rect2 = graph.spots[id]
+	var left := float(desk.tech_scroll)
+	var right := left + _view_w()
+	if rect.position.x >= left - 1.0 and rect.end.x <= right + 1.0:
+		return
+	_apply_scroll(int(rect.position.x - 8.0))
+
+
+func _on_tree_input(event: InputEvent) -> void:
+	if not (event is InputEventMouseButton):
+		return
+	var mb := event as InputEventMouseButton
+	if mb.ctrl_pressed or not mb.pressed:
+		return
+	if mb.button_index != MOUSE_BUTTON_WHEEL_UP and mb.button_index != MOUSE_BUTTON_WHEEL_DOWN and mb.button_index != MOUSE_BUTTON_WHEEL_LEFT and mb.button_index != MOUSE_BUTTON_WHEEL_RIGHT:
+		return
+	var step := 107
+	if mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_LEFT:
+		step = -107
+	_apply_scroll(desk.tech_scroll + step)
+	get_viewport().set_input_as_handled()
+
+
+func _on_paper_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_RIGHT:
+			get_viewport().set_input_as_handled()
+			return
+		if mb.button_index != MOUSE_BUTTON_LEFT:
+			return
+		if mb.pressed:
+			_drag = false
+			_press = mb.position
+			_drag_from = desk.tech_scroll
+			return
+		var dragged := _drag
+		_drag = false
+		if not dragged:
+			desk.picked = ""
+			desk.tech_fold = ""
+			desk._fill()
+		return
+	if event is InputEventMouseMotion:
+		var motion := event as InputEventMouseMotion
+		if (motion.button_mask & MOUSE_BUTTON_MASK_LEFT) == 0:
+			return
+		if _press.distance_to(motion.position) < 6.0:
+			return
+		_drag = true
+		_apply_scroll(_drag_from - int(motion.position.x - _press.x))
+
+
+func _route_mark(id: String) -> String:
+	if GameState.tech_target == "":
+		return "off"
+	var unfinished: Array = []
+	for step_v in PLAN.spine(GameState.tech_target):
+		var step := str(step_v)
+		if not GameState.tech_done.has(step):
+			unfinished.append(step)
+	if unfinished.find(id) < 0:
+		return "off"
+	if unfinished.size() <= 1:
+		return "标"
+	if id == str(unfinished[0]):
+		return "起"
+	if id == GameState.tech_target:
+		return "标"
+	return ""
+
+
+func _scroll_era(era: int) -> void:
+	if GameState.era_unlocked(era):
+		_apply_scroll(_default_scroll(era))
+		return
+	if graph == null:
+		return
+	_apply_scroll(int(graph.need.x - NEXT_W))
+
+
+func _minimap_to(frac: float) -> void:
+	var total := 13.0 * COL_W
+	var center := clampf(frac, 0.0, 1.0) * total
+	_apply_scroll(int(center - _view_w() * 0.5))
+
+
+func consume_escape() -> bool:
+	if _choice != null:
+		_dismiss_choice()
+		return true
+	if desk.picked != "":
+		desk.picked = ""
+		desk.tech_fold = ""
+		desk._fill()
+		return true
+	return false
+
+
+func _tech_col(id: String) -> int:
+	return int(DataDB.tech_by_id.get(id, {}).get("col", 1))
+
+
+func _tech_era(id: String) -> int:
+	return int(DataDB.tech_by_id.get(id, {}).get("era", 1))
+
+
+func _edge_gutters(pre: String, id: String) -> Array:
+	var ca := _tech_col(pre)
+	var cb := _tech_col(id)
+	var out: Array = [ca]
+	if absi(cb - ca) == 2:
+		out.append(mini(ca, cb) + 1)
+	return out
+
+
+func _route_edges() -> void:
+	edge_routes.clear()
+	if desk == null or desk.tech_view == "overview" or graph == null:
+		return
+	var full: Array = []
+	var stubs: Array = []
+	for edge_v in graph.edges:
+		var edge: Dictionary = (edge_v as Dictionary).duplicate()
+		var pre := str(edge.get("from", ""))
+		var id := str(edge.get("to", ""))
+		var span := absi(_tech_col(id) - _tech_col(pre))
+		edge["span"] = span
+		var chip := false
+		if graph.spots.has(pre) and graph.spots.has(id):
+			var sa: Rect2 = graph.spots[pre]
+			var sb: Rect2 = graph.spots[id]
+			chip = sa.size.x < 100.0 or sb.size.x < 100.0
+		if chip or _tech_era(pre) != _tech_era(id) or span >= 3 or span <= 0:
+			stubs.append(edge)
+		else:
+			full.append(edge)
+	var by_gutter := {}
+	for edge_v2 in full:
+		var edge2: Dictionary = edge_v2
+		for gutter_v in _edge_gutters(str(edge2.get("from", "")), str(edge2.get("to", ""))):
+			var gutter := int(gutter_v)
+			if not by_gutter.has(gutter):
+				by_gutter[gutter] = []
+			var bucket: Array = by_gutter[gutter]
+			bucket.append(edge2)
+	var dropped := {}
+	for col_v in by_gutter.keys():
+		var list: Array = by_gutter[col_v]
+		var ranked: Array = list.duplicate()
+		ranked.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a.get("span", 0)) > int(b.get("span", 0)))
+		var alive := {}
+		for edge_v3 in list:
+			alive[str((edge_v3 as Dictionary).get("from", ""))] = true
+		var used := alive.size()
+		if used <= 7:
+			continue
+		for edge_v4 in ranked:
+			if used <= 7:
+				break
+			var edge4: Dictionary = edge_v4
+			var key := "%s>%s" % [str(edge4.get("from", "")), str(edge4.get("to", ""))]
+			if dropped.has(key):
+				continue
+			dropped[key] = true
+			var src4 := str(edge4.get("from", ""))
+			var still := false
+			for edge_v5 in list:
+				var edge5: Dictionary = edge_v5
+				var key5 := "%s>%s" % [str(edge5.get("from", "")), str(edge5.get("to", ""))]
+				if str(edge5.get("from", "")) == src4 and not dropped.has(key5):
+					still = true
+					break
+			if not still and alive.has(src4):
+				alive.erase(src4)
+				used -= 1
+	var lane_x := {}
+	for col_v2 in by_gutter.keys():
+		var col := int(col_v2)
+		var list2: Array = by_gutter[col]
+		var sources: Array = []
+		for edge_v6 in list2:
+			var edge6: Dictionary = edge_v6
+			var key6 := "%s>%s" % [str(edge6.get("from", "")), str(edge6.get("to", ""))]
+			if dropped.has(key6):
+				continue
+			var src6 := str(edge6.get("from", ""))
+			if not sources.has(src6):
+				sources.append(src6)
+		sources.sort()
+		var gutter_left := float(col - 1) * COL_W + NODE_W
+		for i in sources.size():
+			lane_x["%d|%s" % [col, str(sources[i])]] = gutter_left + 8.0 + float(i) * 6.0
+	for edge_v7 in full:
+		var edge7: Dictionary = edge_v7
+		var pre7 := str(edge7.get("from", ""))
+		var id7 := str(edge7.get("to", ""))
+		var key7 := "%s>%s" % [pre7, id7]
+		if dropped.has(key7):
+			stubs.append(edge7)
+			continue
+		var pts := _route_pts(pre7, id7, lane_x)
+		if pts.size() < 2:
+			stubs.append(edge7)
+			continue
+		edge_routes.append({"from": pre7, "to": id7, "kind": str(edge7.get("kind", "")), "pts": pts, "stub": false})
+	_place_stubs(stubs)
+
+
+func _place_stubs(stubs: Array) -> void:
+	var grouped := {}
+	for stub_v in stubs:
+		var stub: Dictionary = stub_v
+		var dest := str(stub.get("to", ""))
+		if not grouped.has(dest):
+			grouped[dest] = []
+		var group: Array = grouped[dest]
+		group.append(stub)
+	for dest_v in grouped.keys():
+		var dest_id := str(dest_v)
+		if not graph.spots.has(dest_id):
+			continue
+		var rect: Rect2 = graph.spots[dest_id]
+		var rows: Array = grouped[dest_id]
+		var row_i := 0
+		for stub_v2 in rows:
+			var stub2: Dictionary = stub_v2
+			var src_id := str(stub2.get("from", ""))
+			var btn := _text_button("← %s" % PLAN.short_name(src_id))
+			btn.add_theme_font_size_override("font_size", 13)
+			btn.add_theme_color_override("font_color", INK)
+			btn.add_theme_color_override("font_hover_color", INK)
+			btn.position = rect.position + Vector2(-86.0, float(row_i) * 20.0)
+			btn.size = Vector2(84, 18)
+			btn.pressed.connect(_stub_pick.bind(src_id))
+			graph.add_child(btn)
+			edge_routes.append({"from": src_id, "to": dest_id, "kind": str(stub2.get("kind", "")), "stub": true, "pts": PackedVector2Array()})
+			row_i += 1
+
+
+func _stub_pick(id: String) -> void:
+	desk.picked = id
+	desk.tech_fold = ""
+	_remember_scroll()
+	desk._fill()
+
+
+func _route_pts(pre: String, id: String, lane_x: Dictionary) -> PackedVector2Array:
+	if not graph.spots.has(pre) or not graph.spots.has(id):
+		return PackedVector2Array()
+	var ra: Rect2 = graph.spots[pre]
+	var rb: Rect2 = graph.spots[id]
+	var col_a := _tech_col(pre)
+	var col_b := _tech_col(id)
+	var span := absi(col_b - col_a)
+	var out := Vector2(ra.end.x, ra.get_center().y)
+	var inn := Vector2(rb.position.x, rb.get_center().y)
+	var lane_a := float(lane_x.get("%d|%s" % [col_a, pre], -1.0))
+	if lane_a < 0.0:
+		return PackedVector2Array()
+	if span == 1:
+		return PackedVector2Array([out, Vector2(lane_a, out.y), Vector2(lane_a, inn.y), inn])
+	var mid_col := mini(col_a, col_b) + 1
+	var lane_b := float(lane_x.get("%d|%s" % [mid_col, pre], -1.0))
+	if lane_b < 0.0:
+		return PackedVector2Array()
+	var channel := _channel_y(mid_col, rb)
+	if channel < 0.0:
+		return PackedVector2Array()
+	return PackedVector2Array([
+		out,
+		Vector2(lane_a, out.y),
+		Vector2(lane_a, channel),
+		Vector2(lane_b, channel),
+		Vector2(lane_b, inn.y),
+		inn,
+	])
+
+
+func _channel_y(mid_col: int, dest: Rect2) -> float:
+	var row := int(floor((dest.position.y - STAGE_H) / ROW_H))
+	row = clampi(row, 0, 5)
+	var row_top := STAGE_H + float(row) * ROW_H
+	var candidates: Array = [row_top + ROW_H * 0.5, row_top + 12.0, row_top + ROW_H - 12.0]
+	var left := float(mid_col - 1) * COL_W
+	var right := left + NODE_W
+	for y_v in candidates:
+		var y := float(y_v)
+		var blocked := false
+		for id_v in graph.spots.keys():
+			var rect: Rect2 = graph.spots[id_v]
+			if rect.end.x <= left + 0.5 or rect.position.x >= right - 0.5:
+				continue
+			if y > rect.position.y + 0.5 and y < rect.end.y - 0.5:
+				blocked = true
+				break
+		if not blocked:
+			return y
+	return -1.0
+
+
+func _cream(text: String, kind: String) -> Label:
+	var lab := Kit.label(text, kind)
+	lab.add_theme_color_override("font_color", CREAM)
+	lab.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	return lab
+
+
+func _build_card(id: String) -> void:
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	if tech.is_empty() or graph == null or not graph.spots.has(id):
+		return
+	var panel := PanelContainer.new()
+	panel.name = "NodeCard"
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	panel.clip_contents = true
+	panel.add_theme_stylebox_override("panel", _flat(Color("1c2826"), GOLD, 6, 1))
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	panel.add_child(margin)
+	var box := VBoxContainer.new()
+	box.custom_minimum_size = Vector2(CARD_W - 28, 0)
+	box.add_theme_constant_override("separation", 4)
+	margin.add_child(box)
+	if desk.tech_fold == "history":
+		_card_history(box, tech)
+	else:
+		_card_body(box, id, tech)
+	add_child(panel)
+	var want := box.get_combined_minimum_size().y + 28.0
+	var h := minf(560.0, maxf(160.0, want))
+	panel.size = Vector2(CARD_W, h)
+	var rect: Rect2 = graph.spots[id]
+	var header_h := float(layout_box.get("header_h", HEADER_H))
+	var left_w := float(layout_box.get("left_w", LEFT_W))
+	var node_x := left_w + NAME_W + rect.position.x - float(desk.tech_scroll)
+	var node_y := header_h + rect.position.y
+	var x := node_x + rect.size.x + 8.0
+	if x + CARD_W > 1272.0:
+		x = node_x - 8.0 - CARD_W
+	var y := clampf(node_y, header_h + 4.0, 644.0 - h)
+	panel.position = Vector2(maxf(8.0, x), y)
+	panel.set_meta("card_id", id)
+	desk.debug_btns["tech_card"] = panel
+
+
+func _card_history(box: VBoxContainer, tech: Dictionary) -> void:
+	var title := _cream(str(tech.get("name", "")), "H3Label")
+	box.add_child(title)
+	box.add_child(_cream(str(tech.get("history", "")), "SmallLabel"))
+	box.add_child(_cream("豆沙包能做的 / 大宋得自己做的", "SmallLabel"))
+	box.add_child(_cream("能跳过：%s" % str(tech.get("skip", "")), "SmallLabel"))
+	box.add_child(_cream("跳不过：%s" % str(tech.get("noskip", "")), "SmallLabel"))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	box.add_child(row)
+	var back := Kit.button("返回", "Button")
+	back.pressed.connect(_card_back)
+	row.add_child(back)
+	var close := Kit.button("关闭", "Button")
+	close.pressed.connect(_close_card)
+	row.add_child(close)
+
+
+func _card_body(box: VBoxContainer, id: String, tech: Dictionary) -> void:
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	box.add_child(head)
+	head.add_child(Kit.icon_rect("tech_%s" % id, 40))
+	var titles := VBoxContainer.new()
+	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(titles)
+	titles.add_child(_cream(str(tech.get("name", id)), "H3Label"))
+	titles.add_child(_cream("%s · %s" % [_branch_stage(tech), id], "SmallLabel"))
+	var corner := PLAN.corner(id)
+	var status := PLAN.card_status(id)
+	box.add_child(_cream(("%s  %s" % [corner, status]).strip_edges(), "SmallLabel"))
+	var pres: Array = tech.get("prereq", [])
+	if not pres.is_empty():
+		for pre_v in pres:
+			var pre := str(pre_v)
+			var pre_tech: Dictionary = DataDB.tech_by_id.get(pre, {})
+			var done := GameState.tech_done.has(pre)
+			var line := HBoxContainer.new()
+			line.add_theme_constant_override("separation", 4)
+			box.add_child(line)
+			var mark := _cream("√" if done else "×", "SmallLabel")
+			mark.add_theme_color_override("font_color", Color("7dcea0") if done else CINNABAR)
+			line.add_child(mark)
+			if done:
+				line.add_child(_cream(str(pre_tech.get("name", pre)), "SmallLabel"))
+			else:
+				var link := _text_button(str(pre_tech.get("name", pre)))
+				link.add_theme_color_override("font_color", CREAM)
+				link.pressed.connect(_on_node.bind(pre))
+				line.add_child(link)
+			line.add_child(_cream(PLAN.status_text(pre), "SmallLabel"))
+	var cost: Dictionary = tech.get("cost", {})
+	var cost_row := HBoxContainer.new()
+	cost_row.add_theme_constant_override("separation", 4)
+	box.add_child(cost_row)
+	cost_row.add_child(_cream("设计 %d 电" % GameState.design_need(id), "SmallLabel"))
+	var craft := int(cost.get("craft", 0))
+	cost_row.add_child(_cream("试制 %d 匠" % craft, "SmallLabel"))
+	var mats: Dictionary = tech.get("materials", {})
+	for key_v in mats.keys():
+		var key := str(key_v)
+		var need := int(mats[key_v])
+		var have := int(GameState.resources.get(key, 0))
+		var bit := _cream("%s %d" % [str(PLAN.MAT_NAME.get(key, key)), need], "SmallLabel")
+		if have < need:
+			bit.add_theme_color_override("font_color", CINNABAR)
+		cost_row.add_child(bit)
+	cost_row.add_child(_cream("%d 回合" % PLAN._trial_turns(id), "SmallLabel"))
+	if str(tech.get("practice", "")) != "":
+		var practice: Dictionary = PLAN.practice_row(id)
+		var site_name := str(GameState.PRACTICE_NAME.get(GameState.practice_site(id), "实践"))
+		box.add_child(_cream("实践 %s %d/%d" % [site_name, int(practice.get("have", 0)), int(practice.get("need", 0))], "SmallLabel"))
+	var effect := _cream(str(tech.get("effect", "")), "SmallLabel")
+	box.add_child(effect)
+	var act: Dictionary = PLAN.card_action(id)
+	var verb := str(act.get("text", ""))
+	var hint := str(act.get("hint", ""))
+	var jump := str(act.get("jump", ""))
+	if verb != "" or hint != "":
+		var act_row := HBoxContainer.new()
+		act_row.add_theme_constant_override("separation", 6)
+		box.add_child(act_row)
+		if verb != "":
+			var primary := Kit.button(verb, "PrimaryButton")
+			primary.disabled = not bool(act.get("enabled", false))
+			primary.pressed.connect(_card_primary.bind(id))
+			act_row.add_child(primary)
+			desk.debug_btns["tech_verb"] = primary
+			if PLAN.view_state(id) == "queued":
+				desk.debug_btns["queue_drop_%d" % (PLAN.queue_index(id) - 1)] = primary
+		if hint != "":
+			var hint_btn := _text_button(hint)
+			hint_btn.add_theme_color_override("font_color", CREAM)
+			if jump == "swap":
+				hint_btn.pressed.connect(_open_design_confirm.bind(id))
+			elif jump == "bump":
+				hint_btn.pressed.connect(_bump_queue.bind(id))
+				desk.debug_btns["queue_up_%d" % (PLAN.queue_index(id) - 1)] = hint_btn
+			elif jump == "blocked":
+				hint_btn.pressed.connect(_jump.bind(PLAN._blocked_jump(id)))
+			elif jump == "workshop":
+				hint_btn.pressed.connect(_jump.bind("workshop"))
+			elif jump == "city":
+				hint_btn.pressed.connect(_open_practice_city.bind(id))
+			elif jump != "":
+				hint_btn.pressed.connect(_on_node.bind(jump))
+			act_row.add_child(hint_btn)
+	var foot := HBoxContainer.new()
+	foot.add_theme_constant_override("separation", 6)
+	box.add_child(foot)
+	var target_btn := Kit.button("取消目标" if GameState.tech_target == id else "设为目标", "Button")
+	if GameState.tech_target == id:
+		target_btn.pressed.connect(_clear_target)
+	else:
+		target_btn.disabled = not PLAN.show_target_link(id)
+		target_btn.pressed.connect(_open_target_confirm.bind(id))
+	foot.add_child(target_btn)
+	desk.debug_btns["tech_make_target"] = target_btn
+	var hist := Kit.button("史册", "Button")
+	hist.pressed.connect(_open_history)
+	foot.add_child(hist)
+	desk.debug_btns["tech_history"] = hist
+	var close_btn := Kit.button("关闭", "Button")
+	close_btn.pressed.connect(_close_card)
+	foot.add_child(close_btn)
+	desk.debug_btns["tech_card_close"] = close_btn
+
+
+func _card_primary(id: String) -> void:
+	var act: Dictionary = PLAN.card_action(id)
+	if not bool(act.get("enabled", false)):
+		return
+	var text := str(act.get("text", ""))
+	if text == "开始设计" or text == "加入队列":
+		GameState.start_design(id)
+		desk._fill()
+	elif text == "移出队列":
+		GameState.remove_queued(id)
+		desk._fill()
+	elif text == "暂停设计":
+		GameState.pause_design()
+		desk._fill()
+	elif text == "开始试制":
+		_open_trial_confirm(id)
+	elif text == "去补齐":
+		_jump(PLAN._blocked_jump(id))
+	elif text == "查看试制":
+		_jump("workshop")
+	elif text == "去推广":
+		desk.open_city(GameState.practice_city(id) if GameState.practice_gate_on else "kaifeng")
+
+
+func _card_back() -> void:
+	desk.tech_fold = ""
+	desk._fill()
+
+
+func _close_card() -> void:
+	desk.picked = ""
+	desk.tech_fold = ""
+	desk._fill()
+
+
+func _open_history() -> void:
+	desk.tech_fold = "history"
+	desk._fill()
+
+
+func _open_target_confirm(id: String) -> void:
+	var lines := _target_lines(id)
+	_open_choice(lines, "确定", true, "", _confirm_target.bind(id), _confirm_target.bind(""))
+
+
+func _confirm_target(id: String) -> void:
+	if id != "":
+		PLAN.set_target(id)
+		desk.picked = id
+	_dismiss_choice()
+
+
+func _target_lines(id: String) -> String:
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	var prev: Dictionary = PLAN.target_preview(id)
+	var lines := PackedStringArray()
+	lines.append("设为目标：%s" % str(tech.get("name", id)))
+	var chain: Array = prev.get("chain", [])
+	if chain.size() >= 2:
+		if chain.size() > 4:
+			var head: Dictionary = DataDB.tech_by_id.get(str(chain[0]), {})
+			var tail: Dictionary = DataDB.tech_by_id.get(str(chain[chain.size() - 1]), {})
+			lines.append("路线：%s → … → %s（共 %d 项）" % [str(head.get("name", "")), str(tail.get("name", "")), chain.size()])
+		else:
+			var bits := PackedStringArray()
+			for step_v in chain:
+				var node: Dictionary = DataDB.tech_by_id.get(str(step_v), {})
+				bits.append(str(node.get("name", str(step_v))))
+			lines.append("路线：%s" % " → ".join(bits))
+	var now: Array = prev.get("now", [])
+	var room := int(prev.get("room", 0))
+	if now.is_empty():
+		lines.append("路线上暂时没有能设计的项，前置齐后自动排入。")
+	elif room <= 0:
+		lines.append("队列已满 %d/%d，新路线等空位。原来排着的 %d 项不动，不想要可以在左栏队列里移出。" % [GameState.QUEUE_CAP, GameState.QUEUE_CAP, GameState.tech_queue.size()])
+	elif room >= now.size():
+		lines.append("现在排入 %d 项：%s" % [now.size(), _join_names(now)])
+	else:
+		var take: Array = now.slice(0, room)
+		lines.append("现在排入 %d 项：%s；其余 %d 项等空位" % [room, _join_names(take), now.size() - room])
+	if int(prev.get("later", 0)) > 0:
+		lines.append("其余 %d 项前置齐后自动排入。" % int(prev.get("later", 0)))
+	var old := str(prev.get("old_target", ""))
+	if old != "":
+		var old_tech: Dictionary = DataDB.tech_by_id.get(old, {})
+		lines.append("当前目标「%s」会被替换。" % str(old_tech.get("name", old)))
+	return "\n".join(lines)
+
+
+func _join_names(ids: Array) -> String:
+	var bits := PackedStringArray()
+	for id_v in ids:
+		var node: Dictionary = DataDB.tech_by_id.get(str(id_v), {})
+		bits.append(str(node.get("name", str(id_v))))
+	return "、".join(bits)
 
 
 class Face extends Control:
@@ -1740,6 +2558,11 @@ class Face extends Control:
 	var queue_n := 0
 	var prog := 0
 	var need := 1
+	var route := false
+	var route_mark := ""
+	var corner := ""
+	var raw := ""
+	var selected := false
 
 	func _ready() -> void:
 		set_process(state == "designing")
@@ -1751,39 +2574,79 @@ class Face extends Control:
 
 	func _draw() -> void:
 		var r := Rect2(Vector2(1, 1), size - Vector2(2, 2))
+		var paint := state
+		if state == "blocked":
+			paint = "blueprint" if raw == "blueprint" else "designing"
 		if tile:
 			var tex := Kit.piece("tile3_%s" % _key())
 			if tex:
 				draw_texture_rect(tex, Rect2(Vector2.ZERO, size), false)
-			if state == "queued" and queue_n > 0:
-				_badge(Vector2(2, 2))
+			_marks()
 			return
-		if state == "done":
-			_round(r, Color("f4e2b0"), Color("b8893a"), 2.0)
-		elif state == "designing":
-			draw_rect(r.grow(2), Color(0.12, 0.5, 0.55, 0.35), true)
-			_round(r, Color("fbf5e6"), Color("1f7f8c"), 2.0)
-			_round(r.grow(-4), Color("fbf5e6"), Color("1f7f8c"), 1.0)
-			_ring(Color("1f7f8c"))
-		elif state == "queued":
-			_round(r, Color("d9d3c7"), Color("6d655c"), 1.5)
-		elif state == "available":
-			_round(r, Color("fbf5e6"), Color("4a4036"), 1.5)
-		elif state == "noprereq":
-			_dashed_rect(r, Color("8a8175"))
-		elif state == "blocked":
-			_cut(r, Color("f8e6e0"), Color("c23b2a"))
-		elif state == "blueprint":
-			_round(r, Color("fbf5e6"), Color("83501f"), 1.5)
-			draw_rect(Rect2(r.position, Vector2(7, r.size.y)), Color("83501f"), false, 1.5)
-			draw_rect(Rect2(Vector2(r.end.x - 7, r.position.y), Vector2(7, r.size.y)), Color("83501f"), false, 1.5)
-		elif state == "trial":
-			_chamfer(r, Color("f6e7d4"), Color("c4842a"))
-			_ring(Color("c4842a"))
+		if paint == "done":
+			_round(r, Color("d8b864"), Color("8c6d1f"), 1.0)
+		elif paint == "designing":
+			_round(r, Color("fbf5e6"), Color("2e7d8c"), 3.0)
+			_ring(Color("2e7d8c"))
+		elif paint == "queued" or paint == "available":
+			_round(r, Color("f6efdf"), Color("3a3026"), 2.0)
+		elif paint == "noprereq":
+			draw_rect(r, Color("d9d2c3"), true)
+			_dashed_rect(r, Color("8f8574"))
+		elif paint == "blueprint":
+			_round(r, Color("d3e0e4"), Color("2e7d8c"), 1.0)
+			for gx in range(3, int(r.size.x), 8):
+				draw_line(Vector2(r.position.x + gx, r.position.y), Vector2(r.position.x + gx, r.end.y), Color("2e7d8c", 0.25), 1.0, true)
+		elif paint == "trial":
+			_round(r, Color("e8cfa6"), Color("a0612b"), 3.0)
+			_ring(Color("a0612b"))
 		else:
-			_round(r, Color("e7e0d4"), Color("76685a"), 1.0)
+			_round(r, Color("e7e0d4"), Color("e7e0d4"), 0.0)
+		_marks()
+
+	func _marks() -> void:
+		if route:
+			draw_rect(Rect2(Vector2(-5, -5), size + Vector2(10, 10)), Color("2f8f6f"), false, 3.0)
+		if selected:
+			draw_rect(Rect2(Vector2(3, 4), size), Color(0, 0, 0, 0.28), false, 4.0)
+			draw_rect(Rect2(Vector2(-1, -1), size + Vector2(2, 2)), Color("2a241c"), false, 2.0)
+		var corner_w := 0.0
+		if corner != "":
+			corner_w = maxf(18.0, float(corner.length()) * 13.0)
+			var at := Vector2(size.x - corner_w + 8.0, -10.0)
+			draw_rect(Rect2(at, Vector2(corner_w, 18)), _corner_bg(), true)
+			var font := get_theme_font("font", "Label")
+			if font:
+				draw_string(font, at + Vector2(0, 14), corner, HORIZONTAL_ALIGNMENT_CENTER, corner_w, 13, _corner_fg())
 		if state == "queued" and queue_n > 0:
-			_badge(r.position + Vector2(2, 2))
+			var bx := size.x - 18.0
+			if corner_w > 0.0:
+				bx = size.x - corner_w + 8.0 - 20.0
+			_badge(Vector2(bx, -8.0))
+		if route_mark != "":
+			var stamp := Rect2(size.x - 18.0, size.y - 18.0, 16, 16)
+			draw_rect(stamp, Color("2f8f6f"), true)
+			var font2 := get_theme_font("font", "Label")
+			if font2:
+				draw_string(font2, stamp.position + Vector2(0, 13), route_mark, HORIZONTAL_ALIGNMENT_CENTER, 16, 13, Color("fbf5e6"))
+
+	func _corner_bg() -> Color:
+		if corner == "设" or corner == "阻":
+			return Color("c23b2a")
+		if corner == "试":
+			return Color("a0612b")
+		if corner == "图":
+			return Color("2e7d8c")
+		if corner.begins_with("缺"):
+			return Color("fbf5e6")
+		if corner == "锁":
+			return Color("8a8175")
+		return Color("8c6d1f")
+
+	func _corner_fg() -> Color:
+		if corner.begins_with("缺"):
+			return Color("3a3026")
+		return Color("fbf5e6")
 
 	func _key() -> String:
 		if state == "queued":
@@ -1895,6 +2758,9 @@ class Graph extends Control:
 
 	func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, size), Color("f3ead6"), true)
+		if board and board.desk and board.desk.tech_view != "overview" and board.edge_routes.size() > 0:
+			_draw_routes()
+			return
 		var focus := ""
 		var hover_id := ""
 		var pick_id := ""
@@ -1938,6 +2804,65 @@ class Graph extends Control:
 				draw_line(mid + Vector2(-4, -4), mid + Vector2(4, 4), Color(CINNABAR, alpha), 1.6, true)
 				draw_line(mid + Vector2(-4, 4), mid + Vector2(4, -4), Color(CINNABAR, alpha), 1.6, true)
 		_sync_paths(paths)
+
+	func _draw_routes() -> void:
+		var focus := ""
+		if board and board.desk:
+			var pick_id := str(board.desk.picked)
+			var hover_id := str(board.desk.tech_hover)
+			focus = pick_id if pick_id != "" else hover_id
+		var rel := {}
+		if focus != "":
+			rel = PLAN.related(focus)
+		var paths: Array = []
+		var path_color := Color("2f8f6f")
+		var gold := Color("c9a44c")
+		var ink := Color("3a3026")
+		var miss := Color("a8402f")
+		for route_v in board.edge_routes:
+			var route: Dictionary = route_v
+			if bool(route.get("stub", false)):
+				continue
+			var kind := str(route.get("kind", ""))
+			var a_id := str(route.get("from", ""))
+			var b_id := str(route.get("to", ""))
+			if kind == "miss" and focus != a_id and focus != b_id:
+				continue
+			var fade := focus != "" and not rel.has(a_id) and not rel.has(b_id) and kind != "path"
+			var alpha := 0.25 if fade else 1.0
+			var pts: PackedVector2Array = route.get("pts", PackedVector2Array())
+			if pts.size() < 2:
+				continue
+			if kind == "path":
+				paths.append({"pts": pts, "color": path_color, "alpha": 1.0, "width": 3.0})
+			elif kind == "done":
+				_poly(pts, gold, 1.0, alpha * 0.4, false, 0.0)
+			elif kind == "open":
+				_poly(pts, gold, 2.0, alpha, false, 0.0)
+				_arrow_last(pts, gold, alpha)
+			elif kind == "sheet":
+				_poly(pts, ink, 1.5, alpha * 0.7, false, 0.0)
+				_arrow_last(pts, ink, alpha * 0.7)
+			else:
+				for i in pts.size() - 1:
+					_dash_line(pts[i], pts[i + 1], miss, 1.5, alpha, PackedFloat32Array([4, 3]), 0.0)
+				var mid := (pts[pts.size() - 2] + pts[pts.size() - 1]) * 0.5
+				draw_line(mid + Vector2(-4, -4), mid + Vector2(4, 4), Color(miss, alpha), 1.6, true)
+				draw_line(mid + Vector2(-4, 4), mid + Vector2(4, -4), Color(miss, alpha), 1.6, true)
+		_sync_paths(paths)
+
+	func _arrow_last(pts: PackedVector2Array, color: Color, alpha: float) -> void:
+		if pts.size() < 2:
+			return
+		var a: Vector2 = pts[pts.size() - 2]
+		var b: Vector2 = pts[pts.size() - 1]
+		var dir := b - a
+		if dir.length() < 8.0:
+			return
+		dir = dir.normalized()
+		var side := Vector2(-dir.y, dir.x)
+		var tip := b
+		draw_colored_polygon(PackedVector2Array([tip, tip - dir * 10.0 + side * 5.0, tip - dir * 10.0 - side * 5.0]), Color(color, alpha))
 
 	func _lane_dim(a_id: String, b_id: String) -> bool:
 		if board == null:
@@ -2029,7 +2954,7 @@ class LineKey extends Control:
 			["点划线 青蓝（前置只有图纸）", CYAN, "sheet"],
 			["短虚线 朱红，中间断开（缺前置，悬停才出现）", CINNABAR, "miss"],
 			["流动虚线 3px 青蓝（目标路径）", CYAN, "path"],
-			["与选中无关的线淡到 30%", GOLD, "fade"],
+			["与选中无关的线淡到 25%", GOLD, "fade"],
 		]
 		var font := get_theme_font("font", "Label")
 		for i in rows.size():
@@ -2062,3 +2987,67 @@ class LineKey extends Control:
 			var t2 := minf(t + 8.0, length)
 			draw_line(a + dir * t, a + dir * t2, Color(color, alpha), width, true)
 			t += 12.0
+
+
+class MiniMap extends Control:
+	var board = null
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_STOP
+
+	func _gui_input(event: InputEvent) -> void:
+		if board == null:
+			return
+		if event is InputEventMouseButton:
+			var mb := event as InputEventMouseButton
+			if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
+				_jump(mb.position)
+				get_viewport().set_input_as_handled()
+		elif event is InputEventMouseMotion:
+			var motion := event as InputEventMouseMotion
+			if (motion.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+				_jump(motion.position)
+
+	func _jump(local: Vector2) -> void:
+		var frac := clampf((local.x - 12.0) / 256.0, 0.0, 1.0)
+		board._minimap_to(frac)
+
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), Color("3a3026"), true)
+		var origin := Vector2(12, 4)
+		var map := Vector2(256, 52)
+		draw_rect(Rect2(origin, map), Color("1c2826"), true)
+		var total_w := 13.0 * 214.0
+		var total_h := 32.0 + 6.0 * 94.0
+		if board == null or board.graph == null:
+			return
+		for id_v in board.graph.spots.keys():
+			var id := str(id_v)
+			var rect: Rect2 = board.graph.spots[id]
+			var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+			var col := int(tech.get("col", 1))
+			var row: int = int(board._branch_row(str(tech.get("branch", ""))))
+			if row < 0:
+				row = 5
+			var px := origin.x + (float(col - 1) * 214.0 / total_w) * map.x
+			var py := origin.y + ((32.0 + float(row) * 94.0) / total_h) * map.y
+			draw_rect(Rect2(Vector2(px, py), Vector2(14, 6)), _swatch(id), true)
+		var view := 952.0
+		var scroll_x := float(board.desk.tech_scroll) if board.desk else 0.0
+		var vx := origin.x + (scroll_x / total_w) * map.x
+		var vw := (view / total_w) * map.x
+		draw_rect(Rect2(Vector2(vx, origin.y), Vector2(vw, map.y)), Color("c23b2a"), false, 2.0)
+
+	func _swatch(id: String) -> Color:
+		var state := TechPlan.view_state(id)
+		if state == "done":
+			return Color("d8b864")
+		if state == "blueprint":
+			return Color("2e7d8c")
+		if state == "designing" or state == "trial":
+			return Color("a0612b")
+		if state == "available" or state == "queued":
+			return Color("3a3026")
+		if state == "noprereq":
+			return Color("8a8175")
+		return Color("d9d2c3")

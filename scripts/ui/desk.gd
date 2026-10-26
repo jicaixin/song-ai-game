@@ -53,7 +53,8 @@ var tech_practice := false
 var tech_mat := ""
 var tech_query := ""
 var tech_legend_bar := -1
-var tech_scroll := 0
+var tech_scroll := -1
+var tech_scroll_era := -1
 var tech_fold := ""
 var tech_click_id := ""
 var tech_click_ms := 0
@@ -341,7 +342,7 @@ func _firmware_card(fw: Dictionary) -> PanelContainer:
 func _page_workshop(box: VBoxContainer) -> void:
 	_header(box, "匠作院", "")
 	var open_slots := GameState.trial_slots()
-	box.add_child(Kit.label("试制槽 %d / %d。开槽时一次扣掉材料和匠。第二槽要在朝堂颁布格物院。" % [GameState.tech_trials.size(), open_slots], "BodyLabel"))
+	box.add_child(Kit.label("试制槽 %d / %d。开槽时一次扣掉材料和匠。第二槽要在朝堂颁布「开格物院」。" % [GameState.tech_trials.size(), open_slots], "BodyLabel"))
 	var slots := HBoxContainer.new()
 	slots.add_theme_constant_override("separation", 8)
 	box.add_child(slots)
@@ -351,7 +352,7 @@ func _page_workshop(box: VBoxContainer) -> void:
 		elif i < open_slots:
 			slots.add_child(_empty_slot("空槽", "设计完成的图纸从下面开进来。"))
 		else:
-			slots.add_child(_empty_slot("未开", "格物院还没颁布，这一槽锁着。"))
+			slots.add_child(_empty_slot("未开", "「开格物院」还没颁布，这一槽锁着。"))
 	box.add_child(Kit.label("图纸", "H3Label"))
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -387,7 +388,7 @@ func _page_workshop(box: VBoxContainer) -> void:
 		var act := Kit.button("开槽", "PrimaryButton")
 		act.custom_minimum_size = Vector2(120, 36)
 		act.disabled = GameState.tech_trials.size() >= open_slots
-		if GameState.practice_gate and practice_label != "" and not bool(practice.get("ok", false)):
+		if GameState.practice_gate_on and practice_label != "" and not bool(practice.get("ok", false)):
 			act.text = "缺实践 %d/%d" % [int(practice.get("have", 0)), int(practice.get("need", 0))]
 			act.disabled = true
 		act.pressed.connect(GameState.start_trial.bind(id))
@@ -409,7 +410,7 @@ func _practice_board(box: VBoxContainer) -> void:
 
 func _page_industry(box: VBoxContainer) -> void:
 	_header(box, "百工图", "")
-	box.add_child(Kit.label("原料到成品的路径是真的。产量还没接上城池，推广了也只是把这一格点亮。", "CaptionLabel"))
+	box.add_child(Kit.label("推广后去城里建对应的坊，才有产量。", "CaptionLabel"))
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(scroll)
@@ -969,8 +970,17 @@ func _page_city(box: VBoxContainer) -> void:
 		text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		row.add_child(text)
 		var bid := str(spec.get("id", ""))
-		if GameState.practice_building(bid):
-			var note := Kit.label(GameState.practice_count_text(city_id, bid), "SmallLabel")
+		if bid == "shibosi" and city_id != "mingzhou":
+			continue
+		if GameState.industry_button(city_id, bid):
+			var note_bits := PackedStringArray()
+			var counted := GameState.practice_count_text(city_id, bid)
+			if counted != "":
+				note_bits.append(counted)
+			var yielded := GameState.industry_line(city_id, bid)
+			if yielded != "":
+				note_bits.append(yielded)
+			var note := Kit.label(" · ".join(note_bits), "SmallLabel")
 			note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			note.custom_minimum_size = Vector2(220, 0)
 			row.add_child(note)
