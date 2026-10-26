@@ -939,7 +939,7 @@ func _rebuild_units() -> void:
 		body.mesh = _unit_kinds[kind]
 		var cloth := _cloth(str(u.faction))
 		if str(u.faction) == "song" and int(u.mp) <= 0:
-			cloth = cloth.darkened(0.15)
+			cloth = cloth.darkened(0.35)
 		body.material_override = _toon(cloth)
 		root.add_child(body)
 		var pole := MeshInstance3D.new()
@@ -961,8 +961,22 @@ func _rebuild_units() -> void:
 		flag.position = Vector3(0.05, 3.15, 0)
 		root.add_child(flag)
 		var ax := Vector2i(int(u.q), int(u.r))
-		root.position = _unit_pos(ax)
+		var stack := GameState.units_at(ax)
+		var shift := 0.0
+		var city := DataDB.city_at_hex(ax.x, ax.y)
+		if not city.is_empty() and stack.size() > 1:
+			var idx := 0
+			for i in stack.size():
+				var mate: Dictionary = stack[i]
+				if int(mate.get("uid", -1)) == int(u.uid):
+					idx = i
+			shift = (float(idx) - float(stack.size() - 1) * 0.5) * 1.15
+		root.position = _unit_pos(ax) + Vector3(shift, 0.0, shift * 0.15)
 		root.scale = Vector3(2.5, 2.5, 2.5)
+		if str(u.faction) == "song":
+			_add_pips(root, u)
+		if not city.is_empty() and stack.size() > 0 and int(stack[0].get("uid", -1)) == int(u.uid):
+			_add_garrison_badge(root, stack.size(), GameState.city_cap(city))
 		add_child(root)
 		root.visible = not overview
 		sprites[int(u.uid)] = root
@@ -1001,6 +1015,57 @@ func _sync_order_flags() -> void:
 		lab.visible = not overview
 		add_child(lab)
 		_order_flags.append(lab)
+
+
+func _add_pips(root: Node3D, unit: Dictionary) -> void:
+	var lab := Label3D.new()
+	lab.text = _pip_text(unit)
+	lab.font = Settings.banner_font
+	lab.font_size = 42
+	lab.pixel_size = 0.012
+	lab.position = Vector3(0.0, -0.42, 0.0)
+	lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	lab.outline_size = 6
+	lab.outline_modulate = Color("1a2428")
+	lab.no_depth_test = true
+	lab.modulate = Color("8a8175") if int(unit.get("mp", 0)) <= 0 else Color("e8cb7c")
+	if str(GameState.weather_id) == "snow" and int(unit.get("mp", 0)) > Pathfinder.budget(unit):
+		lab.modulate = Color("d5dde6")
+	root.add_child(lab)
+
+
+func _pip_text(unit: Dictionary) -> String:
+	if int(unit.get("mp", 0)) <= 0:
+		return "✓"
+	var lit := Pathfinder.budget(unit)
+	var cap := int(unit.get("max_mp", lit))
+	var snow := 0
+	if str(GameState.weather_id) == "snow" and int(unit.get("mp", 0)) > lit:
+		snow = 1
+	var spent := maxi(0, cap - lit - snow)
+	var text := ""
+	for _i in lit:
+		text += "●"
+	for _j in snow:
+		text += "❄"
+	for _k in spent:
+		text += "○"
+	return text
+
+
+func _add_garrison_badge(root: Node3D, n: int, cap: int) -> void:
+	var lab := Label3D.new()
+	lab.text = "%d/%d" % [n, cap]
+	lab.font = Settings.banner_font
+	lab.font_size = 36
+	lab.pixel_size = 0.014
+	lab.position = Vector3(0.72, 1.15, 0.0)
+	lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	lab.modulate = Color("f4ead2")
+	lab.outline_size = 8
+	lab.outline_modulate = Color("6b1d16")
+	lab.no_depth_test = true
+	root.add_child(lab)
 
 
 func _unit_pos(ax: Vector2i) -> Vector3:
@@ -1795,12 +1860,15 @@ func _left_click(screen: Vector2) -> void:
 		return
 	var selected := GameState.selected_unit()
 	var occ := GameState.unit_at(h)
-	if not selected.is_empty() and not occ.is_empty() and int(occ.uid) == int(selected.uid):
+	if not selected.is_empty() and int(selected.q) == h.x and int(selected.r) == h.y:
 		_open_menu(h, Actions.plan_reach(h, int(selected.uid), reach_cost, reach_parent))
 		return
 	var moving := not selected.is_empty() and str(selected.faction) == "song" and int(selected.mp) > 0
 	if not moving:
 		_browse_click(h, occ)
+		return
+	if _garrison_target(h, selected):
+		_open_menu(h, Actions.plan_reach(h, int(selected.uid), reach_cost, reach_parent))
 		return
 	if not occ.is_empty() and str(occ.faction) == "song" and int(occ.uid) != int(selected.uid):
 		GameState.selected_uid = int(occ.uid)
@@ -2645,9 +2713,46 @@ func _banner_hit(screen: Vector2) -> Vector2i:
 	return none
 
 
+func _garrison_target(h: Vector2i, unit: Dictionary) -> bool:
+	if unit.is_empty() or str(unit.get("faction", "")) != "song":
+		return false
+	var city := DataDB.city_at_hex(h.x, h.y)
+	if city.is_empty() or str(city.get("faction", "")) != "song":
+		return false
+	for u_v in GameState.units_at(h):
+		var u: Dictionary = u_v
+		if str(u.get("faction", "")) == "song":
+			return true
+	return false
+
+
+func focus_movable() -> void:
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		if str(u.get("faction", "")) != "song" or int(u.get("hp", 0)) <= 0:
+			continue
+		if int(u.get("mp", 0)) <= 0 or bool(u.get("skip_turn", false)):
+			continue
+		GameState.selected_uid = int(u.uid)
+		GameState.inspected_uid = -1
+		focus_world(HexGrid.axial_to_pixel(int(u.q), int(u.r)))
+		full_refresh()
+		EventBus.state_changed.emit()
+		return
+
+
 func _browse_click(h: Vector2i, occ: Dictionary) -> void:
 	_clear_block()
 	var gui := _ui()
+	var city := DataDB.city_at_hex(h.x, h.y)
+	var song_n := 0
+	for u_v in GameState.units_at(h):
+		var u: Dictionary = u_v
+		if str(u.get("faction", "")) == "song":
+			song_n += 1
+	if not city.is_empty() and str(city.get("faction", "")) == "song" and song_n > 1:
+		_open_menu(h, Actions.roster(h))
+		return
 	if not occ.is_empty() and str(occ.faction) == "song":
 		GameState.selected_uid = int(occ.uid)
 		GameState.inspected_uid = -1
@@ -2657,7 +2762,6 @@ func _browse_click(h: Vector2i, occ: Dictionary) -> void:
 		GameState.inspected_uid = int(occ.uid)
 	else:
 		GameState.inspected_uid = -1
-		var city := DataDB.city_at_hex(h.x, h.y)
 		if gui:
 			if city.is_empty():
 				gui.call("close_city")
@@ -2744,6 +2848,15 @@ func _run_action(id: String, plan: Dictionary, hex: Vector2i) -> void:
 	var u := GameState.selected_unit()
 	if id == "cancel":
 		return
+	if id.begins_with("pick:"):
+		var pick := int(id.trim_prefix("pick:"))
+		if not GameState.unit_by_id(pick).is_empty():
+			GameState.selected_uid = pick
+			GameState.inspected_uid = -1
+			_clear_block()
+			full_refresh()
+			EventBus.state_changed.emit()
+		return
 	if id == "deselect":
 		GameState.selected_uid = -1
 		GameState.inspected_uid = -1
@@ -2783,7 +2896,7 @@ func _run_action(id: String, plan: Dictionary, hex: Vector2i) -> void:
 			await _move_to(u, landing)
 		return
 	if id == "attack" or id == "ranged":
-		var enemy := GameState.unit_at(hex)
+		var enemy := GameState.defender_at(hex)
 		if not u.is_empty() and not enemy.is_empty():
 			_strike_now(int(u.uid), int(enemy.uid))
 		return
@@ -2799,7 +2912,7 @@ func _open_detail(plan: Dictionary, hex: Vector2i) -> void:
 		if not pv.is_empty():
 			preview = pv
 			break
-	var occ := GameState.unit_at(hex)
+	var occ := GameState.defender_at(hex)
 	if preview.is_empty() or occ.is_empty():
 		if not occ.is_empty():
 			GameState.inspected_uid = int(occ.uid)
@@ -2828,7 +2941,7 @@ func _move_then_attack(plan: Dictionary, hex: Vector2i) -> void:
 	if u.is_empty():
 		return
 	var landing: Vector2i = plan.get("landing", Vector2i(999999, 0))
-	var enemy := GameState.unit_at(hex)
+	var enemy := GameState.defender_at(hex)
 	if enemy.is_empty() or landing.x >= 999999:
 		return
 	var eid := int(enemy.uid)

@@ -37,6 +37,8 @@ var nodes := {}
 var tutorial_shade: Shade
 var tutorial_bubble: Control
 var tutorial_key := ""
+var _choice: Control
+var _choice_dim: Control
 
 
 func build() -> void:
@@ -262,9 +264,12 @@ func _build_body(header_h: float) -> void:
 	graph.custom_minimum_size = graph.need
 	graph.size = graph.need
 	_paint_fade()
-	if desk.picked != "" and graph.spots.has(desk.picked):
-		var sx: float = graph.spots[desk.picked].position.x
-		scroll.scroll_horizontal = int(maxf(0.0, sx - 40.0))
+	var center_id := desk.picked
+	if center_id == "" or not graph.spots.has(center_id):
+		center_id = GameState.tech_designing
+	if center_id != "" and graph.spots.has(center_id):
+		var sx: float = graph.spots[center_id].position.x
+		scroll.scroll_horizontal = int(maxf(0.0, sx - 280.0))
 	elif desk.tech_scroll > 0:
 		scroll.scroll_horizontal = desk.tech_scroll
 	if drawer_w > 0.0:
@@ -277,6 +282,7 @@ func _left(box: VBoxContainer) -> void:
 	now.add_theme_constant_override("separation", 4)
 	box.add_child(now)
 	anchors["now"] = now
+	now.add_child(Kit.label("设计槽 %d/1" % (0 if GameState.tech_designing == "" else 1), "H3Label"))
 	if GameState.tech_designing == "":
 		var empty := Kit.label("选一份图纸", "H3Label")
 		empty.add_theme_color_override("font_color", CINNABAR)
@@ -287,9 +293,17 @@ func _left(box: VBoxContainer) -> void:
 		var tech: Dictionary = DataDB.tech_by_id.get(id, {})
 		var need := GameState.design_need(id)
 		var left := maxi(0, need - GameState.tech_design_prog)
-		var row := _link_row("设计  %s" % str(tech.get("name", id)), "console")
-		now.add_child(row)
+		var head_row := HBoxContainer.new()
+		head_row.add_theme_constant_override("separation", 6)
+		now.add_child(head_row)
+		var row := _text_button("设计  %s" % str(tech.get("name", id)))
+		row.pressed.connect(_focus_tech.bind(id))
+		head_row.add_child(row)
 		anchors["design"] = row
+		var pause := Kit.button("暂停", "Button")
+		pause.custom_minimum_size = Vector2(64, 32)
+		pause.pressed.connect(_pause_design)
+		head_row.add_child(pause)
 		var bar := ProgressBar.new()
 		bar.theme_type_variation = "NodeBarDesign"
 		bar.max_value = float(maxi(1, need))
@@ -298,22 +312,33 @@ func _left(box: VBoxContainer) -> void:
 		bar.custom_minimum_size = Vector2(0, 8)
 		now.add_child(bar)
 		now.add_child(Kit.label("电 %d/%d    约 %d 回合" % [GameState.tech_design_prog, need, int(ceil(float(left) / 10.0))], "CaptionLabel"))
-	if not GameState.tech_queue.is_empty():
-		var bits := "队列"
-		var n := 1
-		for id_v in GameState.tech_queue:
-			var tech2: Dictionary = DataDB.tech_by_id.get(str(id_v), {})
-			bits += "  %d %s" % [n, str(tech2.get("name", str(id_v)))]
-			n += 1
-		var q := Kit.label(bits, "SmallLabel")
-		q.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		now.add_child(q)
+	var qn := 1
+	for id_v in GameState.tech_queue:
+		var qid := str(id_v)
+		var tech2: Dictionary = DataDB.tech_by_id.get(qid, {})
+		var qrow := HBoxContainer.new()
+		qrow.add_theme_constant_override("separation", 4)
+		now.add_child(qrow)
+		var mark := Kit.label("%s %s" % [_circ(qn), str(tech2.get("name", qid))], "SmallLabel")
+		mark.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		qrow.add_child(mark)
+		var up := Kit.button("↑", "Button")
+		up.custom_minimum_size = Vector2(36, 32)
+		up.disabled = qn <= 1
+		up.pressed.connect(_bump_queue.bind(qid))
+		qrow.add_child(up)
+		var drop := Kit.button("移出", "Button")
+		drop.custom_minimum_size = Vector2(64, 32)
+		drop.pressed.connect(_drop_queue.bind(qid))
+		qrow.add_child(drop)
+		desk.debug_btns["queue_up_%d" % qn] = up
+		desk.debug_btns["queue_drop_%d" % qn] = drop
+		qn += 1
+	now.add_child(Kit.label("试制槽 %d/%d" % [GameState.tech_trials.size(), GameState.trial_slots()], "H3Label"))
 	var trials := VBoxContainer.new()
 	trials.add_theme_constant_override("separation", 2)
 	now.add_child(trials)
 	anchors["trial"] = trials
-	if GameState.tech_trials.is_empty():
-		trials.add_child(Kit.label("试制槽空着", "SmallLabel"))
 	for trial_v in GameState.tech_trials:
 		var trial: Dictionary = trial_v
 		var id2 := str(trial.get("id", ""))
@@ -340,6 +365,13 @@ func _left(box: VBoxContainer) -> void:
 		tbar.show_percentage = false
 		tbar.custom_minimum_size = Vector2(0, 8)
 		trials.add_child(tbar)
+	var open_slots := maxi(0, GameState.trial_slots() - GameState.tech_trials.size())
+	for _slot in open_slots:
+		var empty_slot := _text_button("空槽 · 去匠作院")
+		empty_slot.pressed.connect(_jump.bind("workshop"))
+		trials.add_child(empty_slot)
+	if GameState.trial_slots() < 2:
+		trials.add_child(Kit.label("颁布格物院后开", "SmallLabel"))
 	var prints := VBoxContainer.new()
 	now.add_child(prints)
 	anchors["prints"] = prints
@@ -705,7 +737,17 @@ func _place_node(id: String, pos: Vector2, tile: bool) -> void:
 	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	face.position = Vector2.ZERO
 	face.size = wh
+	var shown := _node_progress(id, state)
+	face.prog = int(shown.x)
+	face.need = int(shown.y)
 	b.add_child(face)
+	var flag := _flag_text(id, state)
+	if flag != "" and not tile:
+		var chip := Kit.label(flag, "SmallLabel")
+		chip.position = Vector2(4, -16)
+		chip.add_theme_font_size_override("font_size", 13)
+		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(chip)
 	if tile:
 		var icon := TextureRect.new()
 		icon.texture = Kit.icon("tech_%s" % id)
@@ -1332,10 +1374,197 @@ func _make_target(id: String) -> void:
 
 func _run(id: String) -> void:
 	var jump := PLAN.run_primary(id)
+	if jump == "confirm_design":
+		_open_design_confirm(id)
+		return
+	if jump == "confirm_trial":
+		_open_trial_confirm(id)
+		return
 	if jump == "city":
 		desk.open_city("kaifeng")
 	elif jump != "":
 		_jump(jump)
+
+
+func _node_progress(id: String, state: String) -> Vector2i:
+	if state == "designing" or GameState.tech_designing == id:
+		return Vector2i(GameState.tech_design_prog, maxi(1, GameState.design_need(id)))
+	if state == "trial":
+		for trial_v in GameState.tech_trials:
+			var trial: Dictionary = trial_v
+			if str(trial.get("id", "")) == id:
+				return Vector2i(int(trial.get("prog", 0)), maxi(1, int(trial.get("need", 1))))
+	return Vector2i(0, 1)
+
+
+func _flag_text(id: String, state: String) -> String:
+	var shown := _node_progress(id, state)
+	if state == "designing":
+		return "设计中 %d/%d" % [shown.x, shown.y]
+	if state == "trial":
+		return "试制 %d/%d" % [shown.x, shown.y]
+	if state == "queued":
+		return "排第 %d" % PLAN.queue_index(id)
+	return ""
+
+
+func _circ(n: int) -> String:
+	var marks := ["①", "②", "③"]
+	if n >= 1 and n <= marks.size():
+		return str(marks[n - 1])
+	return str(n)
+
+
+func _focus_tech(id: String) -> void:
+	desk.picked = id
+	if desk.tech_view == "overview":
+		desk.tech_view = "focus"
+	desk._fill.call_deferred()
+
+
+func _pause_design() -> void:
+	GameState.pause_design()
+	desk._fill.call_deferred()
+
+
+func _bump_queue(id: String) -> void:
+	GameState.bump_queue(id)
+	desk._fill.call_deferred()
+
+
+func _drop_queue(id: String) -> void:
+	GameState.remove_queued(id)
+	desk._fill.call_deferred()
+
+
+func _open_design_confirm(id: String) -> void:
+	var cur: Dictionary = DataDB.tech_by_id.get(GameState.tech_designing, {})
+	var nxt: Dictionary = DataDB.tech_by_id.get(id, {})
+	var need := maxi(1, GameState.design_need(GameState.tech_designing))
+	var left := maxi(0, need - GameState.tech_design_prog)
+	var eta := int(ceil(float(left) / 10.0))
+	var full := GameState.tech_queue.size() >= GameState.QUEUE_CAP
+	var place := GameState.tech_queue.size() + 1
+	var lines := "正在设计 %s（%d/%d，约 %d 回合）。\n%s 要怎么安排？" % [
+		str(cur.get("name", GameState.tech_designing)), GameState.tech_design_prog, need, eta, str(nxt.get("name", id)),
+	]
+	var back := "排在后面（第 %d 位）" % place
+	_open_choice(lines, back, not full, "队列已满 3/3" if full else "", _queue_behind.bind(id), _swap_to.bind(id))
+
+
+func _open_trial_confirm(id: String) -> void:
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	var cost: Dictionary = tech.get("cost", {})
+	var bits: PackedStringArray = []
+	var craft := int(cost.get("craft", 0))
+	if craft > 0:
+		bits.append("匠 %d" % craft)
+	var mats: Dictionary = tech.get("materials", {})
+	for key_v in mats.keys():
+		var key := str(key_v)
+		bits.append("%s %d" % [str(PLAN.MAT_NAME.get(key, key)), int(mats[key_v])])
+	if bits.is_empty():
+		bits.append("匠 0")
+	var used := "%d/%d" % [GameState.tech_trials.size(), GameState.trial_slots()]
+	var lines := "开试制要花 %s，占 1 个试制槽（%s）。" % ["、".join(bits), used]
+	_open_choice(lines, "开始试制", true, "", _start_trial.bind(id), _start_trial.bind(""))
+
+
+func _open_choice(lines: String, yes_text: String, yes_on: bool, why: String, yes: Callable, alt: Callable) -> void:
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.35)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(dim)
+	var panel := PanelContainer.new()
+	panel.position = Vector2(340, 180)
+	panel.custom_minimum_size = Vector2(600, 240)
+	panel.size = Vector2(600, 280)
+	panel.add_theme_stylebox_override("panel", _flat(CREAM, Color("1f7f8c"), 10, 2))
+	add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	panel.add_child(box)
+	var body := Kit.label(lines, "BodyLabel")
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.custom_minimum_size = Vector2(560, 72)
+	box.add_child(body)
+	if why != "":
+		var note := Kit.label(why, "CaptionLabel")
+		note.add_theme_color_override("font_color", CINNABAR)
+		box.add_child(note)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	box.add_child(row)
+	var yes_btn := Kit.button(yes_text, "PrimaryButton")
+	yes_btn.custom_minimum_size = Vector2(180, 40)
+	yes_btn.disabled = not yes_on
+	yes_btn.focus_mode = Control.FOCUS_ALL
+	yes_btn.pressed.connect(yes)
+	row.add_child(yes_btn)
+	var alt_btn := Kit.button("先做这个", "Button")
+	alt_btn.custom_minimum_size = Vector2(140, 40)
+	alt_btn.pressed.connect(alt)
+	if yes_text == "开始试制":
+		alt_btn.visible = false
+	row.add_child(alt_btn)
+	var no_btn := Kit.button("算了", "Button")
+	no_btn.custom_minimum_size = Vector2(100, 40)
+	no_btn.pressed.connect(_dismiss_choice)
+	row.add_child(no_btn)
+	desk.debug_btns["tech_yes"] = yes_btn
+	desk.debug_btns["tech_swap"] = alt_btn
+	desk.debug_btns["tech_no"] = no_btn
+	if yes_on:
+		yes_btn.grab_focus.call_deferred()
+	_choice = panel
+	_choice_dim = dim
+
+
+func _queue_behind(id: String) -> void:
+	GameState.start_design(id)
+	_dismiss_choice()
+
+
+func _swap_to(id: String) -> void:
+	if id == "":
+		_dismiss_choice()
+		return
+	GameState.swap_design(id)
+	_dismiss_choice()
+
+
+func _start_trial(id: String) -> void:
+	if id != "":
+		GameState.start_trial(id)
+	_dismiss_choice()
+	if id != "":
+		_jump.call_deferred("workshop")
+
+
+func _dismiss_choice() -> void:
+	var panel := _choice
+	var dim := _choice_dim
+	_choice = null
+	_choice_dim = null
+	desk.debug_btns.erase("tech_yes")
+	desk.debug_btns.erase("tech_swap")
+	desk.debug_btns.erase("tech_no")
+	if panel != null and is_instance_valid(panel):
+		panel.visible = false
+		panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if dim != null and is_instance_valid(dim):
+		dim.visible = false
+		dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_drop_choice.call_deferred(panel, dim)
+	desk._fill.call_deferred()
+
+
+func _drop_choice(panel: Node, dim: Node) -> void:
+	if panel != null and is_instance_valid(panel):
+		panel.queue_free()
+	if dim != null and is_instance_valid(dim):
+		dim.queue_free()
 
 
 func _jump(which: String) -> void:
@@ -1429,6 +1658,14 @@ func _next_tutorial() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if _choice != null and event is InputEventKey and event.pressed:
+		var key := event as InputEventKey
+		if key.keycode == KEY_ENTER or key.keycode == KEY_KP_ENTER:
+			var yes: Button = desk.debug_btns.get("tech_yes")
+			if yes != null and not yes.disabled:
+				yes.pressed.emit()
+			get_viewport().set_input_as_handled()
+			return
 	if not (event is InputEventMouseButton):
 		return
 	var mb := event as InputEventMouseButton
@@ -1446,6 +1683,16 @@ class Face extends Control:
 	var state := "available"
 	var tile := false
 	var queue_n := 0
+	var prog := 0
+	var need := 1
+
+	func _ready() -> void:
+		set_process(state == "designing")
+
+	func _process(_delta: float) -> void:
+		var t := float(Time.get_ticks_msec() % 1600) / 1600.0
+		modulate.a = 0.8 + 0.2 * sin(t * TAU)
+		queue_redraw()
 
 	func _draw() -> void:
 		var r := Rect2(Vector2(1, 1), size - Vector2(2, 2))
@@ -1453,7 +1700,7 @@ class Face extends Control:
 			var tex := Kit.piece("tile3_%s" % _key())
 			if tex:
 				draw_texture_rect(tex, Rect2(Vector2.ZERO, size), false)
-			if queue_n > 0:
+			if state == "queued" and queue_n > 0:
 				_badge(Vector2(2, 2))
 			return
 		if state == "done":
@@ -1462,7 +1709,10 @@ class Face extends Control:
 			draw_rect(r.grow(2), Color(0.12, 0.5, 0.55, 0.35), true)
 			_round(r, Color("fbf5e6"), Color("1f7f8c"), 2.0)
 			_round(r.grow(-4), Color("fbf5e6"), Color("1f7f8c"), 1.0)
-		elif state == "queued" or state == "available":
+			_ring(Color("1f7f8c"))
+		elif state == "queued":
+			_round(r, Color("d9d3c7"), Color("6d655c"), 1.5)
+		elif state == "available":
 			_round(r, Color("fbf5e6"), Color("4a4036"), 1.5)
 		elif state == "noprereq":
 			_dashed_rect(r, Color("8a8175"))
@@ -1473,10 +1723,11 @@ class Face extends Control:
 			draw_rect(Rect2(r.position, Vector2(7, r.size.y)), Color("83501f"), false, 1.5)
 			draw_rect(Rect2(Vector2(r.end.x - 7, r.position.y), Vector2(7, r.size.y)), Color("83501f"), false, 1.5)
 		elif state == "trial":
-			_chamfer(r, Color("f6e7d4"), Color("83501f"))
+			_chamfer(r, Color("f6e7d4"), Color("c4842a"))
+			_ring(Color("c4842a"))
 		else:
 			_round(r, Color("e7e0d4"), Color("76685a"), 1.0)
-		if queue_n > 0:
+		if state == "queued" and queue_n > 0:
 			_badge(r.position + Vector2(2, 2))
 
 	func _key() -> String:
@@ -1535,12 +1786,23 @@ class Face extends Control:
 		for i in pts.size():
 			draw_line(pts[i], pts[(i + 1) % pts.size()], border, 1.6, true)
 
+	func _ring(color: Color) -> void:
+		var frac := clampf(float(prog) / float(maxi(1, need)), 0.0, 1.0)
+		if frac <= 0.0:
+			frac = 0.04
+		var center := size * 0.5
+		var radius := maxf(size.x, size.y) * 0.52
+		draw_arc(center, radius, -PI * 0.5, -PI * 0.5 + TAU * frac, 32, color, 3.0, true)
+
 	func _badge(at: Vector2) -> void:
 		var center := at + Vector2(9, 9)
-		draw_circle(center, 9, Color("1f7f8c"))
+		draw_circle(center, 9, Color("6d655c"))
 		var font := get_theme_font("font", "Label")
+		var mark := str(queue_n)
+		if queue_n >= 1 and queue_n <= 3:
+			mark = ["①", "②", "③"][queue_n - 1]
 		if font:
-			draw_string(font, center + Vector2(-9, 5), str(queue_n), HORIZONTAL_ALIGNMENT_CENTER, 18, 13, Color("fbf5e6"))
+			draw_string(font, center + Vector2(-9, 5), mark, HORIZONTAL_ALIGNMENT_CENTER, 18, 13, Color("fbf5e6"))
 
 
 class Graph extends Control:

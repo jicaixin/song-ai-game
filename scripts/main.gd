@@ -283,6 +283,23 @@ func _process(_delta: float) -> void:
 	})
 
 
+func _arm_shot() -> void:
+	GameState.tutorial_done = true
+	GameState.playing = true
+	GameState.input_locked = false
+	ui.end_enemy_phase()
+	if ui.pacing and ui.pacing.event_open:
+		ui.pacing._close_event()
+	GameState.pending_events.clear()
+	GameState.card_queue.clear()
+	GameState.reward_queue.clear()
+	if ui.goals and ui.goals.blocking():
+		ui.goals.dismiss_card()
+	if ui.goals:
+		ui.goals.sync()
+	ui._order_layers()
+
+
 func _debug_turn(at: int) -> void:
 	GameState.turn = at
 	var date := Calendar.apply_turn(at)
@@ -494,6 +511,72 @@ func _poll_tech_cmd() -> void:
 		GameState.pending_blueprint = ""
 		GameState.announce_turn()
 		EventBus.state_changed.emit()
+		return
+	if cmd == "shot_garrison":
+		_arm_shot()
+		GameState.weather_id = "clear"
+		var shi := GameState.unit_by_name("石元孙部")
+		var liu := GameState.unit_by_name("刘平部")
+		var yan: Dictionary = DataDB.city_by_id("yanzhou")
+		var city := Vector2i(int(yan.q), int(yan.r))
+		GameState.set_pos(int(shi.uid), city)
+		liu.mp = int(liu.max_mp)
+		GameState.selected_uid = int(liu.uid)
+		var map := get_tree().get_first_node_in_group("world_map")
+		if map:
+			map.call("full_refresh")
+			map.call("focus_world", HexGrid.axial_to_pixel(city.x, city.y))
+			map.call("_open_menu", city, TileActions.plan(city, int(liu.uid)))
+		EventBus.state_changed.emit()
+		return
+	if cmd == "shot_pips":
+		_arm_shot()
+		GameState.weather_id = "clear"
+		if ui.desk:
+			ui.desk.shut()
+		ui.close_tile_menu()
+		var map2 := get_tree().get_first_node_in_group("world_map")
+		if map2:
+			map2.call("full_refresh")
+			map2.call("focus_city", "yanzhou")
+		EventBus.state_changed.emit()
+		return
+	if cmd == "shot_endwarn":
+		_arm_shot()
+		GameState.weather_id = "clear"
+		GameState.end_warn_off = false
+		for u_v in GameState.units:
+			var u: Dictionary = u_v
+			if str(u.get("faction", "")) == "song":
+				u.mp = int(u.get("max_mp", 2))
+				u.erase("skip_turn")
+		TurnManager.confirm_open = false
+		TurnManager.request_end()
+		return
+	if cmd == "shot_tech" or cmd == "shot_swap" or cmd == "shot_hud":
+		_arm_shot()
+		GameState.load_tech_sample()
+		GameState.tech_design_prog = 12
+		GameState.tech_queue = ["A05"]
+		GameState.tech_tutorial_done = true
+		desk.tech_tutorial = -1
+		desk.tech_view = "focus"
+		if cmd == "shot_hud":
+			desk.shut()
+			EventBus.state_changed.emit()
+			return
+		desk.open("tech")
+		if cmd == "shot_swap":
+			var other := ""
+			for tech_v in DataDB.techs:
+				var tech: Dictionary = tech_v
+				var id := str(tech.get("id", ""))
+				if id != "A05" and GameState.tech_state(id) == "available":
+					other = id
+					break
+			var board := desk.host.get_child(0)
+			if other != "" and board and board.has_method("_open_design_confirm"):
+				board.call("_open_design_confirm", other)
 		return
 	if cmd == "open":
 		desk.open("tech")

@@ -185,6 +185,11 @@ static func _best_attack(unit: Dictionary) -> Dictionary:
 			continue
 		if not _in_range(unit, other):
 			continue
+		var there := Vector2i(int(other.q), int(other.r))
+		if not DataDB.city_at_hex(there.x, there.y).is_empty():
+			var top := GameState.city_top(there)
+			if int(top.get("uid", -1)) != int(other.get("uid", -2)):
+				continue
 		var score := _score(unit, other)
 		if score > best_score:
 			best_score = score

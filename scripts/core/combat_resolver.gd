@@ -128,12 +128,14 @@ static func _flank(unit: Dictionary, enemy: Dictionary) -> int:
 	var n := 0
 	var around := Vector2i(int(enemy.q), int(enemy.r))
 	for nb in HexGrid.neighbors_of(around):
-		var other := GameState.unit_at(nb)
-		if other.is_empty():
-			continue
-		if int(other.get("uid", -1)) == int(unit.get("uid", -2)):
-			continue
-		if str(other.get("faction", "")) == str(unit.get("faction", "")):
+		var hit := false
+		for other_v in GameState.units_at(nb):
+			var other: Dictionary = other_v
+			if int(other.get("uid", -1)) == int(unit.get("uid", -2)):
+				continue
+			if str(other.get("faction", "")) == str(unit.get("faction", "")):
+				hit = true
+		if hit:
 			n += 1
 	return n * 2
 

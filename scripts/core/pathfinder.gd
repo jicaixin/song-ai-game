@@ -111,11 +111,10 @@ static func _zoc(hex: Vector2i, unit: Dictionary) -> bool:
 	var faction := str(unit.get("faction", ""))
 	var uid := int(unit.get("uid", -1))
 	for nb in HexGrid.neighbors_of(hex):
-		var other := GameState.unit_at(nb)
-		if other.is_empty():
-			continue
-		if int(other.get("uid", -1)) == uid:
-			continue
-		if DataDB.hostile(faction, str(other.get("faction", ""))):
-			return true
+		for other_v in GameState.units_at(nb):
+			var other: Dictionary = other_v
+			if int(other.get("uid", -1)) == uid:
+				continue
+			if DataDB.hostile(faction, str(other.get("faction", ""))):
+				return true
 	return false

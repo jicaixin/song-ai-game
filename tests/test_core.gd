@@ -27,6 +27,7 @@ func run_tests() -> int:
 	check_camera()
 	check_font()
 	check_city_close()
+	check_feedback()
 	if failed > 0:
 		push_error("失败 %d 项" % failed)
 	else:
@@ -789,6 +790,122 @@ func check_goals() -> void:
 			xing_bonus = true
 	check("xingqing_bonus", xing_bonus)
 	GameState.new_game()
+
+
+func check_feedback() -> void:
+	GameState.new_game()
+	GameState.weather_id = "clear"
+	var yan: Dictionary = DataDB.city_by_id("yanzhou")
+	var city := Vector2i(int(yan.q), int(yan.r))
+	check("yan_cap", GameState.city_cap(yan) == 2, str(GameState.city_cap(yan)))
+	var shi := _named_unit("石元孙部")
+	var liu := _named_unit("刘平部")
+	var gar := _named_unit("延州守军")
+	var buba := _named_unit("步跋子")
+	check("garrison_cast", not shi.is_empty() and not liu.is_empty() and not gar.is_empty() and not buba.is_empty())
+	if shi.is_empty():
+		return
+	var home := Vector2i(int(shi.q), int(shi.r))
+	var reach := Pathfinder.reachable(shi)
+	check("song_enters_zhou", reach.cost.has(city), str(reach.cost.keys()))
+	var plan := TileActions.plan(city, int(shi.uid))
+	var enter := _action(plan, "enter")
+	check("enter_label", str(enter.get("label", "")).find("入城驻防") >= 0 and str(enter.get("label", "")).find("1/2") >= 0 and bool(enter.get("enabled", false)), str(enter))
+	check("xia_still_out", not Pathfinder.reachable(buba).cost.has(city))
+	GameState.set_pos(int(shi.uid), city)
+	var full := TileActions.plan(city, int(liu.uid))
+	var blocked := _action(full, "enter")
+	check("city_full_reason", str(blocked.get("reason", "")).find("延州已满 2/2") >= 0 and not bool(blocked.get("enabled", false)), str(blocked))
+	check("city_full_path", not Pathfinder.reachable(liu).cost.has(city))
+	GameState.set_pos(int(shi.uid), home)
+	shi.mp = int(shi.max_mp)
+	GameState.weather_id = "snow"
+	var snow := TileActions.plan(city, int(shi.uid))
+	var snow_enter := _action(snow, "enter")
+	check("snow_reason", str(snow_enter.get("reason", "")).find("雪天 −1") >= 0 and not bool(snow_enter.get("enabled", false)), str(snow_enter))
+	check("snow_caption", GameState.move_caption(shi).find("雪天实走") >= 0, GameState.move_caption(shi))
+	GameState.weather_id = "clear"
+	shi.mp = 0
+	check("spent_caption", GameState.move_caption(shi).find("移动 0/2") >= 0, GameState.move_caption(shi))
+	shi.mp = int(shi.max_mp)
+	GameState.set_pos(int(shi.uid), city)
+	gar.hp = 30
+	shi.hp = 100
+	var top := GameState.city_top(city)
+	var expect := int(shi.uid) if GameState.unit_power(shi) >= GameState.unit_power(gar) else int(gar.uid)
+	check("city_top", int(top.get("uid", -1)) == expect and int(GameState.defender_at(city).get("uid", -1)) == expect, str(top.get("name", "")))
+	top.hp = 0
+	GameState._remove_dead()
+	check("garrison_remains", GameState.units_at(city).size() == 1, str(GameState.units_at(city).size()))
+	GameState.new_game()
+	GameState.weather_id = "clear"
+	gar = _named_unit("延州守军")
+	gar.hp = 80
+	GameState.restore_movement()
+	check("garrison_heal", int(_named_unit("延州守军").hp) == 90, str(_named_unit("延州守军").hp))
+	gar = _named_unit("延州守军")
+	gar.hp = 80
+	gar["attacked"] = true
+	GameState.restore_movement()
+	check("no_heal_after_attack", int(_named_unit("延州守军").hp) == 80, str(_named_unit("延州守军").hp))
+	GameState.new_game()
+	var turn0 := GameState.turn
+	check("end_needs_confirm", TurnManager.needs_end_confirm())
+	TurnManager.request_end()
+	check("end_waits", GameState.turn == turn0 and TurnManager.confirm_open and not TurnManager.busy)
+	TurnManager.dismiss_confirm()
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		if str(u.get("faction", "")) == "song" and int(u.get("mp", 0)) > 0:
+			u["skip_turn"] = true
+	check("end_standby_clear", not TurnManager.needs_end_confirm() and not TurnManager.confirm_open)
+	GameState.new_game()
+	var walker := _named_unit("刘平部")
+	var before := GameState.hint_mp_seen
+	GameState.spend_mp(int(walker.uid), int(walker.mp))
+	check("hint_once", not before and GameState.hint_mp_seen and GameState.advisor_text.find("走完了") >= 0, GameState.advisor_text)
+	var said := GameState.advisor_text
+	var other := _named_unit("石元孙部")
+	GameState.spend_mp(int(other.uid), int(other.mp))
+	check("hint_stays", GameState.hint_mp_seen and GameState.advisor_text == said)
+	var ids: Array = []
+	for tech_v in DataDB.techs:
+		var tech: Dictionary = tech_v
+		var id := str(tech.get("id", ""))
+		if GameState.tech_state(id) == "available":
+			ids.append(id)
+	check("design_pool", ids.size() >= 4, str(ids.size()))
+	if ids.size() < 4:
+		return
+	GameState.tech_design_prog = 0
+	check("design_start", GameState.start_design(str(ids[0])))
+	GameState.tech_design_prog = 9
+	check("design_queue", GameState.start_design(str(ids[1])) and GameState.tech_designing == str(ids[0]) and GameState.tech_design_prog == 9 and str(GameState.tech_queue[0]) == str(ids[1]))
+	check("design_cap", GameState.start_design(str(ids[2])) and GameState.start_design(str(ids[3])) and not GameState.start_design(str(ids[0])) )
+	# ids[0] is designing, so a fifth available may not exist. Cap is queue size.
+	check("queue_at_cap", GameState.tech_queue.size() == 3, str(GameState.tech_queue))
+	GameState.tech_queue = [str(ids[1])]
+	GameState.tech_designing = str(ids[0])
+	GameState.tech_design_prog = 9
+	check("swap_keeps", GameState.swap_design(str(ids[1])) and GameState.tech_designing == str(ids[1]) and str(GameState.tech_queue[0]) == str(ids[0]) and int(GameState.tech_paused.get(str(ids[0]), -1)) == 9)
+	GameState.pause_design()
+	check("swap_resumes", GameState.tech_designing == str(ids[0]) and GameState.tech_design_prog == 9, "%s %d" % [GameState.tech_designing, GameState.tech_design_prog])
+	GameState.tech_trials = [{"id": str(ids[2]), "prog": 1, "need": 3}]
+	var blurb := GameState.research_blurb()
+	check("blurb_both", str(blurb.get("design", "")).find("设计") >= 0 and str(blurb.get("trial", "")).find("试制") >= 0, str(blurb))
+	GameState.tech_blueprints = ["Z1", "Z2", "Z3"]
+	GameState.tech_design_prog = GameState.design_need(GameState.tech_designing)
+	var held := GameState.tech_designing
+	GameState._research_tick()
+	check("blueprint_cap", GameState.tech_blueprints.size() == 3 and GameState.tech_designing == held and GameState.notice.find("试制") >= 0, GameState.notice)
+
+
+func _action(plan: Dictionary, id: String) -> Dictionary:
+	for a_v in plan.get("actions", []):
+		var action: Dictionary = a_v
+		if str(action.get("id", "")) == id:
+			return action
+	return {}
 
 
 func _named_unit(unit_name: String) -> Dictionary:

@@ -103,6 +103,8 @@ static func run_primary(id: String) -> String:
 		GameState.remove_queued(id)
 		return ""
 	if state == "available":
+		if GameState.tech_designing != "" and GameState.tech_designing != id:
+			return "confirm_design"
 		GameState.start_design(id)
 		return ""
 	if state == "noprereq":
@@ -111,8 +113,7 @@ static func run_primary(id: String) -> String:
 	if state == "blocked":
 		return _blocked_jump(id)
 	if state == "blueprint":
-		GameState.start_trial(id)
-		return "workshop"
+		return "confirm_trial"
 	if state == "trial":
 		return "workshop"
 	return ""
@@ -130,7 +131,8 @@ static func set_target(id: String) -> void:
 			break
 		if nid == GameState.tech_designing or GameState.tech_queue.has(nid):
 			continue
-		GameState.tech_queue.append(nid)
+		if not GameState._enqueue(nid):
+			break
 		added += 1
 	EventBus.state_changed.emit()
 

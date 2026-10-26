@@ -39,12 +39,28 @@ static func plan_reach(hex: Vector2i, uid: int, cost: Dictionary, parent: Dictio
 	var reason := ""
 	_append_place_more(more, hex, terr, city)
 
-	if not occ.is_empty() and not unit.is_empty() and int(occ.uid) == int(unit.uid):
+	var standing := not unit.is_empty() and int(unit.q) == hex.x and int(unit.r) == hex.y
+	var song_city := not city.is_empty() and str(city.get("faction", "")) == "song"
+	var song_here := 0
+	if song_city:
+		for g_v in GameState.units_at(hex):
+			var g: Dictionary = g_v
+			if str(g.get("faction", "")) == "song":
+				song_here += 1
+	if standing:
 		style = "own_acted" if int(unit.mp) <= 0 else "own_ready"
 		cursor = "cur_select"
 		head = _self_head(unit)
 		_append_unit_more(more, unit)
 		_push_self_actions(actions, unit, city)
+	elif not unit.is_empty() and str(unit.get("faction", "")) == "song" and song_city and song_here > 0:
+		var card := _garrison_card(unit, hex, city, cost)
+		style = str(card.get("style", "city_own"))
+		cursor = "cur_city"
+		head = str(card.get("head", ""))
+		reason = str(card.get("reason", ""))
+		for act_v in card.get("actions", []):
+			actions.append(act_v)
 	elif not occ.is_empty() and not unit.is_empty() and str(occ.faction) == "song" and str(unit.faction) == "song" and int(occ.uid) != int(unit.uid):
 		style = "own_ready" if int(occ.mp) > 0 else "own_acted"
 		cursor = "cur_select"
@@ -56,6 +72,9 @@ static func plan_reach(hex: Vector2i, uid: int, cost: Dictionary, parent: Dictio
 		head = _unit_head(occ)
 		_append_unit_more(more, occ)
 	elif not occ.is_empty() and moving and DataDB.hostile(str(unit.faction), str(occ.faction)):
+		var top := GameState.defender_at(hex)
+		if not top.is_empty():
+			occ = top
 		var ranged := _is_ranged(unit)
 		var in_range := _in_range(unit, occ)
 		var atk_id := "ranged" if ranged else "attack"
@@ -362,6 +381,89 @@ static func _act(id: String, label: String, icon: String, key: String, enabled: 
 	}
 
 
+static func roster(hex: Vector2i) -> Dictionary:
+	var city := DataDB.city_at_hex(hex.x, hex.y)
+	var cap := GameState.city_cap(city)
+	var here := GameState.units_at(hex)
+	var actions: Array = []
+	for u_v in here:
+		var u: Dictionary = u_v
+		if str(u.get("faction", "")) != "song":
+			continue
+		var label := "选中%s · 生命 %d · 移动 %d/%d" % [str(u.get("name", "部队")), int(u.get("hp", 0)), int(u.get("mp", 0)), int(u.get("max_mp", 0))]
+		actions.append(_act("pick:%d" % int(u.get("uid", -1)), label, "act_select", "", true, "", "info", 0, {}))
+	actions.append(_act("city", "打开城池", "act_city_panel", "C", true, "", "info", 0, {}))
+	actions.append(_act("cancel", "取消", "act_cancel", "Esc", true, "", "info", 0, {}))
+	var head := "%s · 驻军 %d/%d" % [str(city.get("name", "城")), here.size(), cap]
+	return {
+		"style": "city_own",
+		"cursor": "cur_select",
+		"head": head,
+		"more": [],
+		"actions": actions,
+		"path": [],
+		"landing": NONE,
+		"remain": -1,
+		"hostile": false,
+		"direct": false,
+		"reason": "",
+		"default_id": "",
+		"badges": [],
+		"design_w": _width_of("city_own"),
+		"shader": _shader_of("city_own"),
+		"color": _color_of("city_own", city),
+		"hatch": 0.0,
+		"card_sub": "",
+	}
+
+
+static func _garrison_card(unit: Dictionary, hex: Vector2i, city: Dictionary, cost: Dictionary) -> Dictionary:
+	var cname := str(city.get("name", "城"))
+	var cap := GameState.city_cap(city)
+	var here := GameState.units_at(hex)
+	var n := 0
+	for u_v in here:
+		var row: Dictionary = u_v
+		if str(row.get("faction", "")) == "song":
+			n += 1
+	var step := Pathfinder.enter_cost(unit, hex.x, hex.y)
+	var walk := Pathfinder.budget(unit)
+	var full := n >= cap
+	var enabled := false
+	var why := ""
+	var label := "入城驻防"
+	if full:
+		why = "%s已满 %d/%d · 先让一支出城" % [cname, n, cap]
+	elif cost.has(hex):
+		enabled = true
+		var spend := int(cost[hex])
+		label = "入城驻防 · 花 %d 步，城内 %d/%d" % [spend, n, cap]
+		step = spend
+	elif step > walk and str(GameState.weather_id) == "snow" and int(unit.get("mp", 0)) > walk:
+		why = "要 %d 步，只剩 %d 步（雪天 −1）" % [step, walk]
+	elif step > walk:
+		why = "要 %d 步，只剩 %d 步" % [maxi(0, step), walk]
+	elif _in_zoc(hex, unit):
+		why = "被敌军控制区挡住"
+	else:
+		why = "去不了"
+	var actions: Array = []
+	actions.append(_act("enter", label, "act_enter_city", "", enabled, why, "cmd", maxi(0, step), {}))
+	for u_v2 in here:
+		var mate: Dictionary = u_v2
+		if str(mate.get("faction", "")) != "song":
+			continue
+		actions.append(_act("pick:%d" % int(mate.get("uid", -1)), "选中%s" % str(mate.get("name", "部队")), "act_select", "", true, "", "info", 0, {}))
+	actions.append(_act("city", "打开城池", "act_city_panel", "C", true, "", "info", 0, {}))
+	actions.append(_act("deselect", "取消选择", "act_deselect", "", true, "", "info", 0, {}))
+	return {
+		"style": "city_own",
+		"head": "%s · 驻军 %d/%d" % [cname, n, cap],
+		"reason": why,
+		"actions": actions,
+	}
+
+
 static func _push_self_actions(actions: Array, unit: Dictionary, city: Dictionary) -> void:
 	var ready := int(unit.mp) > 0
 	actions.append(_act("fortify", "驻扎", "act_fortify", "F", ready, "" if ready else "本月已行动", "cmd", 0, {}))
@@ -413,13 +515,12 @@ static func _in_zoc(hex: Vector2i, unit: Dictionary) -> bool:
 	var faction := str(unit.get("faction", ""))
 	var uid := int(unit.get("uid", -1))
 	for nb in HexGrid.neighbors_of(hex):
-		var other := GameState.unit_at(nb)
-		if other.is_empty():
-			continue
-		if int(other.get("uid", -1)) == uid:
-			continue
-		if DataDB.hostile(faction, str(other.get("faction", ""))):
-			return true
+		for other_v in GameState.units_at(nb):
+			var other: Dictionary = other_v
+			if int(other.get("uid", -1)) == uid:
+				continue
+			if DataDB.hostile(faction, str(other.get("faction", ""))):
+				return true
 	return false
 
 
@@ -445,6 +546,9 @@ static func _place_head(hex: Vector2i, terr: Dictionary, city: Dictionary) -> St
 	if owner != "":
 		owner_name = _faction_name(owner)
 	if not city.is_empty():
+		var n := GameState.units_at(hex).size()
+		if str(city.get("faction", "")) == "song" and n > 0:
+			return "%s · 驻军 %d/%d" % [str(city.get("name", "城")), n, GameState.city_cap(city)]
 		var level := str(city.get("level", ""))
 		var level_name := {"jing": "京", "fu": "府", "zhou": "州", "xian": "县"}.get(level, "")
 		var bits := str(city.get("name", ""))

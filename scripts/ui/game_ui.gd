@@ -42,7 +42,13 @@ var weather_label: Label
 var research_card: PanelContainer
 var research_title: Label
 var research_body: Label
+var research_design: Label
+var research_trial: Label
 var research_bar: ProgressBar
+var research_bar2: ProgressBar
+var move_chip: Button
+var end_confirm: Control
+var end_mute: CheckBox
 var unit_card: PanelContainer
 var unit_label: Label
 var unit_close: Button
@@ -203,18 +209,23 @@ func _icon_button(parent: Node, key: String, icon_name: String, tip: String, scr
 func _build_research() -> void:
 	research_card = Kit.panel("InkPanel")
 	research_card.position = Vector2(16, 68)
-	research_card.size = Vector2(300, 112)
-	research_card.custom_minimum_size = Vector2(300, 112)
+	research_card.size = Vector2(300, 172)
+	research_card.custom_minimum_size = Vector2(300, 172)
+	research_card.mouse_filter = Control.MOUSE_FILTER_STOP
+	research_card.gui_input.connect(_on_research_click)
 	add_child(research_card)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 4)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_theme_constant_override("separation", 2)
 	research_card.add_child(box)
 	var head := HBoxContainer.new()
+	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	head.add_theme_constant_override("separation", 8)
 	box.add_child(head)
 	research_title = Kit.label("格物", "HudLabel")
 	head.add_child(research_title)
 	var head_gap := Control.new()
+	head_gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	head_gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(head_gap)
 	night_read = CheckBox.new()
@@ -224,19 +235,32 @@ func _build_research() -> void:
 	night_read.add_theme_font_size_override("font_size", 13)
 	night_read.toggled.connect(_on_night)
 	head.add_child(night_read)
-	research_body = Kit.label("", "HudMutedLabel")
-	research_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(research_body)
+	research_design = Kit.label("设计 空槽", "HudMutedLabel")
+	research_design.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(research_design)
 	research_bar = ProgressBar.new()
 	research_bar.theme_type_variation = "NodeBarDesign"
 	research_bar.show_percentage = false
 	research_bar.custom_minimum_size = Vector2(0, 8)
+	research_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_child(research_bar)
+	research_trial = Kit.label("试制 空槽", "HudMutedLabel")
+	research_trial.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(research_trial)
+	research_bar2 = ProgressBar.new()
+	research_bar2.theme_type_variation = "NodeBarTrial"
+	research_bar2.show_percentage = false
+	research_bar2.custom_minimum_size = Vector2(0, 8)
+	research_bar2.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(research_bar2)
+	research_body = Kit.label("", "HudMutedLabel")
+	research_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(research_body)
 
 
 func _build_unit() -> void:
 	unit_card = Kit.panel("InkPanel")
-	unit_card.position = Vector2(16, 188)
+	unit_card.position = Vector2(16, 252)
 	unit_card.size = Vector2(300, 132)
 	unit_card.custom_minimum_size = Vector2(300, 132)
 	unit_card.visible = false
@@ -279,12 +303,23 @@ func _build_hover() -> void:
 	plate.content_margin_bottom = 6
 	key_plate.add_theme_stylebox_override("panel", plate)
 	add_child(key_plate)
-	key_hint = Kit.label("空格 下一支可动宋军 · Home 回延州 · Shift 看明细", "HudLabel")
+	var key_row := HBoxContainer.new()
+	key_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	key_row.add_theme_constant_override("separation", 8)
+	key_plate.add_child(key_row)
+	move_chip = Button.new()
+	move_chip.text = "可动 0/0"
+	move_chip.focus_mode = Control.FOCUS_NONE
+	move_chip.add_theme_font_size_override("font_size", 14)
+	move_chip.pressed.connect(_cycle_from_hud)
+	key_row.add_child(move_chip)
+	btn_map["move_chip"] = move_chip
+	key_hint = Kit.label("每支部队各走各的步数，月初回满 · 空格 下一支 · Home 回延州", "HudLabel")
 	key_hint.add_theme_color_override("font_color", Color("f7f1e4"))
 	key_hint.add_theme_color_override("font_outline_color", Color("1a2428"))
 	key_hint.add_theme_constant_override("outline_size", 4)
 	key_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	key_plate.add_child(key_hint)
+	key_row.add_child(key_hint)
 
 
 func _build_tiles() -> void:
@@ -651,29 +686,71 @@ func _on_night(on: bool) -> void:
 func _refresh_research() -> void:
 	var blurb := GameState.research_blurb()
 	research_title.text = str(blurb.get("title", "格物"))
-	var body := str(blurb.get("body", ""))
-	body += "  预研 %d/%d" % [GameState.presearch, GameState.presearch_cap()]
-	research_body.text = body
-	var ink := Color("ff6a4a") if bool(blurb.get("alert", false)) else Color("f3e9d2")
+	var ink := Color("ff6a4a") if bool(blurb.get("alert", false)) or bool(blurb.get("design_alert", false)) else Color("f3e9d2")
 	research_title.add_theme_color_override("font_color", ink)
+	if research_design:
+		research_design.text = str(blurb.get("design", ""))
+		research_design.add_theme_color_override("font_color", Color("ff6a4a") if bool(blurb.get("design_alert", false)) else Color("f3e9d2"))
+	if research_trial:
+		research_trial.text = str(blurb.get("trial", ""))
+		research_trial.add_theme_color_override("font_color", Color("e0b84a"))
+	research_body.text = "预研 %d/%d" % [GameState.presearch, GameState.presearch_cap()]
+	if GameState.tech_designing == "" and GameState.tech_trials.is_empty():
+		research_body.text = "%s  预研 %d/%d" % [str(blurb.get("body", "")), GameState.presearch, GameState.presearch_cap()]
 	research_body.add_theme_color_override("font_color", ink)
-	if GameState.tech_designing != "":
-		var state := GameState.tech_state(GameState.tech_designing)
+	if bool(blurb.get("design_bar", false)):
 		research_bar.visible = true
-		research_bar.theme_type_variation = "NodeBarNoPower" if state == "nopower" else "NodeBarDesign"
-		research_bar.max_value = float(GameState.design_need(GameState.tech_designing))
-		research_bar.value = float(GameState.tech_design_prog)
-	elif not GameState.tech_trials.is_empty():
-		var trial: Dictionary = GameState.tech_trials[0]
-		research_bar.visible = true
-		research_bar.theme_type_variation = "NodeBarTrial"
-		research_bar.max_value = float(maxi(1, int(trial.get("need", 1))))
-		research_bar.value = float(int(trial.get("prog", 0)))
+		research_bar.theme_type_variation = "NodeBarNoPower" if bool(blurb.get("design_alert", false)) else "NodeBarDesign"
+		research_bar.max_value = float(maxi(1, int(blurb.get("design_need", 1))))
+		research_bar.value = float(int(blurb.get("design_prog", 0)))
 	else:
 		research_bar.visible = true
 		research_bar.theme_type_variation = "NodeBarDesign"
 		research_bar.max_value = float(maxi(1, GameState.presearch_cap()))
 		research_bar.value = float(GameState.presearch)
+	if research_bar2:
+		research_bar2.visible = bool(blurb.get("trial_bar", false))
+		research_bar2.max_value = float(maxi(1, int(blurb.get("trial_need", 1))))
+		research_bar2.value = float(int(blurb.get("trial_prog", 0)))
+	_refresh_move_chip()
+	if Time.get_ticks_msec() < GameState.research_ping_until:
+		var wave := absf(sin(float(Time.get_ticks_msec()) / 140.0))
+		research_card.modulate.a = 0.55 + 0.45 * wave
+	else:
+		research_card.modulate.a = 1.0
+
+
+func _refresh_move_chip() -> void:
+	if move_chip == null:
+		return
+	var ready := 0
+	var total := 0
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		if str(u.get("faction", "")) != "song" or int(u.get("hp", 0)) <= 0:
+			continue
+		total += 1
+		if int(u.get("mp", 0)) > 0 and not bool(u.get("skip_turn", false)):
+			ready += 1
+	move_chip.text = "可动 %d/%d" % [ready, total]
+
+
+func _cycle_from_hud() -> void:
+	var map := get_tree().get_first_node_in_group("world_map")
+	if map and map.has_method("_cycle_unit"):
+		map.call("_cycle_unit")
+
+
+func _on_research_click(event: InputEvent) -> void:
+	if not (event is InputEventMouseButton):
+		return
+	var mb := event as InputEventMouseButton
+	if not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
+		return
+	if night_read and night_read.get_global_rect().has_point(night_read.get_global_mouse_position()):
+		return
+	open_desk("tech")
+	research_card.accept_event()
 
 
 func _panel_uid() -> int:
@@ -695,8 +772,8 @@ func _refresh_unit() -> void:
 		return
 	var spec := DataDB.unit_type(str(u.def_id))
 	var faction := str(DataDB.faction(str(u.faction)).get("name", ""))
-	var text := "%s\n%s · %s\n生命 %d    移动 %d/%d" % [
-		str(u.name), str(spec.get("name", "")), faction, int(u.hp), int(u.mp), int(u.max_mp),
+	var text := "%s\n%s · %s\n生命 %d    %s" % [
+		str(u.name), str(spec.get("name", "")), faction, int(u.hp), GameState.move_caption(u),
 	]
 	if str(u.general) != "":
 		text += "\n将领 %s" % str(u.general)
@@ -817,6 +894,9 @@ func _cancel_detail() -> void:
 
 
 func hide_modals() -> void:
+	if end_confirm != null and is_instance_valid(end_confirm) and end_confirm.visible:
+		TurnManager.dismiss_confirm()
+		return
 	if pacing and pacing.event_open:
 		return
 	if goals and goals.blocking():
@@ -833,6 +913,8 @@ func hide_modals() -> void:
 
 
 func modal_open() -> bool:
+	if end_confirm != null and is_instance_valid(end_confirm) and end_confirm.visible:
+		return true
 	if pacing and pacing.event_blocking():
 		return true
 	if goals and goals.blocking():
@@ -858,6 +940,78 @@ func end_enemy_phase() -> void:
 func show_battle_report(text: String) -> void:
 	if pacing:
 		pacing.show_report(text)
+
+
+func open_end_confirm(names: Array) -> void:
+	close_end_confirm()
+	var panel := PanelContainer.new()
+	panel.z_index = 80
+	panel.position = Vector2(360, 180)
+	panel.custom_minimum_size = Vector2(560, 280)
+	panel.size = Vector2(560, 320)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	panel.add_child(box)
+	var title := Kit.label("还有部队没动", "H2Label")
+	box.add_child(title)
+	var bits := PackedStringArray()
+	for name_v in names:
+		bits.append(str(name_v))
+	var body := Kit.label("还有 %d 支宋军这个月能动：%s。" % [names.size(), "、".join(bits)], "BodyLabel")
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.custom_minimum_size = Vector2(520, 64)
+	box.add_child(body)
+	end_mute = CheckBox.new()
+	end_mute.text = "本局不再提醒"
+	end_mute.focus_mode = Control.FOCUS_NONE
+	end_mute.add_theme_font_size_override("font_size", 14)
+	box.add_child(end_mute)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	box.add_child(row)
+	var look := Kit.button("去看第一支", "PrimaryButton")
+	look.focus_mode = Control.FOCUS_ALL
+	look.custom_minimum_size = Vector2(150, 40)
+	look.pressed.connect(func() -> void: TurnManager.confirm_look())
+	row.add_child(look)
+	var standby := Kit.button("全部待命并结束", "Button")
+	standby.custom_minimum_size = Vector2(170, 40)
+	standby.pressed.connect(func() -> void: TurnManager.confirm_standby_end())
+	row.add_child(standby)
+	var force := Kit.button("直接结束回合", "Button")
+	force.custom_minimum_size = Vector2(150, 40)
+	force.pressed.connect(func() -> void: TurnManager.confirm_force_end())
+	row.add_child(force)
+	end_confirm = panel
+	btn_map["end_look"] = look
+	btn_map["end_standby"] = standby
+	btn_map["end_now"] = force
+	look.grab_focus.call_deferred()
+	_order_layers()
+
+
+func close_end_confirm() -> void:
+	btn_map.erase("end_look")
+	btn_map.erase("end_standby")
+	btn_map.erase("end_now")
+	var node := end_confirm
+	end_confirm = null
+	end_mute = null
+	if node != null and is_instance_valid(node):
+		node.visible = false
+		node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_drop_confirm.call_deferred(node)
+
+
+func _drop_confirm(node: Node) -> void:
+	if is_instance_valid(node):
+		node.queue_free()
+
+
+func end_confirm_muted() -> bool:
+	return end_mute != null and is_instance_valid(end_mute) and end_mute.button_pressed
 
 
 func force_event(id: String) -> void:
