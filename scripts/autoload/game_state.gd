@@ -2070,7 +2070,10 @@ func practice_tech_line(key: String) -> String:
 		var id := str(tech.get("id", ""))
 		if practice_site(id) != key:
 			continue
-		parts.append("%s %d/%d" % [str(tech.get("name", id)), practice_have(id), practice_need(id)])
+		var have := practice_have(id)
+		var need := practice_need(id)
+		# 计数会超过门槛；分数封顶，避免出现 5/4。实际回合数仍写在「计入」前半。
+		parts.append("%s %d/%d" % [str(tech.get("name", id)), mini(have, need), need])
 	return "、".join(parts)
 
 

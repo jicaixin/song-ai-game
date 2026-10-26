@@ -55,6 +55,7 @@ var layout_box := {}
 var _drag := false
 var _press := Vector2.ZERO
 var _drag_from := 0
+var _next_x := 0.0
 
 
 func build() -> void:
@@ -230,6 +231,7 @@ func _build_body(header_h: float) -> void:
 		var left := PanelContainer.new()
 		left.position = Vector2(0, top)
 		left.size = Vector2(left_w, height)
+		left.clip_contents = true
 		left.add_theme_stylebox_override("panel", _flat(Color("f7f1e4"), Color("e0d3b8"), 8, 0))
 		add_child(left)
 		var scroller := ScrollContainer.new()
@@ -237,8 +239,10 @@ func _build_body(header_h: float) -> void:
 		scroller.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		scroller.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 		scroller.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		scroller.clip_contents = true
 		left.add_child(scroller)
 		var box := VBoxContainer.new()
+		box.custom_minimum_size = Vector2(264, 0)
 		box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		box.add_theme_constant_override("separation", 8)
 		scroller.add_child(box)
@@ -265,9 +269,11 @@ func _build_body(header_h: float) -> void:
 		if str(b.get("id", "")) == "zhong":
 			continue
 		var mark := Kit.label(str(b.get("name", "")), "H3Label")
-		mark.custom_minimum_size = Vector2(28, ROW_H if desk.tech_view != "overview" else 56)
+		mark.custom_minimum_size = Vector2(NAME_W - 4.0, ROW_H if desk.tech_view != "overview" else 56)
 		mark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		mark.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		mark.clip_text = true
+		mark.autowrap_mode = TextServer.AUTOWRAP_OFF
 		gutter.add_child(mark)
 	scroll = ScrollContainer.new()
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -479,25 +485,53 @@ func _library_block() -> Control:
 		cell.set_meta("lib_w", cell_w)
 		var inner := CenterContainer.new()
 		cell.add_child(inner)
+		cell.clip_contents = true
+		cell.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		cell.add_theme_stylebox_override("panel", _cell_box())
+		var inner_w := maxf(8.0, cell_w - 4.0)
 		if i < GameState.tech_blueprints.size():
 			var id := str(GameState.tech_blueprints[i])
 			var btn := _text_button(PLAN.short_name(id))
+			btn.clip_text = true
+			btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			btn.custom_minimum_size = Vector2(inner_w, 18)
+			btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 			btn.pressed.connect(_on_node.bind(id))
 			inner.add_child(btn)
 		else:
-			inner.add_child(Kit.label("空", "SmallLabel"))
+			var empty_lab := Kit.label("空", "SmallLabel")
+			empty_lab.clip_text = true
+			empty_lab.autowrap_mode = TextServer.AUTOWRAP_OFF
+			empty_lab.custom_minimum_size = Vector2(inner_w, 16)
+			empty_lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			inner.add_child(empty_lab)
 		row.add_child(cell)
 	for title_v in previews:
 		var title := str(title_v)
 		var cell2 := PanelContainer.new()
 		cell2.custom_minimum_size = Vector2(cell_w, 60)
+		cell2.clip_contents = true
+		cell2.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		cell2.add_theme_stylebox_override("panel", _cell_box())
 		cell2.set_meta("lib_kind", "preview")
 		cell2.set_meta("lib_w", cell_w)
 		cell2.tooltip_text = "%s主目标完成后 +1 格（只完成一半不给）" % title
 		var inner2 := VBoxContainer.new()
+		inner2.add_theme_constant_override("separation", 0)
 		cell2.add_child(inner2)
-		inner2.add_child(Kit.label(title, "SmallLabel"))
-		inner2.add_child(Kit.label("奖励", "SmallLabel"))
+		var chapter := Kit.label(title, "SmallLabel")
+		chapter.clip_text = true
+		chapter.autowrap_mode = TextServer.AUTOWRAP_OFF
+		chapter.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		chapter.custom_minimum_size = Vector2(maxf(8.0, cell_w - 4.0), 16)
+		chapter.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		inner2.add_child(chapter)
+		var reward := Kit.label("奖励", "SmallLabel")
+		reward.clip_text = true
+		reward.autowrap_mode = TextServer.AUTOWRAP_OFF
+		reward.custom_minimum_size = Vector2(maxf(8.0, cell_w - 4.0), 16)
+		reward.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		inner2.add_child(reward)
 		row.add_child(cell2)
 	return box
 
@@ -533,6 +567,9 @@ func _advice_card(title: String, reason: String, telegraph: bool, live: bool) ->
 	var bg := Color("14343a") if telegraph else Color("f7f1e4")
 	var fg := CREAM if telegraph else INK
 	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(248, 0)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.clip_contents = true
 	card.add_theme_stylebox_override("panel", _flat(bg, CYAN, 8, 2))
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 4)
@@ -552,10 +589,14 @@ func _advice_card(title: String, reason: String, telegraph: bool, live: bool) ->
 	var h := Kit.label(title, "H3Label")
 	h.add_theme_color_override("font_color", fg)
 	h.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	h.custom_minimum_size = Vector2(160, 0)
+	h.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	text.add_child(h)
 	var body := Kit.label(reason, "CaptionLabel")
 	body.add_theme_color_override("font_color", fg)
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.custom_minimum_size = Vector2(160, 0)
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	text.add_child(body)
 	if live:
 		var act := Kit.button("采纳", "PrimaryButton")
@@ -743,6 +784,9 @@ func _layout_focus() -> void:
 		var cap := Kit.label("%s %s  %d/%d" % [str(stage.get("name", "")), str(stage.get("subtitle", "")), prog.x, prog.y], "SmallLabel")
 		cap.position = Vector2(x, 0)
 		cap.size = Vector2(float(col_to - col_from + 1) * COL_W, STAGE_H)
+		cap.clip_text = true
+		cap.autowrap_mode = TextServer.AUTOWRAP_OFF
+		cap.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		_mark_era3_head(cap, stage)
 		graph.add_child(cap)
 		if prev_era != 0 and stage_era != prev_era:
@@ -782,14 +826,23 @@ func _layout_focus() -> void:
 
 
 func _layout_next(era: int, x: float) -> void:
+	_next_x = x
 	var head := Kit.label("时代%s · 后继" % _era_han(era + 1), "SmallLabel")
 	head.position = Vector2(x, 0)
-	head.size = Vector2(NEXT_W, 16)
+	head.clip_text = true
+	head.autowrap_mode = TextServer.AUTOWRAP_OFF
+	head.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	graph.add_child(head)
+	var head_h := maxf(16.0, head.get_combined_minimum_size().y)
+	head.size = Vector2(NEXT_W, head_h)
 	var sub := Kit.label(_lock_head(era + 1), "SmallLabel")
-	sub.position = Vector2(x, 16)
-	sub.size = Vector2(NEXT_W, 16)
+	sub.clip_text = true
+	sub.autowrap_mode = TextServer.AUTOWRAP_OFF
+	sub.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	graph.add_child(sub)
+	var sub_h := maxf(16.0, sub.get_combined_minimum_size().y)
+	sub.position = Vector2(x, head_h)
+	sub.size = Vector2(NEXT_W, sub_h)
 	var buckets := {}
 	for tech_v in DataDB.techs:
 		var tech: Dictionary = tech_v
@@ -829,6 +882,7 @@ func _place_chip(id: String, pos: Vector2) -> void:
 	var wh := Vector2(40, 64)
 	b.custom_minimum_size = wh
 	b.size = wh
+	b.clip_contents = true
 	b.position = pos
 	b.tooltip_text = "%s\n%s" % [str(tech.get("name", id)), PLAN.status_text(id)]
 	b.pressed.connect(_on_node.bind(id))
@@ -846,19 +900,36 @@ func _place_chip(id: String, pos: Vector2) -> void:
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.position = Vector2(2, 2)
 	col.size = Vector2(36, 60)
+	col.clip_contents = true
+	col.add_theme_constant_override("separation", 0)
 	b.add_child(col)
-	col.add_child(Kit.icon_rect("tech_%s" % id, 24))
+	col.add_child(Kit.icon_rect("tech_%s" % id, 22))
 	var short := PLAN.short_name(id)
 	if short.length() > 4:
 		short = short.substr(0, 4)
-	var nm := Kit.label(short, "SmallLabel")
-	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_child(nm)
+	var line_a := short.substr(0, mini(2, short.length()))
+	var line_b := ""
+	if short.length() > 2:
+		line_b = short.substr(2, 2)
+	col.add_child(_chip_name(line_a))
+	if line_b != "":
+		col.add_child(_chip_name(line_b))
 	b.modulate.a = LOCKED_A
 	nodes[id] = b
 	graph.spots[id] = Rect2(pos, wh)
 	desk.debug_btns["node_" + id] = b
+
+
+func _chip_name(text: String) -> Label:
+	var nm := Kit.label(text, "SmallLabel")
+	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	nm.autowrap_mode = TextServer.AUTOWRAP_OFF
+	nm.clip_text = true
+	nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	nm.custom_minimum_size = Vector2(36, 14)
+	nm.add_theme_font_size_override("font_size", 13)
+	nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return nm
 
 
 func _layout_overview() -> void:
@@ -907,6 +978,7 @@ func _place_node(id: String, pos: Vector2, tile: bool) -> void:
 	var wh := Vector2(40, 40) if tile else Vector2(NODE_W, NODE_H)
 	b.custom_minimum_size = wh
 	b.size = wh
+	b.clip_contents = true
 	b.position = pos
 	b.tooltip_text = "%s\n%s" % [str(tech.get("name", id)), PLAN.status_text(id)]
 	b.pressed.connect(_on_node.bind(id))
@@ -950,30 +1022,36 @@ func _place_node(id: String, pos: Vector2, tile: bool) -> void:
 			b.add_child(dot)
 	else:
 		var row := HBoxContainer.new()
-		row.position = Vector2(6, 4)
-		row.size = Vector2(NODE_W - 10, NODE_H - 8)
+		row.position = Vector2(4, 2)
+		row.size = Vector2(NODE_W - 8, NODE_H - 4)
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_theme_constant_override("separation", 4)
+		row.clip_contents = true
 		b.add_child(row)
-		row.add_child(Kit.icon_rect("tech_%s" % id, 26))
+		row.add_child(Kit.icon_rect("tech_%s" % id, 24))
 		var col := VBoxContainer.new()
 		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col.clip_contents = true
 		row.add_child(col)
 		var nm := Kit.label(str(tech.get("name", id)), "SmallLabel")
 		nm.add_theme_font_size_override("font_size", _fit_size(str(tech.get("name", id)), 96.0))
 		nm.add_theme_color_override("font_color", MUTED if state == "noprereq" or state == "locked" else INK)
-		nm.clip_text = false
-		nm.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+		nm.clip_text = true
+		nm.autowrap_mode = TextServer.AUTOWRAP_OFF
+		nm.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		nm.custom_minimum_size = Vector2(0, 16)
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		col.add_child(nm)
-		var sub := HBoxContainer.new()
-		sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		col.add_child(sub)
 		var sl := Kit.label(PLAN.status_text(id), "SmallLabel")
-		sl.clip_text = false
-		sl.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+		sl.clip_text = true
+		sl.autowrap_mode = TextServer.AUTOWRAP_OFF
+		sl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		sl.custom_minimum_size = Vector2(0, 14)
+		sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		sl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		sub.add_child(sl)
+		col.add_child(sl)
 	if state == "locked":
 		b.modulate.a = LOCKED_A
 	nodes[id] = b
@@ -1386,6 +1464,15 @@ func _header_button(text: String, on: bool) -> Button:
 	btn.add_theme_color_override("font_color", CREAM)
 	btn.add_theme_color_override("font_hover_color", CREAM)
 	return btn
+
+
+func _cell_box() -> StyleBoxFlat:
+	var box := _flat(Color("fbf5e6"), Color("d8cbb0"), 4, 1)
+	box.content_margin_left = 2
+	box.content_margin_top = 2
+	box.content_margin_right = 2
+	box.content_margin_bottom = 2
+	return box
 
 
 func _flat(bg: Color, border: Color, radius: int, width: int) -> StyleBoxFlat:
@@ -2188,34 +2275,112 @@ func _route_edges() -> void:
 
 
 func _place_stubs(stubs: Array) -> void:
-	var grouped := {}
+	var taken: Array = []
 	for stub_v in stubs:
 		var stub: Dictionary = stub_v
-		var dest := str(stub.get("to", ""))
-		if not grouped.has(dest):
-			grouped[dest] = []
-		var group: Array = grouped[dest]
-		group.append(stub)
-	for dest_v in grouped.keys():
-		var dest_id := str(dest_v)
+		var src_id := str(stub.get("from", ""))
+		var dest_id := str(stub.get("to", ""))
+		edge_routes.append({"from": src_id, "to": dest_id, "kind": str(stub.get("kind", "")), "stub": true, "pts": PackedVector2Array()})
 		if not graph.spots.has(dest_id):
 			continue
-		var rect: Rect2 = graph.spots[dest_id]
-		var rows: Array = grouped[dest_id]
-		var row_i := 0
-		for stub_v2 in rows:
-			var stub2: Dictionary = stub_v2
-			var src_id := str(stub2.get("from", ""))
-			var btn := _text_button("← %s" % PLAN.short_name(src_id))
-			btn.add_theme_font_size_override("font_size", 13)
-			btn.add_theme_color_override("font_color", INK)
-			btn.add_theme_color_override("font_hover_color", INK)
-			btn.position = rect.position + Vector2(-86.0, float(row_i) * 20.0)
-			btn.size = Vector2(84, 18)
-			btn.pressed.connect(_stub_pick.bind(src_id))
-			graph.add_child(btn)
-			edge_routes.append({"from": src_id, "to": dest_id, "kind": str(stub2.get("kind", "")), "stub": true, "pts": PackedVector2Array()})
-			row_i += 1
+		var dest: Rect2 = graph.spots[dest_id]
+		var text := "← %s" % PLAN.short_name(src_id)
+		var spot := _stub_spot(dest, taken, true)
+		if spot.size.x < 8.0:
+			spot = _stub_spot(dest, taken, false)
+		if spot.size.x < 8.0:
+			continue
+		var btn := _text_button(text)
+		btn.tooltip_text = text
+		btn.clip_text = true
+		btn.autowrap_mode = TextServer.AUTOWRAP_OFF
+		btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.add_theme_font_size_override("font_size", 13)
+		btn.add_theme_color_override("font_color", INK)
+		btn.add_theme_color_override("font_hover_color", INK)
+		btn.position = spot.position
+		btn.size = spot.size
+		btn.custom_minimum_size = Vector2(0, 0)
+		btn.pressed.connect(_stub_pick.bind(src_id))
+		graph.add_child(btn)
+		taken.append(spot)
+
+
+func _stub_spot(dest: Rect2, taken: Array, avoid_routes: bool) -> Rect2:
+	var lanes := _stub_lanes(dest)
+	for lane_v in lanes:
+		var lane: Rect2 = lane_v
+		var y := lane.position.y
+		while y + 16.0 <= lane.end.y + 0.5:
+			var spot := Rect2(lane.position.x, y, lane.size.x, 16.0)
+			if _stub_clear(spot, taken, avoid_routes):
+				return spot
+			y += 18.0
+	return Rect2()
+
+
+func _stub_lanes(dest: Rect2) -> Array:
+	var lanes: Array = []
+	var row := clampi(int(floor((dest.position.y - STAGE_H) / ROW_H)), 0, 5)
+	var top := STAGE_H + float(row) * ROW_H
+	var bottom := top + ROW_H
+	if dest.size.x < 100.0 and _next_x > COL_W:
+		var cell_x := _next_x - COL_W
+		lanes.append(Rect2(cell_x + 6.0, top + 2.0, NODE_W - 12.0, ROW_H - 4.0))
+		var gutter_x := _next_x - 54.0
+		if gutter_x >= 2.0:
+			lanes.append(Rect2(gutter_x, top + 2.0, 48.0, ROW_H - 4.0))
+		return lanes
+	var above_y := dest.position.y - 18.0
+	if above_y >= top:
+		lanes.append(Rect2(dest.position.x, above_y, minf(dest.size.x, 148.0), 16.0))
+	var below_y := dest.end.y + 2.0
+	if below_y + 16.0 <= bottom:
+		lanes.append(Rect2(dest.position.x, below_y, minf(dest.size.x, 148.0), 16.0))
+	var gutter_x := dest.position.x - 54.0
+	if gutter_x >= 2.0:
+		lanes.append(Rect2(gutter_x, top + 2.0, 48.0, ROW_H - 4.0))
+	return lanes
+
+
+func _stub_clear(spot: Rect2, taken: Array, avoid_routes: bool) -> bool:
+	for id_v in graph.spots.keys():
+		var rect: Rect2 = graph.spots[id_v]
+		if rect.intersects(spot):
+			return false
+	for prev_v in taken:
+		var prev: Rect2 = prev_v
+		if prev.intersects(spot):
+			return false
+	if avoid_routes and _stub_hits_route(spot):
+		return false
+	return true
+
+
+func _stub_hits_route(spot: Rect2) -> bool:
+	var pad := spot.grow(2.0)
+	for route_v in edge_routes:
+		var route: Dictionary = route_v
+		var pts: PackedVector2Array = route.get("pts", PackedVector2Array())
+		if pts.size() < 2:
+			continue
+		for i in pts.size() - 1:
+			if _stub_seg_hits(pts[i], pts[i + 1], pad):
+				return true
+	return false
+
+
+func _stub_seg_hits(a: Vector2, b: Vector2, rect: Rect2) -> bool:
+	var min_x := minf(a.x, b.x)
+	var max_x := maxf(a.x, b.x)
+	var min_y := minf(a.y, b.y)
+	var max_y := maxf(a.y, b.y)
+	if max_x < rect.position.x or min_x > rect.end.x:
+		return false
+	if max_y < rect.position.y or min_y > rect.end.y:
+		return false
+	return true
 
 
 func _stub_pick(id: String) -> void:
@@ -2282,7 +2447,20 @@ func _channel_y(mid_col: int, dest: Rect2) -> float:
 func _cream(text: String, kind: String) -> Label:
 	var lab := Kit.label(text, kind)
 	lab.add_theme_color_override("font_color", CREAM)
+	lab.autowrap_mode = TextServer.AUTOWRAP_OFF
+	lab.clip_text = true
+	lab.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	return lab
+
+
+func _wrap_cream(text: String, kind: String, width: float = -1.0) -> Label:
+	var lab := _cream(text, kind)
+	var w := CARD_W - 36.0 if width < 0.0 else width
 	lab.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lab.clip_text = false
+	lab.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+	lab.custom_minimum_size = Vector2(w, 0)
+	lab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	return lab
 
 
@@ -2294,15 +2472,20 @@ func _build_card(id: String) -> void:
 	panel.name = "NodeCard"
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	panel.clip_contents = true
+	panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	panel.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	panel.add_theme_stylebox_override("panel", _flat(Color("1c2826"), GOLD, 6, 1))
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 10)
 	margin.add_theme_constant_override("margin_right", 10)
 	margin.add_theme_constant_override("margin_top", 8)
 	margin.add_theme_constant_override("margin_bottom", 8)
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	panel.add_child(margin)
 	var box := VBoxContainer.new()
-	box.custom_minimum_size = Vector2(CARD_W - 28, 0)
+	box.custom_minimum_size = Vector2(CARD_W - 36.0, 0)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_theme_constant_override("separation", 4)
 	margin.add_child(box)
 	if desk.tech_fold == "history":
@@ -2311,7 +2494,11 @@ func _build_card(id: String) -> void:
 		_card_body(box, id, tech)
 	add_child(panel)
 	var want := box.get_combined_minimum_size().y + 28.0
-	var h := minf(560.0, maxf(160.0, want))
+	var bottom := 636.0
+	var top_min := HEADER_H + 4.0
+	var max_h := bottom - top_min
+	var h := clampf(want, 160.0, minf(560.0, max_h))
+	panel.custom_minimum_size = Vector2(CARD_W, h)
 	panel.size = Vector2(CARD_W, h)
 	var rect: Rect2 = graph.spots[id]
 	var header_h := float(layout_box.get("header_h", HEADER_H))
@@ -2321,19 +2508,19 @@ func _build_card(id: String) -> void:
 	var x := node_x + rect.size.x + 8.0
 	if x + CARD_W > 1272.0:
 		x = node_x - 8.0 - CARD_W
-	var y := clampf(node_y, header_h + 4.0, 644.0 - h)
+	var y := clampf(node_y, top_min, bottom - h)
 	panel.position = Vector2(maxf(8.0, x), y)
 	panel.set_meta("card_id", id)
 	desk.debug_btns["tech_card"] = panel
 
 
 func _card_history(box: VBoxContainer, tech: Dictionary) -> void:
-	var title := _cream(str(tech.get("name", "")), "H3Label")
+	var title := _wrap_cream(str(tech.get("name", "")), "H3Label")
 	box.add_child(title)
-	box.add_child(_cream(str(tech.get("history", "")), "SmallLabel"))
-	box.add_child(_cream("豆沙包能做的 / 大宋得自己做的", "SmallLabel"))
-	box.add_child(_cream("能跳过：%s" % str(tech.get("skip", "")), "SmallLabel"))
-	box.add_child(_cream("跳不过：%s" % str(tech.get("noskip", "")), "SmallLabel"))
+	box.add_child(_wrap_cream(str(tech.get("history", "")), "SmallLabel"))
+	box.add_child(_wrap_cream("豆沙包能做的 / 大宋得自己做的", "SmallLabel"))
+	box.add_child(_wrap_cream("能跳过：%s" % str(tech.get("skip", "")), "SmallLabel"))
+	box.add_child(_wrap_cream("跳不过：%s" % str(tech.get("noskip", "")), "SmallLabel"))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
 	box.add_child(row)
@@ -2353,11 +2540,11 @@ func _card_body(box: VBoxContainer, id: String, tech: Dictionary) -> void:
 	var titles := VBoxContainer.new()
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(titles)
-	titles.add_child(_cream(str(tech.get("name", id)), "H3Label"))
-	titles.add_child(_cream("%s · %s" % [_branch_stage(tech), id], "SmallLabel"))
+	titles.add_child(_wrap_cream(str(tech.get("name", id)), "H3Label", CARD_W - 96.0))
+	titles.add_child(_wrap_cream("%s · %s" % [_branch_stage(tech), id], "SmallLabel", CARD_W - 96.0))
 	var corner := PLAN.corner(id)
 	var status := PLAN.card_status(id)
-	box.add_child(_cream(("%s  %s" % [corner, status]).strip_edges(), "SmallLabel"))
+	box.add_child(_wrap_cream(("%s  %s" % [corner, status]).strip_edges(), "SmallLabel"))
 	var pres: Array = tech.get("prereq", [])
 	if not pres.is_empty():
 		for pre_v in pres:
@@ -2366,41 +2553,53 @@ func _card_body(box: VBoxContainer, id: String, tech: Dictionary) -> void:
 			var done := GameState.tech_done.has(pre)
 			var line := HBoxContainer.new()
 			line.add_theme_constant_override("separation", 4)
+			line.custom_minimum_size = Vector2(CARD_W - 36.0, 18)
 			box.add_child(line)
 			var mark := _cream("√" if done else "×", "SmallLabel")
 			mark.add_theme_color_override("font_color", Color("7dcea0") if done else CINNABAR)
+			mark.custom_minimum_size = Vector2(16, 18)
 			line.add_child(mark)
 			if done:
-				line.add_child(_cream(str(pre_tech.get("name", pre)), "SmallLabel"))
+				var done_name := _cream(str(pre_tech.get("name", pre)), "SmallLabel")
+				done_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				line.add_child(done_name)
 			else:
 				var link := _text_button(str(pre_tech.get("name", pre)))
 				link.add_theme_color_override("font_color", CREAM)
+				link.clip_text = true
+				link.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+				link.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 				link.pressed.connect(_on_node.bind(pre))
 				line.add_child(link)
-			line.add_child(_cream(PLAN.status_text(pre), "SmallLabel"))
+			var pre_status := _cream(PLAN.status_text(pre), "SmallLabel")
+			pre_status.custom_minimum_size = Vector2(124, 18)
+			pre_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			line.add_child(pre_status)
 	var cost: Dictionary = tech.get("cost", {})
-	var cost_row := HBoxContainer.new()
-	cost_row.add_theme_constant_override("separation", 4)
-	box.add_child(cost_row)
-	cost_row.add_child(_cream("设计 %d 电" % GameState.design_need(id), "SmallLabel"))
-	var craft := int(cost.get("craft", 0))
-	cost_row.add_child(_cream("试制 %d 匠" % craft, "SmallLabel"))
+	var cost_bits := PackedStringArray()
+	cost_bits.append("设计 %d 电" % GameState.design_need(id))
+	cost_bits.append("试制 %d 匠" % int(cost.get("craft", 0)))
 	var mats: Dictionary = tech.get("materials", {})
+	var short_mat := false
 	for key_v in mats.keys():
 		var key := str(key_v)
 		var need := int(mats[key_v])
 		var have := int(GameState.resources.get(key, 0))
-		var bit := _cream("%s %d" % [str(PLAN.MAT_NAME.get(key, key)), need], "SmallLabel")
 		if have < need:
-			bit.add_theme_color_override("font_color", CINNABAR)
-		cost_row.add_child(bit)
-	cost_row.add_child(_cream("%d 回合" % PLAN._trial_turns(id), "SmallLabel"))
+			short_mat = true
+		cost_bits.append("%s %d" % [str(PLAN.MAT_NAME.get(key, key)), need])
+	cost_bits.append("%d 回合" % PLAN._trial_turns(id))
+	var cost_line := _wrap_cream(" · ".join(cost_bits), "SmallLabel")
+	if short_mat:
+		cost_line.add_theme_color_override("font_color", CINNABAR)
+	box.add_child(cost_line)
 	if str(tech.get("practice", "")) != "":
 		var practice: Dictionary = PLAN.practice_row(id)
 		var site_name := str(GameState.PRACTICE_NAME.get(GameState.practice_site(id), "实践"))
-		box.add_child(_cream("实践 %s %d/%d" % [site_name, int(practice.get("have", 0)), int(practice.get("need", 0))], "SmallLabel"))
-	var effect := _cream(str(tech.get("effect", "")), "SmallLabel")
-	box.add_child(effect)
+		var have_n := int(practice.get("have", 0))
+		var need_n := int(practice.get("need", 0))
+		box.add_child(_wrap_cream("实践 %s %d/%d" % [site_name, mini(have_n, need_n), need_n], "SmallLabel"))
+	box.add_child(_wrap_cream(str(tech.get("effect", "")), "SmallLabel"))
 	var act: Dictionary = PLAN.card_action(id)
 	var verb := str(act.get("text", ""))
 	var hint := str(act.get("hint", ""))

@@ -920,6 +920,101 @@ func _named_unit(unit_name: String) -> Dictionary:
 	return {}
 
 
+func _label_boxes(root: Node) -> String:
+	if root == null:
+		return "无根"
+	var hidden: Array = []
+	var current: Node = root
+	var layer: CanvasLayer = null
+	while current != null:
+		if layer == null and current is CanvasLayer:
+			layer = current
+		if current is CanvasItem and not (current as CanvasItem).visible:
+			hidden.append(current)
+			(current as CanvasItem).visible = true
+		current = current.get_parent()
+	if layer != null:
+		layer.visible = false
+		layer.visible = true
+	_layout(root)
+	var err := _label_boxes_now(root)
+	for item_v in hidden:
+		if item_v is CanvasItem:
+			(item_v as CanvasItem).visible = false
+		elif item_v is Window:
+			(item_v as Window).visible = false
+	return err
+
+
+func _label_boxes_now(root: Node) -> String:
+	var labels: Array = []
+	_collect_labels(root, labels)
+	var rects: Array = []
+	var names: Array = []
+	var seen := 0
+	for lab_v in labels:
+		var lab := lab_v as Label
+		if lab == null or not _shown(lab):
+			continue
+		var text := lab.text.strip_edges()
+		if text == "":
+			continue
+		seen += 1
+		var own := lab.get_global_rect()
+		var font := lab.get_theme_font_size("font_size")
+		if font < 1:
+			font = 13
+		var parent := lab.get_parent() as Control
+		if own.size.x + 0.5 < float(font):
+			return "不足一字『%s』宽%.0f" % [text.substr(0, 10), own.size.x]
+		if parent != null and parent.size.x > 4.0 and parent.size.y > 4.0:
+			if not parent.get_global_rect().grow(2.0).encloses(own):
+				return "越界『%s』" % text.substr(0, 10)
+		var vis := _clipped_rect(lab)
+		if vis.size.x < 2.0 or vis.size.y < 2.0:
+			continue
+		rects.append(vis)
+		names.append(text.substr(0, 10))
+	if seen == 0:
+		return "没有可见标签"
+	for i in rects.size():
+		var a: Rect2 = rects[i]
+		for j in range(i + 1, rects.size()):
+			var b: Rect2 = rects[j]
+			if a.grow(-1.0).intersects(b.grow(-1.0)):
+				return "重叠『%s』『%s』" % [str(names[i]), str(names[j])]
+	return ""
+
+
+func _shown(node: CanvasItem) -> bool:
+	var current: Node = node
+	while current is CanvasItem:
+		if not (current as CanvasItem).visible:
+			return false
+		current = current.get_parent()
+	return node.is_inside_tree()
+
+
+func _collect_labels(node: Node, out: Array) -> void:
+	if node is Label:
+		out.append(node)
+	for child in node.get_children():
+		_collect_labels(child, out)
+
+
+func _clipped_rect(c: Control) -> Rect2:
+	var r := c.get_global_rect()
+	var p := c.get_parent()
+	while p is Control:
+		var clip := p as Control
+		if clip.is_clipping_contents():
+			r = r.intersection(clip.get_global_rect())
+			if r.size.x <= 0.0 or r.size.y <= 0.0:
+				return Rect2()
+		p = p.get_parent()
+	return r
+
+
 func _walk_tech_font(node: Node, small: Array) -> void:
 	if node is Label or node is Button or node is CheckBox or node is LineEdit or node is OptionButton:
 		var text := str(node.text).strip_edges()
@@ -1887,6 +1982,12 @@ func check_industry() -> void:
 	GameState.finish_turn()
 	GameState.resources["craft"] = 200
 	check("m18_pay", int(GameState.resources.get("wood", 0)) >= 15 and GameState.start_trial("K02"), str(GameState.resources.get("wood", 0)))
+	GameState.new_game()
+	GameState.site_turns["coal"] = 5
+	var frac := GameState.practice_tech_line("coal")
+	check("m_frac", frac.find("焦炭冶铁 4/4") >= 0 and frac.find("5/4") < 0, frac)
+	var counted := GameState.practice_count_text("daming", "coalpit")
+	check("m_frac_raw", counted.find("煤场 5") >= 0 and counted.find("4/4") >= 0 and counted.find("5/4") < 0, counted)
 	var tree := Engine.get_main_loop() as SceneTree
 	var ui := tree.get_first_node_in_group("game_ui") as GameUI
 	if ui != null and ui.desk != null:
@@ -1959,6 +2060,27 @@ func check_desk_a() -> void:
 	_walk_tech_font(desk, small)
 	check("g2_font", small.is_empty(), ",".join(small))
 	check("g2_nine", _font_of(desk, "水排鼓风与水力锻锤") == 13, str(_font_of(desk, "水排鼓风与水力锻锤")))
+	var overlap := _label_boxes(desk)
+	desk.picked = "A06"
+	desk.tech_fold = ""
+	desk._fill()
+	board = _tech_board(desk)
+	var card := board.find_child("NodeCard", true, false) as Control
+	if card == null:
+		overlap = "无节点卡" if overlap == "" else overlap
+	else:
+		var card_end := card.position.y + card.size.y
+		if card.size.y < 180.0 or card.size.y > 480.0 or card_end > 636.5:
+			var geom := "卡高 %.0f 底 %.0f" % [card.size.y, card_end]
+			overlap = geom if overlap == "" else overlap + " | " + geom
+		var card_err := _label_boxes(card)
+		if card_err != "":
+			overlap = card_err if overlap == "" else overlap + " | " + card_err
+	desk.picked = ""
+	desk.tech_fold = ""
+	desk._fill()
+	board = _tech_board(desk)
+	check("g2_overlap", overlap == "", overlap)
 	var route_err := _routes_ok(board)
 	check("g3_routes", route_err == "", route_err)
 	check("g4_a05", str(_face_prop(desk, "A05", "corner")) == "")
