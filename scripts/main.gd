@@ -527,6 +527,42 @@ func _poll_tech_cmd() -> void:
 		GameState.announce_turn()
 		EventBus.state_changed.emit()
 		return
+	if cmd == "demo_garrison":
+		_arm_shot()
+		GameState.weather_id = "clear"
+		var shi_demo := GameState.unit_by_name("石元孙部")
+		var yan_demo: Dictionary = DataDB.city_by_id("yanzhou")
+		if not shi_demo.is_empty() and not yan_demo.is_empty():
+			GameState.spend_mp(int(shi_demo.uid), int(shi_demo.mp))
+			GameState.set_pos(int(shi_demo.uid), Vector2i(int(yan_demo.q), int(yan_demo.r)))
+		GameState.selected_uid = -1
+		GameState.inspected_uid = -1
+		ui.close_tile_menu()
+		var demo_map := get_tree().get_first_node_in_group("world_map")
+		if demo_map:
+			demo_map.call("full_refresh")
+		EventBus.state_changed.emit()
+		return
+	if cmd == "frame_wide" or cmd == "frame_near":
+		GameState.selected_uid = -1
+		GameState.inspected_uid = -1
+		ui.close_tile_menu()
+		if ui.desk:
+			ui.desk.shut()
+		var framed := get_tree().get_first_node_in_group("world_map")
+		if framed:
+			framed.set("overview", false)
+			framed.set("_debug_dist", 0.0)
+			if cmd == "frame_wide":
+				framed.set("zoom_index", 1)
+				if framed.has_method("_sync_grade"):
+					framed.call("_sync_grade")
+				framed.call("focus_city", "yanzhou")
+			else:
+				_frame_yanzhou(framed)
+			framed.call("full_refresh")
+		EventBus.state_changed.emit()
+		return
 	if cmd == "shot_garrison":
 		_arm_shot()
 		GameState.weather_id = "clear"

@@ -5,6 +5,7 @@ const EnemyPace = preload("res://scripts/core/enemy_pace.gd")
 
 const DIST := [780.0, 280.0, 115.0]
 const PITCH := [50.0, 52.0, 40.0]
+const CAM_YAW := 12.0
 const VIEW_ANCHOR := Vector2(488, 326)
 
 var camera: Camera3D
@@ -961,25 +962,21 @@ func _rebuild_units() -> void:
 		flag.position = Vector3(0.05, 3.15, 0)
 		root.add_child(flag)
 		var ax := Vector2i(int(u.q), int(u.r))
-		var stack := GameState.units_at(ax)
-		var shift := 0.0
 		var city := DataDB.city_at_hex(ax.x, ax.y)
-		if not city.is_empty() and stack.size() > 1:
-			var idx := 0
-			for i in stack.size():
-				var mate: Dictionary = stack[i]
-				if int(mate.get("uid", -1)) == int(u.uid):
-					idx = i
-			shift = (float(idx) - float(stack.size() - 1) * 0.5) * 1.15
-		root.position = _unit_pos(ax) + Vector3(shift, 0.0, shift * 0.15)
-		root.scale = Vector3(2.5, 2.5, 2.5)
-		if str(u.faction) == "song":
-			_add_pips(root, u)
-		if not city.is_empty() and stack.size() > 0 and int(stack[0].get("uid", -1)) == int(u.uid):
-			_add_garrison_badge(root, stack.size(), GameState.city_cap(city))
+		if city.is_empty():
+			root.position = _unit_pos(ax)
+			root.scale = Vector3(2.5, 2.5, 2.5)
+			if str(u.faction) == "song":
+				_add_pips(root, u)
+		else:
+			# Stand outside the near wall. Pips live on the city board, not on the model.
+			root.position = _stand_pos(ax, int(u.uid))
+			var sc := _garrison_model_scale(city)
+			root.scale = Vector3(sc, sc, sc)
 		add_child(root)
 		root.visible = not overview
 		sprites[int(u.uid)] = root
+	_mount_garrison_boards()
 
 
 func _sync_order_flags() -> void:
@@ -1028,9 +1025,7 @@ func _add_pips(root: Node3D, unit: Dictionary) -> void:
 	lab.outline_size = 6
 	lab.outline_modulate = Color("1a2428")
 	lab.no_depth_test = true
-	lab.modulate = Color("8a8175") if int(unit.get("mp", 0)) <= 0 else Color("e8cb7c")
-	if str(GameState.weather_id) == "snow" and int(unit.get("mp", 0)) > Pathfinder.budget(unit):
-		lab.modulate = Color("d5dde6")
+	lab.modulate = _pip_color(unit)
 	root.add_child(lab)
 
 
@@ -1053,19 +1048,173 @@ func _pip_text(unit: Dictionary) -> String:
 	return text
 
 
-func _add_garrison_badge(root: Node3D, n: int, cap: int) -> void:
+func _pip_color(unit: Dictionary) -> Color:
+	if int(unit.get("mp", 0)) <= 0:
+		return Color("8a8175")
+	if str(GameState.weather_id) == "snow" and int(unit.get("mp", 0)) > Pathfinder.budget(unit):
+		return Color("d5dde6")
+	return Color("e8cb7c")
+
+
+func _banner_height(city: Dictionary) -> float:
+	var kind := _cluster_kind(city)
+	if kind == "capital":
+		return 20.4
+	if kind == "walled":
+		return 13.2
+	return 11.2
+
+
+func _garrison_model_scale(city: Dictionary) -> float:
+	var kind := _cluster_kind(city)
+	if kind == "capital":
+		return 3.6
+	if kind == "walled":
+		return 3.2
+	return 2.5
+
+
+func _garrison_shift(idx: int, count: int) -> Vector3:
+	var yaw := deg_to_rad(CAM_YAW)
+	# Same yaw as the camera: +toward is the near side of the city.
+	var toward := Vector3(sin(yaw), 0.0, cos(yaw))
+	var side := Vector3(cos(yaw), 0.0, -sin(yaw))
+	var along := (float(idx) - float(maxi(count, 1) - 1) * 0.5) * 5.4
+	return toward * 20.5 + side * along + Vector3(0.0, 1.2, 0.0)
+
+
+func _stand_pos(hex: Vector2i, uid: int) -> Vector3:
+	var base := _unit_pos(hex)
+	var city := DataDB.city_at_hex(hex.x, hex.y)
+	if city.is_empty():
+		return base
+	var stack := GameState.units_at(hex)
+	var idx := 0
+	for i in stack.size():
+		var mate: Dictionary = stack[i]
+		if int(mate.get("uid", -1)) == uid:
+			idx = i
+			break
+	return base + _garrison_shift(idx, stack.size())
+
+
+func _mount_garrison_boards() -> void:
+	for node in banners:
+		if not is_instance_valid(node):
+			continue
+		var banner := node.get_node_or_null("Banner")
+		if banner == null:
+			continue
+		var old := banner.get_node_or_null("Garrison")
+		if old:
+			old.name = "GarrisonOld"
+			old.queue_free()
+	var grouped := {}
+	for u_v in GameState.units:
+		var u: Dictionary = u_v
+		if int(u.get("hp", 0)) <= 0:
+			continue
+		var city := DataDB.city_at_hex(int(u.q), int(u.r))
+		if city.is_empty():
+			continue
+		var cid := str(city.get("id", ""))
+		if not grouped.has(cid):
+			grouped[cid] = []
+		var bucket: Array = grouped[cid]
+		bucket.append(u)
+		grouped[cid] = bucket
+	for cid_v in grouped.keys():
+		var cid := str(cid_v)
+		var root := get_node_or_null(NodePath(cid)) as Node3D
+		if root == null:
+			continue
+		var banner2 := root.get_node_or_null("Banner") as Node3D
+		if banner2 == null:
+			continue
+		_build_garrison_board(banner2, DataDB.city_by_id(cid), grouped[cid])
+
+
+func _build_garrison_board(banner: Node3D, city: Dictionary, units: Array) -> void:
+	var n := units.size()
+	if n <= 0 or city.is_empty():
+		return
+	var cap := GameState.city_cap(city)
+	var full := n >= cap
+	var by := _banner_height(city)
+	var board := Node3D.new()
+	board.name = "Garrison"
+	banner.add_child(board)
+	var badge_px := 0.09
+	var badge_text := "驻 %d/%d" % [n, cap]
+	var badge_w := _label_width(badge_text, badge_px) + 48.0 * badge_px * 0.7
+	var badge_h := 48.0 * badge_px * 1.35
+	# Nameplate quad ends at x = 4.5. Keep a gap so the badge does not cover 延州.
+	var badge_x := 4.5 + 0.9 + badge_w * 0.5
+	var plate_color := Color("8e2a1e") if full else Color("1a3330")
+	var text_color := Color("f7f1e4") if full else Color("e8cb7c")
+	_garrison_plate(board, Vector3(badge_x, by, 0.12), Vector2(badge_w, badge_h), plate_color)
+	board.add_child(_garrison_text(badge_text, Vector3(badge_x, by, 0.2), badge_px, text_color))
+	var y := by - badge_h * 0.5 - 0.55 - 1.35
+	for u_v in units:
+		var unit: Dictionary = u_v
+		if str(unit.get("faction", "")) != "song":
+			continue
+		var text := _pip_text(unit)
+		# Field pips are font 48, pixel_size 0.02, on a model scaled 2.5.
+		var pip_px := 0.05
+		var pip_w := _label_width(text, pip_px) + 48.0 * pip_px * 0.8
+		var pip_h := 48.0 * pip_px * 1.25
+		_garrison_plate(board, Vector3(badge_x, y, 0.12), Vector2(pip_w, pip_h), Color("14211f"))
+		board.add_child(_garrison_text(text, Vector3(badge_x, y, 0.2), pip_px, _pip_color(unit)))
+		y -= pip_h + 0.45
+
+
+func _label_width(text: String, pixel_size: float) -> float:
+	var em := 48.0 * pixel_size
+	var w := 0.0
+	for i in text.length():
+		var ch := text.substr(i, 1)
+		if ch == " " or ch == "/":
+			w += em * 0.4
+		elif ch >= "0" and ch <= "9":
+			w += em * 0.62
+		else:
+			w += em
+	return w
+
+
+func _garrison_plate(parent: Node3D, pos: Vector3, size: Vector2, color: Color) -> void:
+	var quad := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = size
+	quad.mesh = qm
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = color
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mat.no_depth_test = true
+	mat.render_priority = 3
+	quad.material_override = mat
+	quad.position = pos
+	quad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(quad)
+
+
+func _garrison_text(text: String, pos: Vector3, pixel_size: float, color: Color) -> Label3D:
 	var lab := Label3D.new()
-	lab.text = "%d/%d" % [n, cap]
+	lab.text = text
 	lab.font = Settings.banner_font
-	lab.font_size = 42
-	lab.pixel_size = 0.018
-	lab.position = Vector3(0.46, 4.85, 0.0)
+	lab.font_size = 48
+	lab.pixel_size = pixel_size
+	lab.position = pos
 	lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	lab.modulate = Color("f4ead2")
-	lab.outline_size = 8
-	lab.outline_modulate = Color("6b1d16")
+	lab.modulate = color
+	lab.outline_size = 10
+	lab.outline_modulate = Color("1a2428")
 	lab.no_depth_test = true
-	root.add_child(lab)
+	lab.render_priority = 4
+	lab.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	return lab
 
 
 func _unit_pos(ax: Vector2i) -> Vector3:
@@ -1087,15 +1236,15 @@ func animate_move(uid: int, path: Array) -> void:
 		return
 	var last: Vector2i = path[path.size() - 1]
 	if EnemyPace.skip_moves():
-		node.position = _unit_pos(last)
+		node.position = _stand_pos(last, uid)
 		return
 	animating = true
 	for h_v in path:
 		if EnemyPace.skip_moves():
-			node.position = _unit_pos(last)
+			node.position = _stand_pos(last, uid)
 			break
 		var h: Vector2i = h_v
-		var dest := _unit_pos(h)
+		var dest := _stand_pos(h, uid)
 		var hop := EnemyPace.scale(0.09)
 		var land := EnemyPace.scale(0.1)
 		if hop <= 0.0:
@@ -1262,7 +1411,7 @@ func _place_camera() -> void:
 	elif _debug_dist > 1.0:
 		pitch_deg = 48.0
 	var pitch := deg_to_rad(pitch_deg)
-	var yaw := deg_to_rad(12.0)
+	var yaw := deg_to_rad(CAM_YAW)
 	var offset := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch)) * dist
 	var focus := Vector3(look_xz.x, 0.6, look_xz.y)
 	camera.position = focus + offset
@@ -2677,13 +2826,17 @@ func _unit_hit(screen: Vector2) -> Vector2i:
 		if int(u.hp) <= 0:
 			continue
 		var ax := Vector2i(int(u.q), int(u.r))
-		var sp := world_to_screen(HexGrid.axial_to_pixel(ax.x, ax.y))
-		var rect := Rect2(sp.x - radius * 0.4, sp.y - radius * 0.6, radius * 0.8, radius * 1.2)
-		if rect.has_point(screen):
-			var dist := sp.distance_to(screen)
-			if dist < best_d:
-				best_d = dist
-				best = ax
+		var points: Array[Vector2] = [world_to_screen(HexGrid.axial_to_pixel(ax.x, ax.y))]
+		var node: Node3D = sprites.get(int(u.uid), null)
+		if node != null and camera != null and not camera.is_position_behind(node.global_position):
+			points.append(camera.unproject_position(node.global_position))
+		for sp in points:
+			var rect := Rect2(sp.x - radius * 0.4, sp.y - radius * 0.6, radius * 0.8, radius * 1.2)
+			if rect.has_point(screen):
+				var dist := sp.distance_to(screen)
+				if dist < best_d:
+					best_d = dist
+					best = ax
 	return best
 
 
