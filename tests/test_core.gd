@@ -958,7 +958,7 @@ func check_tech() -> void:
 	var chain: Array = TechPlan.spine("E05")
 	check("spine", chain == ["K02", "K05", "E05"], ",".join(chain))
 	var sum: Dictionary = TechPlan.totals("E05")
-	check("totals", int(sum.get("power", 0)) == 125 and int(sum.get("craft", 0)) == 121 and int(sum.get("months", 0)) == 20 and int(sum.get("eta", 0)) == 72, str(sum))
+	check("totals", int(sum.get("power", 0)) == 125 and int(sum.get("craft", 0)) == 120 and int(sum.get("months", 0)) == 20 and int(sum.get("eta", 0)) == 72, str(sum))
 	var jumps := ""
 	for block_v in TechPlan.blockers():
 		var block: Dictionary = block_v
@@ -1054,6 +1054,13 @@ func check_spec() -> void:
 	GameState.load_tech_sample()
 	var trial: Dictionary = GameState.tech_trials[0]
 	check("b_trial", GameState.tech_trials.size() == 1 and str(trial.get("id", "")) == "K02" and int(trial.get("prog", 0)) == 2 and int(trial.get("need", 0)) == 3, str(trial))
+	var craft_mid := int(TechPlan.totals("E05").get("craft", -1))
+	trial["prog"] = 0
+	var craft_start := int(TechPlan.totals("E05").get("craft", -1))
+	trial["prog"] = int(trial.get("need", 1))
+	var craft_end := int(TechPlan.totals("E05").get("craft", -1))
+	trial["prog"] = 2
+	check("b_craft", craft_mid == 120 and craft_start == 120 and craft_end == 120, "%d %d %d" % [craft_mid, craft_start, craft_end])
 	check("b_sheets", GameState.tech_blueprints == ["I05", "K04"] and TechPlan.view_state("I05") == "blueprint" and TechPlan.view_state("K04") == "blueprint")
 	check("b_power", GameState.battery == 46 and GameState.battery_cap() == 80 and int(GameState.resources.get("copper", 0)) == 14 and GameState.blueprint_cap() == 3)
 	check("b_sites", int(GameState.site_turns.get("mill", 0)) == 6 and int(GameState.site_turns.get("coal", 0)) == 4 and int(GameState.site_turns.get("coke", 0)) == 6, str(GameState.site_turns))

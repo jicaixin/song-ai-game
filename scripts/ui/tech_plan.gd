@@ -176,8 +176,8 @@ static func totals(target: String) -> Dictionary:
 		var cost: Dictionary = tech.get("cost", {})
 		var craft_cost := int(cost.get("craft", 0))
 		if GameState.tech_state(id) == "trial":
-			var trial := _trial(id)
-			craft += maxi(0, int(trial.get("need", 0)) - int(trial.get("prog", 0)))
+			# 匠在开试制时一次付清。剩下的是回合，不再计入总匠。
+			continue
 		elif GameState.tech_state(id) == "blueprint":
 			craft += craft_cost
 		elif GameState.tech_designing == id:
