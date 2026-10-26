@@ -56,6 +56,8 @@ var _drag := false
 var _press := Vector2.ZERO
 var _drag_from := 0
 var _next_x := 0.0
+var _badge_rects: Array = []
+var _ink_cache := {}
 
 
 func build() -> void:
@@ -768,6 +770,7 @@ func _fold(box: VBoxContainer, id: String, key: String, title: String, body_text
 
 
 func _layout_focus() -> void:
+	_badge_rects = []
 	var era := PLAN.current_era()
 	var last_col := 0
 	var prev_era := 0
@@ -822,6 +825,7 @@ func _layout_focus() -> void:
 		_layout_next(era, width)
 		width += NEXT_W
 	graph.need = Vector2(width, STAGE_H + 6.0 * ROW_H)
+	_hang_ready()
 	_build_edges()
 
 
@@ -888,6 +892,7 @@ func _place_chip(id: String, pos: Vector2) -> void:
 	b.pressed.connect(_on_node.bind(id))
 	b.mouse_entered.connect(_on_enter.bind(id))
 	b.mouse_exited.connect(_on_exit.bind(id))
+	b.set_meta("tech_node", id)
 	graph.add_child(b)
 	var face := Face.new()
 	face.state = "locked"
@@ -984,6 +989,7 @@ func _place_node(id: String, pos: Vector2, tile: bool) -> void:
 	b.pressed.connect(_on_node.bind(id))
 	b.mouse_entered.connect(_on_enter.bind(id))
 	b.mouse_exited.connect(_on_exit.bind(id))
+	b.set_meta("tech_node", id)
 	graph.add_child(b)
 	var face := Face.new()
 	face.state = state
@@ -2276,6 +2282,8 @@ func _route_edges() -> void:
 
 func _place_stubs(stubs: Array) -> void:
 	var taken: Array = []
+	var chip_rows := {}
+	var normals: Array = []
 	for stub_v in stubs:
 		var stub: Dictionary = stub_v
 		var src_id := str(stub.get("from", ""))
@@ -2284,75 +2292,313 @@ func _place_stubs(stubs: Array) -> void:
 		if not graph.spots.has(dest_id):
 			continue
 		var dest: Rect2 = graph.spots[dest_id]
-		var text := "← %s" % PLAN.short_name(src_id)
-		var spot := _stub_spot(dest, taken, true)
-		if spot.size.x < 8.0:
-			spot = _stub_spot(dest, taken, false)
-		if spot.size.x < 8.0:
+		if dest.size.x < 100.0:
+			var row := clampi(int(floor((dest.position.y - STAGE_H) / ROW_H)), 0, 5)
+			if not chip_rows.has(row):
+				chip_rows[row] = []
+			var bucket: Array = chip_rows[row]
+			bucket.append(stub)
+		else:
+			normals.append(stub)
+	for stub_v2 in normals:
+		_emit_stub(stub_v2 as Dictionary, taken)
+	var row_keys: Array = chip_rows.keys()
+	row_keys.sort()
+	for row_v in row_keys:
+		_emit_chip_row(int(row_v), chip_rows[row_v], taken)
+
+
+func _emit_stub(stub: Dictionary, taken: Array) -> void:
+	var src_id := str(stub.get("from", ""))
+	var dest_id := str(stub.get("to", ""))
+	var dest: Rect2 = graph.spots[dest_id]
+	var text := _stub_text(src_id)
+	var ink := _ink_size(text)
+	var spot := _stub_find(dest, ink.x, ink.y, taken, true)
+	if spot.size.x < 8.0:
+		return
+	_add_stub_btn(text, spot, src_id, dest_id)
+	taken.append(spot)
+
+
+func _emit_chip_row(row: int, stubs: Array, taken: Array) -> void:
+	var groups: Array = []
+	var index := {}
+	for stub_v in stubs:
+		var stub: Dictionary = stub_v
+		var dest_id := str(stub.get("to", ""))
+		if not index.has(dest_id):
+			index[dest_id] = groups.size()
+			groups.append({"id": dest_id, "dest": graph.spots[dest_id], "items": []})
+		var src_id := str(stub.get("from", ""))
+		var text := _stub_text(src_id)
+		var ink := _ink_size(text)
+		var items: Array = groups[int(index[dest_id])]["items"]
+		items.append({"src": src_id, "text": text, "w": ink.x, "h": ink.y})
+	groups.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var da: Rect2 = a["dest"]
+		var db: Rect2 = b["dest"]
+		return da.position.x < db.position.x
+	)
+	var top := STAGE_H + float(row) * ROW_H
+	var bottom := top + ROW_H
+	var y_cap := minf(bottom, graph.need.y - 1.0)
+	var park_left := _next_x - COL_W + 4.0
+	var park_right := _next_x - 4.0
+	var y := top + 1.0
+	var gi := 0
+	for g_v in groups:
+		var group: Dictionary = g_v
+		var indent := 0.0 if gi == 0 else 14.0
+		if gi > 0:
+			y += 6.0
+		gi += 1
+		var dest: Rect2 = group["dest"]
+		for item_v in group["items"]:
+			var item: Dictionary = item_v
+			var text := str(item["text"])
+			var width := float(item["w"])
+			var line_h := float(item["h"])
+			var x := park_left + indent
+			var spot := Rect2()
+			if x + width <= park_right + 0.5:
+				var yy := y
+				while yy + line_h <= y_cap + 0.01:
+					var try_spot := Rect2(x, yy, width, line_h)
+					if _stub_free(try_spot, taken, true):
+						spot = try_spot
+						break
+					yy += 2.0
+			if spot.size.x < 8.0:
+				spot = _stub_find(dest, width, line_h, taken, true)
+			if spot.size.x < 8.0:
+				continue
+			_add_stub_btn(text, spot, str(item["src"]), str(group["id"]))
+			taken.append(spot)
+			y = maxf(y, spot.end.y + 2.0)
+
+
+func _add_stub_btn(text: String, spot: Rect2, src_id: String, dest_id: String) -> void:
+	var lab := Kit.label(text, "SmallLabel")
+	var dest_name := str(DataDB.tech_by_id.get(dest_id, {}).get("name", dest_id))
+	lab.tooltip_text = "%s ← %s" % [dest_name, text.trim_prefix("← ")]
+	lab.clip_text = false
+	lab.autowrap_mode = TextServer.AUTOWRAP_OFF
+	lab.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+	lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	lab.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lab.add_theme_font_size_override("font_size", 13)
+	lab.add_theme_color_override("font_color", INK)
+	lab.mouse_filter = Control.MOUSE_FILTER_STOP
+	lab.position = spot.position
+	lab.size = spot.size
+	lab.custom_minimum_size = spot.size
+	lab.set_meta("tech_stub", src_id)
+	lab.set_meta("tech_dest", dest_id)
+	lab.gui_input.connect(_stub_click.bind(src_id))
+	graph.add_child(lab)
+	lab.size = spot.size
+
+
+func _stub_click(event: InputEvent, src_id: String) -> void:
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+			_stub_pick(src_id)
+
+
+func _stub_text(src_id: String) -> String:
+	var tech: Dictionary = DataDB.tech_by_id.get(src_id, {})
+	var given := str(tech.get("short", ""))
+	var name := given if given != "" else str(tech.get("name", src_id))
+	return "← %s" % name
+
+
+func _ink_size(text: String) -> Vector2:
+	if _ink_cache.has(text):
+		return _ink_cache[text]
+	var lab := Kit.label(text, "SmallLabel")
+	lab.add_theme_font_size_override("font_size", 13)
+	lab.autowrap_mode = TextServer.AUTOWRAP_OFF
+	lab.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+	add_child(lab)
+	var mins := lab.size
+	var combined := lab.get_combined_minimum_size()
+	mins.x = maxf(mins.x, combined.x)
+	mins.y = maxf(mins.y, combined.y)
+	remove_child(lab)
+	lab.free()
+	var floor_w := _string_px(text) + 16.0
+	if mins.x < floor_w:
+		mins.x = floor_w
+	if mins.y < 23.0:
+		mins.y = 23.0
+	_ink_cache[text] = mins
+	return mins
+
+
+func _string_px(text: String) -> float:
+	var font := get_theme_font("font", "SmallLabel")
+	if font == null:
+		return float(text.length()) * 13.0
+	return font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+
+
+func _hang_ready() -> void:
+	for id_v in nodes.keys():
+		var b: Button = nodes[id_v]
+		if b.size.x < 100.0:
 			continue
-		var btn := _text_button(text)
-		btn.tooltip_text = text
-		btn.clip_text = true
-		btn.autowrap_mode = TextServer.AUTOWRAP_OFF
-		btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		btn.add_theme_font_size_override("font_size", 13)
-		btn.add_theme_color_override("font_color", INK)
-		btn.add_theme_color_override("font_hover_color", INK)
-		btn.position = spot.position
-		btn.size = spot.size
-		btn.custom_minimum_size = Vector2(0, 0)
-		btn.pressed.connect(_stub_pick.bind(src_id))
-		graph.add_child(btn)
-		taken.append(spot)
+		var face: Face = null
+		var row: HBoxContainer = null
+		for child in b.get_children():
+			if child is Face:
+				face = child
+			elif child is HBoxContainer:
+				row = child
+		if face == null or face.corner == "":
+			continue
+		var hung := _hang_corner(b, face.corner)
+		face.draw_corner = false
+		if not hung and row != null:
+			row.size.x = maxf(48.0, NODE_W - 8.0 - _mark_width(face.corner) - 4.0)
 
 
-func _stub_spot(dest: Rect2, taken: Array, avoid_routes: bool) -> Rect2:
-	var lanes := _stub_lanes(dest)
-	for lane_v in lanes:
-		var lane: Rect2 = lane_v
-		var y := lane.position.y
-		while y + 16.0 <= lane.end.y + 0.5:
-			var spot := Rect2(lane.position.x, y, lane.size.x, 16.0)
-			if _stub_clear(spot, taken, avoid_routes):
+func _mark_width(corner: String) -> float:
+	return maxf(22.0, _ink_size(corner).x)
+
+
+func _hang_corner(node: Button, corner: String) -> bool:
+	var ink := _ink_size(corner)
+	var w := maxf(22.0, ink.x)
+	var h := maxf(ink.y, 18.0)
+	var row := clampi(int(floor((node.position.y - STAGE_H) / ROW_H)), 0, 5)
+	var row_top := STAGE_H + float(row) * ROW_H
+	var owner := str(node.get_meta("tech_node", ""))
+	var x := node.position.x + node.size.x - w + 4.0
+	var y := node.position.y - h + 2.0
+	var hung := y >= row_top + 1.0 and not _badge_hits(Rect2(x, y, w, h), owner)
+	if not hung:
+		x = node.position.x + node.size.x - w - 2.0
+		y = node.position.y + 2.0
+	var box := Control.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.position = Vector2(x, y)
+	box.size = Vector2(w, h)
+	box.set_meta("tech_badge", owner)
+	var mark := Mark.new()
+	mark.word = corner
+	mark.bg = _mark_bg(corner)
+	mark.fg = _mark_fg(corner)
+	mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mark.position = Vector2.ZERO
+	mark.size = Vector2(w, h)
+	box.add_child(mark)
+	graph.add_child(box)
+	_badge_rects.append({"id": owner, "rect": Rect2(box.position, box.size)})
+	return hung
+
+
+func _badge_hits(rect: Rect2, owner_id: String) -> bool:
+	var slim := rect.grow(-1.0)
+	for id_v in graph.spots.keys():
+		if str(id_v) == owner_id:
+			continue
+		var spot: Rect2 = graph.spots[id_v]
+		if slim.intersects(spot.grow(-1.0)):
+			return true
+	return false
+
+
+func _mark_bg(corner: String) -> Color:
+	if corner == "设" or corner == "阻":
+		return CINNABAR
+	if corner == "试":
+		return Color("a0612b")
+	if corner == "图":
+		return CYAN
+	if corner.begins_with("缺"):
+		return CREAM
+	if corner == "锁":
+		return Color("8a8175")
+	return Color("8c6d1f")
+
+
+func _mark_fg(corner: String) -> Color:
+	if corner.begins_with("缺"):
+		return INK
+	return CREAM
+
+
+func _stub_find(dest: Rect2, width: float, height: float, taken: Array, avoid_routes: bool) -> Rect2:
+	var bounds := _row_bounds(dest)
+	var top := bounds.x
+	var bottom := bounds.y
+	var y_cap := minf(bottom, graph.need.y - 1.0)
+	var candidates: Array = [dest.end.y + 1.0, dest.position.y - height - 1.0, y_cap - height, top + 1.0]
+	var y := top + 1.0
+	while y + height <= y_cap + 0.01:
+		candidates.append(y)
+		y += 4.0
+	var right_limit := graph.need.x - 1.0
+	for yv in candidates:
+		var yy := float(yv)
+		if yy < top + 0.5 or yy + height > y_cap + 0.01:
+			continue
+		var found := _scan_x(dest.position.x, right_limit, yy, width, height, taken, avoid_routes)
+		if found.size.x >= 8.0:
+			return found
+		var left := dest.position.x
+		while left >= 0.0:
+			var spot := Rect2(left, yy, width, height)
+			if _stub_free(spot, taken, avoid_routes):
 				return spot
-			y += 18.0
+			left -= 8.0
+	if avoid_routes:
+		return _stub_find(dest, width, height, taken, false)
 	return Rect2()
 
 
-func _stub_lanes(dest: Rect2) -> Array:
-	var lanes: Array = []
+func _scan_x(x0: float, limit: float, y: float, width: float, height: float, taken: Array, avoid_routes: bool) -> Rect2:
+	var x := x0
+	while x + width <= limit + 0.5:
+		var spot := Rect2(x, y, width, height)
+		if _stub_free(spot, taken, avoid_routes):
+			return spot
+		x += 8.0
+	return Rect2()
+
+
+func _row_bounds(dest: Rect2) -> Vector2:
 	var row := clampi(int(floor((dest.position.y - STAGE_H) / ROW_H)), 0, 5)
 	var top := STAGE_H + float(row) * ROW_H
-	var bottom := top + ROW_H
-	if dest.size.x < 100.0 and _next_x > COL_W:
-		var cell_x := _next_x - COL_W
-		lanes.append(Rect2(cell_x + 6.0, top + 2.0, NODE_W - 12.0, ROW_H - 4.0))
-		var gutter_x := _next_x - 54.0
-		if gutter_x >= 2.0:
-			lanes.append(Rect2(gutter_x, top + 2.0, 48.0, ROW_H - 4.0))
-		return lanes
-	var above_y := dest.position.y - 18.0
-	if above_y >= top:
-		lanes.append(Rect2(dest.position.x, above_y, minf(dest.size.x, 148.0), 16.0))
-	var below_y := dest.end.y + 2.0
-	if below_y + 16.0 <= bottom:
-		lanes.append(Rect2(dest.position.x, below_y, minf(dest.size.x, 148.0), 16.0))
-	var gutter_x := dest.position.x - 54.0
-	if gutter_x >= 2.0:
-		lanes.append(Rect2(gutter_x, top + 2.0, 48.0, ROW_H - 4.0))
-	return lanes
+	return Vector2(top, top + ROW_H)
 
 
-func _stub_clear(spot: Rect2, taken: Array, avoid_routes: bool) -> bool:
+func _stub_free(spot: Rect2, taken: Array, avoid_routes: bool) -> bool:
+	if spot.position.x < 0.0 or spot.position.y < 1.0:
+		return false
+	if spot.end.x > graph.need.x - 1.0 or spot.end.y > graph.need.y - 1.0:
+		return false
+	var node_pad := spot.grow(1.0)
 	for id_v in graph.spots.keys():
 		var rect: Rect2 = graph.spots[id_v]
-		if rect.intersects(spot):
+		if node_pad.intersects(rect):
+			return false
+	for badge_v in _badge_rects:
+		var badge: Dictionary = badge_v
+		var badge_rect: Rect2 = badge["rect"]
+		if spot.grow(1.0).intersects(badge_rect):
 			return false
 	for prev_v in taken:
 		var prev: Rect2 = prev_v
-		if prev.intersects(spot):
+		if prev.grow(1.0).intersects(spot):
 			return false
+	for child in graph.get_children():
+		if child is Label:
+			var lab := child as Label
+			if lab.size.x > 2.0 and lab.size.y > 2.0 and lab.text != "" and spot.intersects(Rect2(lab.position, lab.size)):
+				return false
 	if avoid_routes and _stub_hits_route(spot):
 		return false
 	return true
@@ -2751,6 +2997,21 @@ func _join_names(ids: Array) -> String:
 	return "、".join(bits)
 
 
+class Mark extends Control:
+	var word := ""
+	var bg := Color.WHITE
+	var fg := Color.BLACK
+
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), bg, true)
+		var font := get_theme_font("font", "SmallLabel")
+		if font == null or word == "":
+			return
+		var ts := font.get_string_size(word, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
+		var pos := Vector2((size.x - ts.x) * 0.5, (size.y - ts.y) * 0.5 + font.get_ascent(13))
+		draw_string(font, pos, word, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, fg)
+
+
 class Face extends Control:
 	var state := "available"
 	var tile := false
@@ -2762,6 +3023,7 @@ class Face extends Control:
 	var corner := ""
 	var raw := ""
 	var selected := false
+	var draw_corner := true
 
 	func _ready() -> void:
 		set_process(state == "designing")
@@ -2810,7 +3072,7 @@ class Face extends Control:
 			draw_rect(Rect2(Vector2(3, 4), size), Color(0, 0, 0, 0.28), false, 4.0)
 			draw_rect(Rect2(Vector2(-1, -1), size + Vector2(2, 2)), Color("2a241c"), false, 2.0)
 		var corner_w := 0.0
-		if corner != "":
+		if draw_corner and corner != "":
 			corner_w = maxf(18.0, float(corner.length()) * 13.0)
 			var at := Vector2(size.x - corner_w + 8.0, -10.0)
 			draw_rect(Rect2(at, Vector2(corner_w, 18)), _corner_bg(), true)

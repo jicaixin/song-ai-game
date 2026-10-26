@@ -983,7 +983,91 @@ func _label_boxes_now(root: Node) -> String:
 			var b: Rect2 = rects[j]
 			if a.grow(-1.0).intersects(b.grow(-1.0)):
 				return "重叠『%s』『%s』" % [str(names[i]), str(names[j])]
+	return _frame_gaps(root)
+
+
+func _frame_gaps(root: Node) -> String:
+	var nodes: Array = []
+	var badges: Array = []
+	var stubs: Array = []
+	_collect_frames(root, nodes, badges, stubs)
+	for stub_v in stubs:
+		var stub := stub_v as Control
+		if stub == null or not _shown(stub):
+			continue
+		var stub_text := _control_text(stub)
+		var host := stub.get_parent() as Control
+		if host != null and stub.position.y + stub.size.y > host.size.y + 0.5:
+			return "小签被裁『%s』" % stub_text.substr(0, 12)
+		var need := _control_px(stub)
+		if stub.size.y < 30.0 and stub.size.x + 1.0 < need:
+			return "小签截断『%s』宽%.0f需%.0f" % [stub_text.substr(0, 12), stub.size.x, need]
+		var own := stub.get_global_rect()
+		for node_v in nodes:
+			var node := node_v as Control
+			var nr := node.get_global_rect()
+			if own.grow(-1.0).intersects(nr.grow(-1.0)):
+				return "小签压节点『%s』%s" % [stub_text.substr(0, 14), str(node.get_meta("tech_node", ""))]
+		for badge_v in badges:
+			var badge := badge_v as Control
+			if own.grow(-1.0).intersects(badge.get_global_rect().grow(-1.0)):
+				return "小签压角标『%s』" % stub_text.substr(0, 12)
+		for other_v in stubs:
+			var other := other_v as Control
+			if other == null or other == stub:
+				continue
+			if own.grow(-1.0).intersects(other.get_global_rect().grow(-1.0)):
+				return "小签重叠『%s』『%s』" % [stub_text.substr(0, 8), _control_text(other).substr(0, 8)]
+	for badge2_v in badges:
+		var badge2 := badge2_v as Control
+		if badge2 == null or not _shown(badge2):
+			continue
+		var graph := badge2.get_parent() as Control
+		if graph != null and (badge2.position.y < -0.5 or badge2.position.y + badge2.size.y > graph.size.y + 0.5):
+			return "角标被裁『%s』" % str(badge2.get_meta("tech_badge", ""))
+		if badge2.size.x + 0.5 < 13.0 or badge2.size.y + 0.5 < 14.0:
+			return "角标太小『%s』" % str(badge2.get_meta("tech_badge", ""))
+		var owner := str(badge2.get_meta("tech_badge", ""))
+		var rect := badge2.get_global_rect()
+		for node2_v in nodes:
+			var node2 := node2_v as Control
+			if str(node2.get_meta("tech_node", "")) == owner:
+				continue
+			if rect.grow(-1.0).intersects(node2.get_global_rect().grow(-1.0)):
+				return "角标压节点『%s』" % owner
+		for stub2_v in stubs:
+			var stub2 := stub2_v as Control
+			if stub2 != null and rect.grow(-1.0).intersects(stub2.get_global_rect().grow(-1.0)):
+				return "角标压小签『%s』" % owner
 	return ""
+
+
+func _collect_frames(node: Node, nodes: Array, badges: Array, stubs: Array) -> void:
+	if node is Control and node.has_meta("tech_badge"):
+		badges.append(node)
+	if node is Control and node.has_meta("tech_node"):
+		nodes.append(node)
+	if node is Control and (node.has_meta("tech_stub") or _control_text(node).begins_with("←")):
+		stubs.append(node)
+	for child in node.get_children():
+		_collect_frames(child, nodes, badges, stubs)
+
+
+func _control_text(ctrl: Node) -> String:
+	if ctrl is Label or ctrl is Button:
+		return str(ctrl.text)
+	return ""
+
+
+func _control_px(ctrl: Control) -> float:
+	var text := _control_text(ctrl)
+	var font := ctrl.get_theme_font("font")
+	var size := ctrl.get_theme_font_size("font_size")
+	if size < 1:
+		size = 13
+	if font == null:
+		return float(text.length()) * float(size)
+	return font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 
 
 func _shown(node: CanvasItem) -> bool:
@@ -2081,6 +2165,32 @@ func check_desk_a() -> void:
 	desk._fill()
 	board = _tech_board(desk)
 	check("g2_overlap", overlap == "", overlap)
+	var coal_stub := _button_text(desk, "← 煤井通风与排水")
+	check("g2_stub_name", coal_stub != null, "缺全名")
+	var powder: Array = []
+	_gather_buttons(desk, "← 火药精炼", powder)
+	var grouped := false
+	if powder.size() == 2:
+		var left: Control = powder[0]
+		var right: Control = powder[1]
+		grouped = str(left.get_meta("tech_dest", "")) != str(right.get_meta("tech_dest", ""))
+		grouped = grouped and (absf(left.position.x - right.position.x) >= 10.0 or absf(left.position.y - right.position.y) >= 8.0)
+	check("g2_powder", powder.size() == 2 and grouped, str(powder.size()))
+	var zinc: Array = []
+	_gather_buttons(desk, "← 锌铜电堆", zinc)
+	var zinc_in := zinc.size() == 2
+	var zinc_grouped := false
+	if zinc.size() == 2:
+		var zinc_a: Control = zinc[0]
+		var zinc_b: Control = zinc[1]
+		zinc_grouped = str(zinc_a.get_meta("tech_dest", "")) != str(zinc_b.get_meta("tech_dest", ""))
+		zinc_grouped = zinc_grouped and (absf(zinc_a.position.x - zinc_b.position.x) >= 10.0 or absf(zinc_a.position.y - zinc_b.position.y) >= 8.0)
+	for zinc_v in zinc:
+		var zinc_lab := zinc_v as Control
+		var zinc_host := zinc_lab.get_parent() as Control
+		if zinc_host != null and zinc_lab.position.y + zinc_lab.size.y > zinc_host.size.y - 0.5:
+			zinc_in = false
+	check("g2_zinc", zinc_in and zinc_grouped, str(zinc.size()))
 	var route_err := _routes_ok(board)
 	check("g3_routes", route_err == "", route_err)
 	check("g4_a05", str(_face_prop(desk, "A05", "corner")) == "")
@@ -2351,8 +2461,15 @@ func _face_prop(desk: Desk, id: String, prop: String):
 	return null
 
 
-func _button_text(node: Node, text: String) -> Button:
-	if node is Button and str((node as Button).text) == text:
+func _gather_buttons(node: Node, text: String, out: Array) -> void:
+	if (node is Button or node is Label) and str(node.text) == text:
+		out.append(node)
+	for child in node.get_children():
+		_gather_buttons(child, text, out)
+
+
+func _button_text(node: Node, text: String) -> Control:
+	if (node is Button or node is Label) and str(node.text) == text:
 		return node
 	for child in node.get_children():
 		var found := _button_text(child, text)
