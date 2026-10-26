@@ -121,19 +121,12 @@ static func run_primary(id: String) -> String:
 
 static func set_target(id: String) -> void:
 	GameState.tech_target = id
-	var ready: Array = []
-	_collect_ready(id, ready, {})
-	ready.sort_custom(Callable(TechPlan, "_by_power"))
-	var added := 0
-	for id_v in ready:
-		var nid := str(id_v)
-		if added >= 3:
-			break
-		if nid == GameState.tech_designing or GameState.tech_queue.has(nid):
-			continue
-		if not GameState._enqueue(nid):
-			break
-		added += 1
+	GameState.tech_target_skip = []
+	GameState.target_wait_noted = []
+	GameState.target_added = []
+	GameState.target_notice = ""
+	GameState.target_advisor = ""
+	GameState.refill_target_queue("set")
 	EventBus.state_changed.emit()
 
 
@@ -143,6 +136,7 @@ static func _by_power(a: String, b: String) -> bool:
 
 static func clear_target() -> void:
 	GameState.tech_target = ""
+	GameState.tech_target_skip = []
 	EventBus.state_changed.emit()
 
 
@@ -544,7 +538,7 @@ static func _missing_sheet(id: String) -> String:
 
 static func _lock_label(era: int) -> String:
 	if era >= 3:
-		return "T75开"
+		return "T68开"
 	if era == 2:
 		return "T31开"
 	return "未开"

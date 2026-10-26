@@ -20,6 +20,7 @@ static func reset() -> void:
 	GameState.reward_queue = []
 	GameState.month_span = 1
 	GameState.battery_bonus = 0
+	GameState.blueprint_bonus = 0
 	GameState.presearch = 0
 	GameState.supply_left = 0
 	GameState.grain_sold_turn = -1
@@ -318,7 +319,8 @@ static func grant_chapter(ch: Dictionary, state: String) -> void:
 	var craft := int(round(float(int(ch.get("craft", 0))) * scale))
 	var morale := int(round(float(int(ch.get("morale", 0))) * scale))
 	var battery := int(ch.get("battery", 0)) if state == "done" else 0
-	_pay(craft, morale, battery)
+	var blueprint := int(ch.get("blueprint", 0)) if state == "done" else 0
+	_pay(craft, morale, battery, blueprint)
 
 
 static func _apply_span() -> void:
@@ -734,7 +736,7 @@ static func _order_state(item: Dictionary, by_turn: bool) -> String:
 	return "open"
 
 
-static func _pay(craft: int, morale: int, battery: int) -> void:
+static func _pay(craft: int, morale: int, battery: int, blueprint: int = 0) -> void:
 	if craft > 0:
 		GameState.resources["craft"] = int(GameState.resources.get("craft", 0)) + craft
 		GameState.reward_queue.append({"text": "匠 +%d" % craft})
@@ -744,6 +746,12 @@ static func _pay(craft: int, morale: int, battery: int) -> void:
 	if battery > 0:
 		GameState.battery_bonus += battery
 		GameState.reward_queue.append({"text": "电上限 +%d" % battery})
+	if blueprint > 0:
+		var room := GameState.BLUEPRINT_CAP_MAX - GameState.BLUEPRINT_CAP - GameState.blueprint_bonus
+		var gain := mini(blueprint, room)
+		if gain > 0:
+			GameState.blueprint_bonus += gain
+			GameState.reward_queue.append({"text": "图纸库 +%d（上限 %d）" % [gain, GameState.blueprint_cap()]})
 
 
 static func _mark_main() -> void:

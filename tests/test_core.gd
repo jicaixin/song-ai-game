@@ -28,6 +28,7 @@ func run_tests() -> int:
 	check_font()
 	check_city_close()
 	check_feedback()
+	check_spec()
 	if failed > 0:
 		push_error("失败 %d 项" % failed)
 	else:
@@ -938,8 +939,11 @@ func check_tech() -> void:
 	check("state_i05", TechPlan.view_state("I05") == "blueprint")
 	check("state_k02", TechPlan.view_state("K02") == "trial")
 	check("state_a05", TechPlan.view_state("A05") == "available")
-	check("state_e05", TechPlan.view_state("E05") == "noprereq" and TechPlan.queue_index("E05") == 2)
-	check("state_k05", TechPlan.view_state("K05") == "noprereq" and TechPlan.queue_index("K05") == 1)
+	check("state_e05", TechPlan.view_state("E05") == "noprereq" and TechPlan.queue_index("E05") == 0)
+	check("state_k05", TechPlan.view_state("K05") == "noprereq" and TechPlan.queue_index("K05") == 0)
+	check("state_k04", TechPlan.view_state("K04") == "blueprint")
+	check("sample_queue", GameState.tech_queue.is_empty())
+	check("sample_slots", GameState.trial_slots() == 1 and not GameState.edicts_done.has("gewuyuan"))
 	check("state_i07", TechPlan.view_state("I07") == "locked")
 	var frontier: Array = []
 	for tech_v in DataDB.techs:
@@ -954,7 +958,7 @@ func check_tech() -> void:
 	var chain: Array = TechPlan.spine("E05")
 	check("spine", chain == ["K02", "K05", "E05"], ",".join(chain))
 	var sum: Dictionary = TechPlan.totals("E05")
-	check("totals", int(sum.get("power", 0)) == 125 and int(sum.get("craft", 0)) == 126 and int(sum.get("months", 0)) == 20 and int(sum.get("eta", 0)) == 72, str(sum))
+	check("totals", int(sum.get("power", 0)) == 125 and int(sum.get("craft", 0)) == 121 and int(sum.get("months", 0)) == 20 and int(sum.get("eta", 0)) == 72, str(sum))
 	var jumps := ""
 	for block_v in TechPlan.blockers():
 		var block: Dictionary = block_v
@@ -976,7 +980,7 @@ func check_tech() -> void:
 		var trial: Dictionary = trial_v
 		if str(trial.get("id", "")) == "K02":
 			need = int(trial.get("need", 0))
-	check("tech_save", restored and GameState.tech_target == "E05" and need == 28 and int(GameState.site_turns.get("mill", 0)) == 6, "need %d target %s" % [need, GameState.tech_target])
+	check("tech_save", restored and GameState.tech_target == "E05" and need == 3 and int(GameState.site_turns.get("mill", 0)) == 6, "need %d target %s" % [need, GameState.tech_target])
 	var desk := Engine.get_main_loop().root.find_child("Desk", true, false) as Desk
 	check("desk_node", desk != null)
 	if desk != null:
@@ -1017,4 +1021,318 @@ func check_tech() -> void:
 		desk._fill()
 		check("tech_legend", desk.debug_btns.has("tech_sheet_close"))
 		desk.shut()
+	GameState.new_game()
+
+
+func _stamp(at: int) -> void:
+	GameState.turn = at
+	var date := Calendar.apply_turn(at)
+	GameState.year = date.x
+	GameState.month = date.y
+	GameState.month_span = date.z
+
+
+func _era1_done() -> void:
+	for tech_v in DataDB.techs:
+		var tech: Dictionary = tech_v
+		var id := str(tech.get("id", ""))
+		if int(tech.get("era", 1)) == 1 and not GameState.tech_done.has(id):
+			GameState.tech_done.append(id)
+
+
+func _walk_text(node: Node, bucket: Array) -> void:
+	if node is Label or node is Button:
+		var text := str(node.text).strip_edges()
+		if text != "":
+			bucket.append(text)
+	for child in node.get_children():
+		_walk_text(child, bucket)
+
+
+func check_spec() -> void:
+	GameState.new_game()
+	GameState.load_tech_sample()
+	var trial: Dictionary = GameState.tech_trials[0]
+	check("b_trial", GameState.tech_trials.size() == 1 and str(trial.get("id", "")) == "K02" and int(trial.get("prog", 0)) == 2 and int(trial.get("need", 0)) == 3, str(trial))
+	check("b_sheets", GameState.tech_blueprints == ["I05", "K04"] and TechPlan.view_state("I05") == "blueprint" and TechPlan.view_state("K04") == "blueprint")
+	check("b_power", GameState.battery == 46 and GameState.battery_cap() == 80 and int(GameState.resources.get("copper", 0)) == 14 and GameState.blueprint_cap() == 3)
+	check("b_sites", int(GameState.site_turns.get("mill", 0)) == 6 and int(GameState.site_turns.get("coal", 0)) == 4 and int(GameState.site_turns.get("coke", 0)) == 6, str(GameState.site_turns))
+	var row_i04: Dictionary = TechPlan.practice_row("I04")
+	var row_c06: Dictionary = TechPlan.practice_row("C06")
+	var row_i07: Dictionary = TechPlan.practice_row("I07")
+	check("b_i04", bool(row_i04.get("ok", false)) and int(row_i04.get("have", 0)) == 4 and int(row_i04.get("need", 0)) == 4, str(row_i04))
+	check("b_c06", bool(row_c06.get("ok", false)) and int(row_c06.get("have", 0)) == 6 and int(row_c06.get("need", 0)) == 4, str(row_c06))
+	check("b_i07", not bool(row_i07.get("ok", false)) and int(row_i07.get("have", 0)) == 6 and int(row_i07.get("need", 0)) == 12, str(row_i07))
+	var block_text := ""
+	var blocks: Array = TechPlan.blockers()
+	if not blocks.is_empty():
+		block_text = str(blocks[0].get("text", ""))
+	check("b_block", block_text == "试制槽 1/1 满，耐火砖与坩埚排队中" and str(blocks[0].get("jump", "")) == "workshop", block_text)
+	GameState.edicts_done.append("gewuyuan")
+	check("b_slot_open", GameState.trial_slots() == 2)
+	GameState.load_tech_sample()
+	check("b_slot_back", GameState.trial_slots() == 1 and not GameState.edicts_done.has("gewuyuan"))
+	var said := GameState.advisor_text
+	TechPlan.set_target("E05")
+	check("a1_queue", GameState.tech_target == "E05" and GameState.tech_queue.is_empty() and GameState.advisor_text == said and not GameState.line_history.has("target_queue"))
+	for trial_v in GameState.tech_trials:
+		var row: Dictionary = trial_v
+		if str(row.get("id", "")) == "K02":
+			row["prog"] = int(row.get("need", 1)) - 1
+	GameState.battery = 40
+	GameState.finish_turn()
+	check("a2_enqueue", GameState.tech_done.has("K02") and (GameState.tech_queue.has("K05") or GameState.tech_designing == "K05") and GameState.notice.find("目标路线 · 增速齿轮与铸铁轴承 进队列") >= 0, GameState.notice)
+	GameState.announce_turn()
+	check("a2_advisor", GameState.advisor_text.find("前置齐了") >= 0 and GameState.line_history.has("target_queue"), GameState.advisor_text)
+	GameState.resources["craft"] = 800
+	GameState.resources["iron"] = 80
+	GameState.resources["copper"] = 80
+	GameState.resources["wood"] = 80
+	GameState.tech_blueprints = []
+	var guard := 0
+	while not GameState.tech_done.has("K05") and guard < 40:
+		guard += 1
+		if GameState.tech_blueprints.has("K05") and GameState.tech_trials.is_empty():
+			GameState.start_trial("K05")
+		GameState.battery = GameState.battery_cap()
+		GameState.finish_turn()
+	check("a3_enqueue", GameState.tech_done.has("K05") and (GameState.tech_queue.has("E05") or GameState.tech_designing == "E05") and GameState.notice.find("水轮发电机") >= 0, "guard %d design %s queue %s notice %s" % [guard, GameState.tech_designing, str(GameState.tech_queue), GameState.notice])
+	GameState.tech_queue.erase("E05")
+	GameState.tech_blueprints.erase("E05")
+	if GameState.tech_designing == "E05":
+		GameState.tech_designing = ""
+		GameState.tech_design_prog = 0
+	GameState.tech_target = "E05"
+	GameState.tech_trials = [{"id": "E05", "prog": 2, "need": 3}]
+	GameState.finish_turn()
+	check("a4_done", GameState.tech_target == "" and GameState.tech_done.has("E05") and GameState.notice.find("目标达成 · 水轮发电机") >= 0, GameState.notice)
+	GameState.new_game()
+	_era1_done()
+	_stamp(40)
+	GameState.tech_designing = "X01"
+	GameState.tech_design_prog = 0
+	GameState.tech_queue = ["A05", "E02", "K04"]
+	GameState.tech_target = "C07"
+	GameState.tech_target_skip = []
+	GameState.target_added = []
+	GameState.target_wait_noted = []
+	GameState.notice = ""
+	GameState.finish_turn()
+	check("a5_wait", GameState.tech_queue.size() == 3 and GameState.notice.find("等队列空位（3/3）") >= 0 and GameState.notice.find("焦炭冶铁") >= 0, GameState.notice)
+	GameState.announce_turn()
+	var wait_text := GameState.advisor_text
+	check("a5_advisor", wait_text.find("门口") >= 0, wait_text)
+	GameState.notice = ""
+	GameState.advisor_text = "quiet"
+	GameState.finish_turn()
+	GameState.announce_turn()
+	check("a5_once", GameState.notice.find("等队列空位") < 0 and GameState.advisor_text == "quiet", GameState.notice)
+	GameState.new_game()
+	_era1_done()
+	_stamp(40)
+	GameState.tech_blueprints = []
+	GameState.tech_trials = []
+	GameState.tech_designing = "A05"
+	GameState.tech_design_prog = GameState.design_need("A05")
+	GameState.tech_queue = ["E02", "K04", "M06"]
+	GameState.tech_target = "C07"
+	GameState.tech_target_skip = []
+	GameState.target_added = []
+	GameState.target_wait_noted = []
+	GameState.battery = GameState.battery_cap()
+	GameState.finish_turn()
+	check("a6_refill", GameState.tech_designing == "E02" and GameState.tech_queue.size() == 3 and GameState.tech_queue.has("I04"), "%s %s" % [GameState.tech_designing, str(GameState.tech_queue)])
+	GameState.new_game()
+	GameState.load_tech_sample()
+	TechPlan.set_target("E05")
+	for trial_v3 in GameState.tech_trials:
+		var row3: Dictionary = trial_v3
+		if str(row3.get("id", "")) == "K02":
+			row3["prog"] = int(row3.get("need", 1)) - 1
+	GameState.battery = 40
+	GameState.finish_turn()
+	GameState.remove_queued("K05")
+	check("a7_skip", GameState.tech_target_skip.has("K05") and not GameState.tech_queue.has("K05"))
+	for _step in 3:
+		GameState.battery = 30
+		GameState.finish_turn()
+	var sug: Dictionary = TechPlan.suggestion()
+	check("a7_stays", not GameState.tech_queue.has("K05") and GameState.tech_designing != "K05" and str(sug.get("title", "")).find("排进设计") >= 0, "%s %s" % [str(sug), str(GameState.tech_queue)])
+	GameState.tech_designing = "K03"
+	GameState.tech_design_prog = 1
+	GameState.tech_queue = []
+	check("a8_manual", GameState.start_design("K05") and GameState.tech_queue.has("K05") and not GameState.tech_target_skip.has("K05"))
+	var kept: Array = GameState.tech_queue.duplicate()
+	TechPlan.clear_target()
+	check("a9_clear", GameState.tech_target == "" and GameState.tech_target_skip.is_empty() and GameState.tech_queue == kept)
+	GameState.tech_target = "E05"
+	GameState.tech_target_skip = ["K05"]
+	GameState.tech_queue = ["A05", "E02"]
+	var packed: String = SaveManager.pack(GameState.to_save())
+	GameState.tech_target = ""
+	GameState.tech_target_skip = []
+	GameState.tech_queue = []
+	var loaded: Dictionary = SaveManager.unpack(packed)
+	check("a10_load", GameState.from_save(loaded) and GameState.tech_target == "E05" and GameState.tech_target_skip == ["K05"] and GameState.tech_queue == ["A05", "E02"])
+	var old: Dictionary = GameState.to_save()
+	old.erase("tech_target_skip")
+	old["tech_target"] = "E05"
+	check("a11_old", GameState.from_save(old) and GameState.tech_target == "E05" and GameState.tech_target_skip.is_empty())
+	GameState.new_game()
+	_era1_done()
+	_stamp(40)
+	var first := ""
+	var later := ""
+	for tech_v2 in DataDB.techs:
+		var tech2: Dictionary = tech_v2
+		var id2 := str(tech2.get("id", ""))
+		if GameState.tech_state(id2) != "available":
+			continue
+		if first == "":
+			first = id2
+		elif later == "":
+			later = id2
+			break
+	GameState.tech_designing = ""
+	GameState.tech_design_prog = 0
+	GameState.tech_queue = []
+	GameState.tech_target = later
+	GameState.tech_target_skip = []
+	GameState.target_added = []
+	GameState.target_notice = ""
+	GameState.battery = GameState.battery_cap()
+	GameState._pour_design(5)
+	check("a12_pour", later != "" and later != first and GameState.tech_designing == later and GameState.notice.find("开始设计") >= 0 and GameState.notice.find("电满了") < 0, "first %s later %s design %s notice %s" % [first, later, GameState.tech_designing, GameState.notice])
+	GameState.new_game()
+	_era1_done()
+	_stamp(40)
+	GameState.tech_done.append("I04")
+	TechPlan.set_target("E04")
+	check("a13_pair", GameState.tech_queue == ["E02", "I05"] and GameState.notice.find("铜线拉丝与丝漆绝缘、耐火砖与坩埚") >= 0 and GameState.notice.find("\n") < 0, "%s %s" % [str(GameState.tech_queue), GameState.notice])
+	check("a13_silent", not GameState.line_history.has("target_queue"))
+	GameState.new_game()
+	_era1_done()
+	_stamp(40)
+	TechPlan.set_target("C07")
+	check("a14_era2", GameState.tech_queue.has("I04") and not GameState.tech_queue.has("C07") and not GameState.era_unlocked(3), str(GameState.tech_queue))
+	GameState.tech_done.append("I04")
+	GameState.tech_queue.erase("I04")
+	GameState.refill_target_queue("turn")
+	check("a14_locked", not GameState.tech_queue.has("C07") and not GameState.era_unlocked(3))
+	_stamp(67)
+	GameState.tech_designing = "X01"
+	GameState.tech_design_prog = 0
+	GameState.notice = ""
+	GameState.finish_turn()
+	check("a14_open", GameState.turn == 68 and GameState.era_unlocked(3) and GameState.tech_queue.has("C07") and GameState.notice.find("碎石官道") >= 0, "turn %d queue %s notice %s" % [GameState.turn, str(GameState.tech_queue), GameState.notice])
+	GameState.new_game()
+	check("c1_cap", GameState.blueprint_cap() == 3 and GameState.blueprint_bonus == 0)
+	var liao: Dictionary = DataDB.chapter_by_id.get("liao", {})
+	GameState.meters["liao_demand"] = 8
+	check("c2_state", GoalSystem.chapter_state(liao) == "done")
+	GoalSystem.grant_chapter(liao, "done")
+	var fly := ""
+	for item_v in GameState.reward_queue:
+		var item: Dictionary = item_v
+		if str(item.get("text", "")).find("图纸库") >= 0:
+			fly = str(item.get("text", ""))
+	check("c2_bonus", GameState.blueprint_bonus == 1 and GameState.blueprint_cap() == 4 and fly == "图纸库 +1（上限 4）", fly)
+	var heyi: Dictionary = DataDB.chapter_by_id.get("heyi", {})
+	GoalSystem.grant_chapter(heyi, "done")
+	var fly2 := ""
+	for item_v2 in GameState.reward_queue:
+		var item2: Dictionary = item_v2
+		if str(item2.get("text", "")).find("图纸库") >= 0:
+			fly2 = str(item2.get("text", ""))
+	check("c3_bonus", GameState.blueprint_cap() == 5 and fly2 == "图纸库 +1（上限 5）", fly2)
+	GameState.new_game()
+	var craft_before := int(GameState.resources.get("craft", 0))
+	var morale_before := GameState.morale
+	GoalSystem.grant_chapter(DataDB.chapter_by_id.get("liao", {}), "partial")
+	check("c4_partial", GameState.blueprint_bonus == 0 and int(GameState.resources.get("craft", 0)) == craft_before + 10 and GameState.morale == morale_before + 1)
+	GameState.new_game()
+	GoalSystem.grant_chapter(DataDB.chapter_by_id.get("liao", {}), "done")
+	GoalSystem.grant_chapter(DataDB.chapter_by_id.get("liao", {}), "done")
+	check("c5_once", GameState.blueprint_bonus == 1)
+	GameState.new_game()
+	GameState.tech_blueprints = ["A01", "M01", "C01"]
+	GameState.tech_designing = "M02"
+	GameState.tech_design_prog = GameState.design_need("M02")
+	GameState.tech_target = ""
+	GameState.tech_queue = []
+	GoalSystem.grant_chapter(DataDB.chapter_by_id.get("liao", {}), "done")
+	GameState._research_tick()
+	check("c6_enter", GameState.tech_blueprints.size() == 4 and GameState.tech_blueprints.has("M02"), str(GameState.tech_blueprints))
+	GameState.blueprint_bonus = 1
+	var again: String = SaveManager.pack(GameState.to_save())
+	GameState.blueprint_bonus = 0
+	check("c7_save", GameState.from_save(SaveManager.unpack(again)) and GameState.blueprint_bonus == 1)
+	var bare: Dictionary = GameState.to_save()
+	bare.erase("blueprint_bonus")
+	bare["chapter_rewarded"] = {"liao": "done", "heyi": "done"}
+	check("c8_infer", GameState.from_save(bare) and GameState.blueprint_cap() == 5 and GameState.blueprint_bonus == 2)
+	var huge: Dictionary = GameState.to_save()
+	huge["blueprint_bonus"] = 7
+	check("c9_clamp", GameState.from_save(huge) and GameState.blueprint_bonus == 2 and GameState.blueprint_cap() == 5)
+	GameState.new_game()
+	GoalSystem.grant_chapter(DataDB.chapter_by_id.get("forts", {}), "done")
+	check("c10_other", GameState.blueprint_bonus == 0 and GameState.blueprint_cap() == 3 and GameState.battery_bonus == 10)
+	GameState.new_game()
+	_stamp(67)
+	check("d1_wait", GameState.year == 1046 and GameState.month == 1 and not GameState.era_unlocked(3))
+	_stamp(68)
+	check("d2_open", GameState.month == 3 and GameState.era_unlocked(3))
+	_stamp(67)
+	GameState.finish_turn()
+	check("d3_tick", GameState.turn == 68 and GameState.era_unlocked(3))
+	GameState.load_tech_sample()
+	_stamp(68)
+	check("d4_c07", TechPlan.view_state("C07") == "available" and TechPlan.current_era() == 3)
+	GameState.load_tech_sample()
+	check("d5_sample", not GameState.era_unlocked(3))
+	var extra := 0
+	for tech_v3 in DataDB.techs:
+		var tech3: Dictionary = tech_v3
+		var id3 := str(tech3.get("id", ""))
+		if int(tech3.get("era", 1)) != 2 or GameState.tech_done.has(id3):
+			continue
+		GameState.tech_done.append(id3)
+		extra += 1
+		if GameState._era_done_count(2) >= 11:
+			break
+	check("d6_count", extra >= 7 and GameState.era_unlocked(3) and GameState.turn == 52)
+	var desk := Engine.get_main_loop().root.find_child("Desk", true, false) as Desk
+	check("d7_desk", desk != null)
+	if desk != null:
+		GameState.load_tech_sample()
+		desk.tech_tutorial = -1
+		desk.open("tech")
+		var board: Node = desk.host.get_child(0)
+		check("d7_lock", board.has_method("_lock_head") and str(board.call("_lock_head", 3)) == "T68开" and TechPlan._lock_label(3) == "T68开")
+		var lines: Array = []
+		_walk_text(desk, lines)
+		var joined := "\n".join(PackedStringArray(lines))
+		var old_turn := "第 75 " + "回合"
+		var old_lock := "T75" + "开"
+		check("d7_copy", joined.find("第 68 回合") >= 0 and joined.find(old_turn) < 0 and joined.find(old_lock) < 0 and joined.find("T68开") >= 0, joined)
+		_stamp(68)
+		check("d8_open", str(board.call("_lock_head", 3)) == "已开")
+		desk.shut()
+	check("d9_span", str(DataDB.eras[1].get("span", "")) == "T31–67" and str(DataDB.eras[2].get("span", "")) == "T68–86")
+	var legacy: Dictionary = GameState.to_save()
+	legacy["turn"] = 70
+	check("d11_old", GameState.from_save(legacy) and GameState.era_unlocked(3) and int(legacy.get("save_version", 0)) == 1)
+	GameState.new_game()
+	_stamp(76)
+	GameState.tech_done.append("C07")
+	GoalSystem.on_turn()
+	var craft0 := int(GameState.resources.get("craft", 0))
+	var queued_end := false
+	for card_v in GameState.card_queue:
+		if str(card_v) == "end:gewu":
+			queued_end = true
+	var gewu: Dictionary = DataDB.chapter_by_id.get("gewu", {})
+	check("d12_state", queued_end and GoalSystem.chapter_state(gewu) == "done")
+	GoalSystem.grant_chapter(gewu, "done")
+	check("d12_pay", GameState.battery_bonus == 10 and int(GameState.resources.get("craft", 0)) == craft0 + 15, "bonus %d craft %d" % [GameState.battery_bonus, int(GameState.resources.get("craft", 0))])
 	GameState.new_game()

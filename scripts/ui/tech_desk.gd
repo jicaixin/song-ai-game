@@ -94,7 +94,7 @@ func _build_header(header_h: float) -> void:
 		var chip := Kit.label("%s  %d/%d" % [era_name, prog.x, prog.y], "H3Label")
 		chip.add_theme_color_override("font_color", Color("e7c98a"))
 		row.add_child(chip)
-		var next := Kit.label("时代三：第 75 回合或 11/17 开启", "CaptionLabel")
+		var next := Kit.label("时代三：第 68 回合或 11/17 开启", "CaptionLabel")
 		next.add_theme_color_override("font_color", Color("d9cbb6"))
 		row.add_child(next)
 	else:
@@ -376,7 +376,7 @@ func _left(box: VBoxContainer) -> void:
 	now.add_child(prints)
 	anchors["prints"] = prints
 	if GameState.tech_blueprints.is_empty():
-		prints.add_child(Kit.label("图纸库 0/3", "SmallLabel"))
+		prints.add_child(Kit.label("图纸库 0/%d" % GameState.blueprint_cap(), "SmallLabel"))
 	else:
 		var names := ""
 		for id_v in GameState.tech_blueprints:
@@ -384,7 +384,7 @@ func _left(box: VBoxContainer) -> void:
 			if names != "":
 				names += "、"
 			names += str(tech4.get("name", str(id_v)))
-		prints.add_child(_link_row("图纸库 %d/3  %s" % [GameState.tech_blueprints.size(), names], "workshop"))
+		prints.add_child(_link_row("图纸库 %d/%d  %s" % [GameState.tech_blueprints.size(), GameState.blueprint_cap(), names], "workshop"))
 	if GameState.tech_target != "":
 		box.add_child(_target_card())
 	else:
@@ -501,6 +501,20 @@ func _target_card() -> PanelContainer:
 	box.add_child(path_lab)
 	box.add_child(Kit.label("总电 %d    总匠 %d" % [int(sum.get("power", 0)), int(sum.get("craft", 0))], "H3Label"))
 	box.add_child(Kit.label("预计约 %d 回合（T%d 前后）" % [int(sum.get("months", 0)), int(sum.get("eta", 0))], "SmallLabel"))
+	var auto := Kit.label("自动排队中：路线上前置一完成就进队列", "CaptionLabel")
+	auto.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(auto)
+	var waiting: Array = GameState.target_waiting()
+	if not waiting.is_empty():
+		var wait_names := ""
+		for wait_id_v in waiting:
+			var wait_node: Dictionary = DataDB.tech_by_id.get(str(wait_id_v), {})
+			if wait_names != "":
+				wait_names += "、"
+			wait_names += str(wait_node.get("name", str(wait_id_v)))
+		var hold := Kit.label("等队列空位：%s。下回合补上。" % wait_names, "CaptionLabel")
+		hold.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(hold)
 	var short := _target_gap(GameState.tech_target)
 	if short != "":
 		var gap := _link_row("卡点：" + short, "industry")
@@ -1281,7 +1295,7 @@ func _lock_head(era: int) -> String:
 	if GameState.era_unlocked(era):
 		return "已开"
 	if era >= 3:
-		return "T75开"
+		return "T68开"
 	return "T31开"
 
 

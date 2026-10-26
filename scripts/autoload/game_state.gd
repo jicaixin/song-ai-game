@@ -10,6 +10,7 @@ const Pathfinder = preload("res://scripts/core/pathfinder.gd")
 
 const CITY_CAP := {"jun": 1, "zhou": 2, "fu": 3, "jing": 3}
 const BLUEPRINT_CAP := 3
+const BLUEPRINT_CAP_MAX := 5
 const QUEUE_CAP := 3
 
 var year := 1040
@@ -42,6 +43,15 @@ var tech_blueprints: Array = []
 var tech_trials: Array = []
 var tech_paused := {}
 var tech_target := ""
+var tech_target_skip: Array = []
+var target_notice := ""
+var target_advisor := ""
+var target_advisor_mood := ""
+var target_advisor_id := ""
+var target_added: Array = []
+var target_wait_noted: Array = []
+var _sort_spine: Array = []
+var _sort_index := {}
 var tech_tutorial_done := false
 var tutorial_done := false
 var hint_menu_seen := false
@@ -81,6 +91,7 @@ var chapter_shown := {}
 var chapter_rewarded := {}
 var reward_queue: Array = []
 var battery_bonus := 0
+var blueprint_bonus := 0
 var presearch := 0
 var supply_left := 0
 var grain_sold_turn := -1
@@ -444,16 +455,7 @@ func _pour_design(overflow: int) -> int:
 	while left > 0 and guard < 8:
 		guard += 1
 		if tech_designing == "":
-			var opened := false
-			for tech_v in DataDB.techs:
-				var tech: Dictionary = tech_v
-				var id := str(tech.get("id", ""))
-				if tech_state(id) == "available":
-					if start_design(id):
-						_announce_design("电满了，自动开始设计 %s（可以在格物图改）" % str(tech.get("name", id)))
-						opened = true
-					break
-			if not opened:
+			if not _open_overflow_design():
 				return left
 		var need := design_need(tech_designing)
 		var room := need - tech_design_prog
@@ -470,13 +472,29 @@ func _pour_design(overflow: int) -> int:
 			pending_blueprint = str(done.get("name", tech_designing))
 			tech_designing = ""
 			tech_design_prog = 0
-			if not tech_queue.is_empty():
-				var next_id := str(tech_queue[0])
-				tech_queue.remove_at(0)
-				if start_design(next_id):
-					var nxt: Dictionary = DataDB.tech_by_id.get(next_id, {})
-					_announce_design("开始设计 %s" % str(nxt.get("name", next_id)))
 	return left
+
+
+func _open_overflow_design() -> bool:
+	_pull_queue()
+	if tech_designing != "":
+		return true
+	if tech_target != "":
+		refill_target_queue("power")
+		_pull_queue()
+		if tech_designing != "":
+			return true
+	for tech_v in DataDB.techs:
+		var tech: Dictionary = tech_v
+		var id := str(tech.get("id", ""))
+		if tech_target_skip.has(id):
+			continue
+		if tech_state(id) == "available":
+			if start_design(id, false):
+				_announce_design("电满了，自动开始设计 %s（可以在格物图改）" % str(tech.get("name", id)))
+				return true
+			break
+	return false
 
 
 func power_band() -> String:
@@ -513,6 +531,11 @@ func restore_movement() -> void:
 
 
 func finish_turn() -> void:
+	target_added = []
+	target_notice = ""
+	target_advisor = ""
+	target_advisor_mood = ""
+	target_advisor_id = ""
 	turn += 1
 	var date := Calendar.apply_turn(turn)
 	year = date.x
@@ -536,7 +559,16 @@ func announce_turn() -> bool:
 	pending_blueprint = ""
 	var started := design_notice
 	design_notice = ""
-	if lines.is_empty() and blueprint == "" and started == "" and not _should_nag_research():
+	var goal := target_notice
+	target_notice = ""
+	var goal_line := target_advisor
+	var goal_mood := target_advisor_mood
+	var goal_id := target_advisor_id
+	target_advisor = ""
+	target_advisor_mood = ""
+	target_advisor_id = ""
+	target_added = []
+	if lines.is_empty() and blueprint == "" and started == "" and goal == "" and not _should_nag_research():
 		return false
 	var bits: PackedStringArray = []
 	for line in lines:
@@ -545,6 +577,8 @@ func announce_turn() -> bool:
 		bits.append("图纸已成 · %s" % blueprint)
 	if started != "":
 		bits.append(started)
+	if goal != "":
+		bits.append(goal)
 	if not bits.is_empty():
 		notice = "\n".join(bits)
 	if not lines.is_empty() and blueprint == "":
@@ -558,7 +592,14 @@ func announce_turn() -> bool:
 		return true
 	if lines.is_empty() and blueprint == "" and started != "":
 		AdvisorSystem.present(started, "serious", "design_auto")
-		notice = started
+		if goal == "":
+			notice = started
+		return true
+	if lines.is_empty() and blueprint == "" and started == "" and goal != "":
+		if goal_line != "":
+			var mood := goal_mood if goal_mood != "" else "smug"
+			AdvisorSystem.present(goal_line, mood, goal_id)
+		notice = goal
 		return true
 	if not lines.is_empty() and blueprint != "":
 		AdvisorSystem.present("城下打了 %d 场，%s 的图纸也画好了。明细在上面。" % [lines.size(), blueprint], "serious", "battle_brief")
@@ -1191,14 +1232,26 @@ func _reset_research() -> void:
 	tech_trials = []
 	tech_paused = {}
 	tech_target = ""
+	tech_target_skip = []
+	target_notice = ""
+	target_advisor = ""
+	target_advisor_mood = ""
+	target_advisor_id = ""
+	target_added = []
+	target_wait_noted = []
 	tech_tutorial_done = false
 	battle_lines = []
 	pending_blueprint = ""
 	research_idle_warned = false
 	site_turns = {}
+	blueprint_bonus = 0
 	firmware_done = []
 	edicts_done = []
 	notice = ""
+
+
+func blueprint_cap() -> int:
+	return mini(BLUEPRINT_CAP + blueprint_bonus, BLUEPRINT_CAP_MAX)
 
 
 func battery_cap() -> int:
@@ -1288,11 +1341,13 @@ func trial_slots() -> int:
 	return 1
 
 
-func start_design(id: String) -> bool:
+func start_design(id: String, manual: bool = true) -> bool:
 	var st := tech_state(id)
 	if st != "available" and st != "queued":
 		return false
 	tech_queue.erase(id)
+	if manual:
+		tech_target_skip.erase(id)
 	research_idle_warned = false
 	if tech_designing == "":
 		tech_designing = id
@@ -1350,11 +1405,190 @@ func _enqueue(id: String) -> bool:
 	return true
 
 
+func refill_target_queue(reason: String) -> Array:
+	var added: Array = []
+	if tech_target == "":
+		return added
+	if not DataDB.tech_by_id.has(tech_target):
+		tech_target = ""
+		tech_target_skip = []
+		return added
+	if tech_done.has(tech_target):
+		tech_target = ""
+		tech_target_skip = []
+		return added
+	var ready: Array = []
+	_collect_target_ready(tech_target, ready, {})
+	_prepare_target_sort()
+	ready.sort_custom(Callable(self, "_target_before"))
+	var waiting: Array = []
+	for id_v in ready:
+		var nid := str(id_v)
+		if nid == tech_designing or tech_queue.has(nid):
+			continue
+		if tech_queue.size() >= QUEUE_CAP:
+			waiting.append(nid)
+			continue
+		tech_queue.append(nid)
+		added.append(nid)
+		target_wait_noted.erase(nid)
+		if not target_added.has(nid):
+			target_added.append(nid)
+	if not added.is_empty():
+		research_ping_until = Time.get_ticks_msec() + 1600
+	_write_target_notice(reason, waiting, added)
+	return added
+
+
+func target_waiting() -> Array:
+	var out: Array = []
+	if tech_target == "" or tech_queue.size() < QUEUE_CAP:
+		return out
+	var ready: Array = []
+	_collect_target_ready(tech_target, ready, {})
+	for id_v in ready:
+		var nid := str(id_v)
+		if nid == tech_designing or tech_queue.has(nid):
+			continue
+		out.append(nid)
+	return out
+
+
+func _collect_target_ready(id: String, into: Array, seen: Dictionary) -> void:
+	if id == "" or seen.has(id):
+		return
+	seen[id] = true
+	if tech_done.has(id) or tech_blueprints.has(id):
+		return
+	if _is_trialing(id) or tech_designing == id:
+		return
+	if TechPlan.view_state(id) == "available":
+		if not tech_target_skip.has(id) and not tech_queue.has(id):
+			into.append(id)
+		return
+	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
+	for pre_v in tech.get("prereq", []):
+		_collect_target_ready(str(pre_v), into, seen)
+
+
+func _prepare_target_sort() -> void:
+	_sort_spine = TechPlan.spine(tech_target)
+	_sort_index = {}
+	var index := 0
+	for tech_v in DataDB.techs:
+		var tech: Dictionary = tech_v
+		_sort_index[str(tech.get("id", ""))] = index
+		index += 1
+
+
+func _target_before(a: String, b: String) -> bool:
+	var power_a := design_need(a)
+	var power_b := design_need(b)
+	if power_a != power_b:
+		return power_a < power_b
+	var spine_a := _spine_pos(a)
+	var spine_b := _spine_pos(b)
+	if spine_a != spine_b:
+		return spine_a < spine_b
+	return _data_pos(a) < _data_pos(b)
+
+
+func _spine_pos(id: String) -> int:
+	var at := _sort_spine.find(id)
+	if int(at) < 0:
+		return 999
+	return int(at)
+
+
+func _data_pos(id: String) -> int:
+	return int(_sort_index.get(id, 9999))
+
+
+func _write_target_notice(reason: String, waiting: Array, added_now: Array) -> void:
+	if not added_now.is_empty():
+		var names := _tech_list(target_added)
+		var line := "目标路线 · %s 进队列（%d/%d）" % [names, tech_queue.size(), QUEUE_CAP]
+		notice = line
+		if reason == "set":
+			target_notice = ""
+			target_advisor = ""
+			target_added = []
+			return
+		target_notice = line
+		var target_tech: Dictionary = DataDB.tech_by_id.get(tech_target, {})
+		var target_name := str(target_tech.get("name", tech_target))
+		if target_added.size() == 1:
+			target_advisor = "%s的前置齐了，我顺手排进了设计队列。离%s又近一步。" % [names, target_name]
+		else:
+			target_advisor = "前置一下子齐了两份，我都排上了。电够的话，下个月就开画。"
+		target_advisor_mood = "smug"
+		target_advisor_id = "target_queue"
+		return
+	if not target_added.is_empty():
+		return
+	var fresh: Array = []
+	for id_v in waiting:
+		var wid := str(id_v)
+		if not target_wait_noted.has(wid):
+			fresh.append(wid)
+	if fresh.is_empty():
+		return
+	for id_v in fresh:
+		target_wait_noted.append(str(id_v))
+	var wait_names := _tech_list(fresh)
+	var wait_line := "目标路线 · %s 等队列空位（%d/%d）" % [wait_names, QUEUE_CAP, QUEUE_CAP]
+	notice = wait_line
+	if reason == "set":
+		target_notice = ""
+		target_advisor = ""
+		return
+	target_notice = wait_line
+	target_advisor = "队列塞满了，%s先在门口排着。哪份画完，我就把它塞进去。" % wait_names
+	target_advisor_mood = "serious"
+	target_advisor_id = "target_wait"
+
+
+func _tech_list(ids: Array) -> String:
+	var parts: PackedStringArray = PackedStringArray()
+	for id_v in ids:
+		var tech: Dictionary = DataDB.tech_by_id.get(str(id_v), {})
+		parts.append(str(tech.get("name", str(id_v))))
+	return "、".join(parts)
+
+
+func _skip_target(id: String) -> void:
+	if id == "" or tech_target_skip.has(id):
+		return
+	if not _on_target_route(id):
+		return
+	tech_target_skip.append(id)
+
+
+func _on_target_route(id: String) -> bool:
+	if tech_target == "" or id == "":
+		return false
+	if id == tech_target:
+		return true
+	return _route_has(tech_target, id, {})
+
+
+func _route_has(cur: String, want: String, seen: Dictionary) -> bool:
+	if seen.has(cur):
+		return false
+	seen[cur] = true
+	var tech: Dictionary = DataDB.tech_by_id.get(cur, {})
+	for pre_v in tech.get("prereq", []):
+		var pre := str(pre_v)
+		if pre == want or _route_has(pre, want, seen):
+			return true
+	return false
+
+
 func _gain_blueprint(id: String) -> bool:
 	if id == "" or tech_blueprints.has(id):
 		return id != ""
-	if tech_blueprints.size() >= BLUEPRINT_CAP:
-		notice = "图纸库已满 3/3，先去试制"
+	if tech_blueprints.size() >= blueprint_cap():
+		notice = "图纸库已满 %d/%d，先去试制" % [blueprint_cap(), blueprint_cap()]
 		EventBus.state_changed.emit()
 		return false
 	tech_blueprints.append(id)
@@ -1375,6 +1609,7 @@ func cancel_design() -> void:
 func pause_design() -> void:
 	if tech_designing == "":
 		return
+	_skip_target(tech_designing)
 	tech_paused[tech_designing] = tech_design_prog
 	tech_designing = ""
 	tech_design_prog = 0
@@ -1383,6 +1618,8 @@ func pause_design() -> void:
 
 
 func remove_queued(id: String) -> void:
+	if tech_queue.has(id):
+		_skip_target(id)
 	tech_queue.erase(id)
 	EventBus.state_changed.emit()
 
@@ -1521,6 +1758,9 @@ func _research_tick() -> void:
 	for fid in finished:
 		_complete_tech(fid)
 		_erase_trial(fid)
+	refill_target_queue("turn")
+	if tech_designing == "":
+		_pull_queue()
 
 
 func _pull_queue() -> void:
@@ -1556,8 +1796,20 @@ func _complete_tech(id: String) -> void:
 		return
 	tech_done.append(id)
 	var tech: Dictionary = DataDB.tech_by_id.get(id, {})
-	notice = "已经推广 · %s" % str(tech.get("name", id))
+	var name := str(tech.get("name", id))
+	notice = "已经推广 · %s" % name
 	last_event = "%s %s" % [notice, str(tech.get("effect", ""))]
+	if id != tech_target:
+		return
+	tech_target = ""
+	tech_target_skip = []
+	target_added = []
+	target_wait_noted = []
+	target_notice = "目标达成 · %s" % name
+	target_advisor = "%s推广了。目标我先撤了，下一个想冲哪个？" % name
+	target_advisor_mood = "smug"
+	target_advisor_id = "target_done"
+	notice = target_notice
 
 
 func _erase_trial(id: String) -> void:
@@ -1663,6 +1915,7 @@ func to_save() -> Dictionary:
 		"tech_trials": tech_trials.duplicate(true),
 		"tech_paused": tech_paused.duplicate(),
 		"tech_target": tech_target,
+		"tech_target_skip": tech_target_skip.duplicate(),
 		"tech_tutorial_done": tech_tutorial_done,
 		"tutorial_done": tutorial_done,
 		"hint_menu_seen": hint_menu_seen,
@@ -1694,6 +1947,7 @@ func to_save() -> Dictionary:
 		"chapter_shown": chapter_shown.duplicate(),
 		"chapter_rewarded": chapter_rewarded.duplicate(),
 		"battery_bonus": battery_bonus,
+		"blueprint_bonus": blueprint_bonus,
 		"presearch": presearch,
 		"supply_left": supply_left,
 		"grain_sold_turn": grain_sold_turn,
@@ -1824,6 +2078,16 @@ func from_save(data: Dictionary) -> bool:
 	report_hold = false
 	tech_paused = _int_dict(data.get("tech_paused", {}))
 	tech_target = str(data.get("tech_target", ""))
+	tech_target_skip = _str_list(data.get("tech_target_skip", []))
+	target_notice = ""
+	target_advisor = ""
+	target_advisor_mood = ""
+	target_advisor_id = ""
+	target_added = []
+	target_wait_noted = []
+	if tech_target != "" and not DataDB.tech_by_id.has(tech_target):
+		tech_target = ""
+		tech_target_skip = []
 	tech_tutorial_done = bool(data.get("tech_tutorial_done", false))
 	tutorial_done = bool(data.get("tutorial_done", false))
 	hint_menu_seen = bool(data.get("hint_menu_seen", false))
@@ -1859,6 +2123,14 @@ func from_save(data: Dictionary) -> bool:
 	chapter_shown = _flag_dict(data.get("chapter_shown", {}))
 	chapter_rewarded = _str_dict(data.get("chapter_rewarded", {}))
 	battery_bonus = int(data.get("battery_bonus", 0))
+	if data.has("blueprint_bonus"):
+		blueprint_bonus = clampi(int(data.get("blueprint_bonus", 0)), 0, 2)
+	else:
+		blueprint_bonus = 0
+		if str(chapter_rewarded.get("liao", "")) == "done":
+			blueprint_bonus += 1
+		if str(chapter_rewarded.get("heyi", "")) == "done":
+			blueprint_bonus += 1
 	presearch = int(data.get("presearch", 0))
 	supply_left = int(data.get("supply_left", 0))
 	grain_sold_turn = int(data.get("grain_sold_turn", -1))
@@ -1908,7 +2180,7 @@ func from_save(data: Dictionary) -> bool:
 
 
 func load_tech_sample() -> void:
-	# 第 52 回合示例：设计 K03 22/40，队列 K05→E05，试制 K02 与 K04，图纸 I05，铜 14，已完成 21 项。
+	# 第 52 回合示例：设计 K03 22/40，队列空，试制槽 1（K02 已试制 2/3 回合），图纸 I05、K04，格物院未颁布，实践 煤场 4、焦炉 6、水磨 6，电池 46，铜 14，已完成 21 项。
 	turn = 52
 	year = 1044
 	month = 4
@@ -1922,19 +2194,21 @@ func load_tech_sample() -> void:
 			tech_done.append(id)
 	tech_designing = "K03"
 	tech_design_prog = 22
-	tech_queue = ["K05", "E05"]
-	tech_blueprints = ["I05"]
-	tech_trials = [
-		{"id": "K02", "prog": 22, "need": 28},
-		{"id": "K04", "prog": 12, "need": 30},
-	]
+	tech_queue = []
+	tech_blueprints = ["I05", "K04"]
+	tech_trials = [{"id": "K02", "prog": 2, "need": 3}]
 	tech_paused = {}
 	tech_target = ""
+	tech_target_skip = []
+	target_notice = ""
+	target_advisor = ""
+	target_added = []
+	target_wait_noted = []
 	tech_tutorial_done = true
-	if not edicts_done.has("gewuyuan"):
-		edicts_done.append("gewuyuan")
+	edicts_done.erase("gewuyuan")
 	resources["copper"] = 14
 	resources["iron"] = 46
-	site_turns = {"mill": 6}
-	battery = 48
+	site_turns = {"mill": 6, "coal": 4, "coke": 6}
+	blueprint_bonus = 0
+	battery = 46
 	EventBus.state_changed.emit()

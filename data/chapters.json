@@ -40,7 +40,8 @@
       "sides": ["定川寨守住", "苏颂入仕"],
       "check": "liao",
       "craft": 20,
-      "morale": 2
+      "morale": 2,
+      "blueprint": 1
     },
     {
       "id": "qingli",
@@ -68,7 +69,8 @@
       "sides": ["河曲之战中获利"],
       "check": "heyi",
       "craft": 15,
-      "morale": 3
+      "morale": 3,
+      "blueprint": 1
     },
     {
       "id": "gewu",

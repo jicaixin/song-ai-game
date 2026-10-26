@@ -605,6 +605,59 @@ func _poll_tech_cmd() -> void:
 		TurnManager.confirm_open = false
 		TurnManager.request_end()
 		return
+	if cmd == "shot_autoqueue":
+		_arm_shot()
+		GameState.load_tech_sample()
+		TechPlan.set_target("E05")
+		for trial_v in GameState.tech_trials:
+			var trial: Dictionary = trial_v
+			if str(trial.get("id", "")) == "K02":
+				trial["prog"] = int(trial.get("need", 1)) - 1
+		GameState.battery = 40
+		GameState.finish_turn()
+		GameState.announce_turn()
+		if ui.desk.mode == "tech":
+			ui.desk.shut()
+		EventBus.state_changed.emit()
+		ui.toast_left = 30.0
+		return
+	if cmd == "shot_queuewait":
+		GameState.new_game()
+		_arm_shot()
+		_debug_turn(40)
+		for tech_v in DataDB.techs:
+			var tech: Dictionary = tech_v
+			var tid := str(tech.get("id", ""))
+			if int(tech.get("era", 1)) == 1 and not GameState.tech_done.has(tid):
+				GameState.tech_done.append(tid)
+		GameState.tech_designing = "X01"
+		GameState.tech_design_prog = 0
+		GameState.tech_queue = ["A05", "E02", "K04"]
+		GameState.tech_target = ""
+		TechPlan.set_target("C07")
+		if ui.desk.mode == "tech":
+			ui.desk.shut()
+		EventBus.state_changed.emit()
+		ui.toast_left = 30.0
+		return
+	if cmd == "shot_bpfly":
+		_arm_shot()
+		GameState.meters["liao_demand"] = 8
+		GameState.card_queue = ["end:liao"]
+		if ui.goals:
+			ui.goals.fly_time = 8.0
+			ui.goals.sync()
+		return
+	if cmd == "shot_t68" or cmd == "shot_sample":
+		_arm_shot()
+		GameState.load_tech_sample()
+		if cmd == "shot_t68":
+			_debug_turn(52)
+		desk.tech_view = "focus"
+		desk.tech_tutorial = -1
+		desk.tech_show_legend = false
+		desk.open("tech")
+		return
 	if cmd == "shot_tech" or cmd == "shot_swap" or cmd == "shot_hud":
 		_arm_shot()
 		GameState.load_tech_sample()

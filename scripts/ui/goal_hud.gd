@@ -92,6 +92,13 @@ func dismiss_card() -> void:
 		var ch: Dictionary = DataDB.chapter_by_id.get(cid, {})
 		if not ch.is_empty():
 			GoalSystem.grant_chapter(ch, GoalSystem.chapter_state(ch))
+			var blueprint_said := false
+			for item_v in GameState.reward_queue:
+				var item: Dictionary = item_v
+				if str(item.get("text", "")).begins_with("图纸库"):
+					blueprint_said = true
+			if blueprint_said:
+				AdvisorSystem.present("图纸库多了一格。以后我画得再快，也有地方放了。", "smug", "blueprint_bonus")
 			_drain_rewards()
 	_card_id = ""
 	_card.visible = false
@@ -533,6 +540,10 @@ func _show_card(token: String) -> void:
 	var seal_lab: Label = _card.get_node("LabelLayer/Seal")
 	seal_lab.text = seal
 	_card.get_node("LabelLayer/Hint").text = "点击继续    空格"
+	var reward_lab: Label = _card.get_node("LabelLayer/Reward")
+	var show_sheets := ending and state == "done" and int(ch.get("blueprint", 0)) > 0
+	reward_lab.visible = show_sheets
+	reward_lab.text = "图纸库位 +1：多存一份图纸，电不用白白溢出。" if show_sheets else ""
 	_fill_sides(ch)
 
 
@@ -1033,6 +1044,8 @@ func _fly(text: String, origin: Vector2, delay: float, bad: bool) -> void:
 		fill.color = Color("8e2a1e") if bad else Color("2a2118")
 	var lab: Label = chip.get_node("Caption") as Label
 	lab.text = text
+	var wide := maxf(112.0, float(text.length()) * 16.0 + 28.0)
+	chip.size = Vector2(wide, 32)
 	var icon: TextureRect = chip.get_node_or_null("Icon") as TextureRect
 	if icon:
 		var key := _reward_icon(text)
@@ -1268,6 +1281,10 @@ func _build_card() -> void:
 	sides.add_theme_constant_override("separation", 18)
 	sides.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(sides)
+	_card_label(layer, "Reward", Vector2(0, 522), 16, Color("f3ead6"))
+	var reward: Label = layer.get_node("Reward")
+	reward.visible = false
+	reward.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_card_label(layer, "Seal", Vector2(0, 560), 42, Color("8e2a1e"))
 	var seal: Label = layer.get_node("Seal")
 	seal.add_theme_constant_override("outline_size", 0)

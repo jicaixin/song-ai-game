@@ -662,7 +662,7 @@
 | 缺电 / 缺匠 / 缺料（受阻） | 右上切角 + 朱红切线 | `st3_blocked` 朱红 ! | 缺铜 14/30 | 去补齐 | `TechNode3Blocked` / `TechNode3ButtonBlocked` |
 | 图纸待试制 | 卷轴，两端卷边 | `st3_blueprint` “图”字印 | 待试制 | 去匠作院试制 | `TechNode3Blueprint` / `TechNode3ButtonBlueprint` |
 | 试制中 | 六角斜切 | `st3_trial` 锤 | 试制 22/28 | 查看试制 | `TechNode3Trial` / `TechNode3ButtonTrial` |
-| 已锁定（时代未开） | 矩形，整体 50% | `st3_locked` 锁 | T75开 | — | `TechNode3Locked` / `TechNode3ButtonLocked` |
+| 已锁定（时代未开） | 矩形，整体 50% | `st3_locked` 锁 | T68开 | — | `TechNode3Locked` / `TechNode3ButtonLocked` |
 
 节点切片 16,18,16,12，内容边距 34,4,8,4（左缘 34px 放科技图标）；悬停贴图 `node3_<状态>_hover`（外圈金光 + 底色提亮）。总览图标块 `tile3_<状态>`（40×40，固定尺寸，科技图标 28px 居中叠加）。
 
